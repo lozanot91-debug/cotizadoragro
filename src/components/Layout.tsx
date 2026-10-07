@@ -33,8 +33,8 @@ export default function Layout({ current, onNavigate, children, taskBadge }: Pro
     { id: 'config', label: 'Márgenes y config.', icon: Settings },
     { id: 'historial', label: 'Historial', icon: History },
   ];
-  // Cargar listas y tocar márgenes/configuración es solo del administrador
-  const navItems = todosLosItems.filter((item) => usuario.rol === 'admin' || (item.id !== 'listas' && item.id !== 'config'));
+  // Tocar márgenes y configuración es solo del administrador (las listas las ven todos, solo el admin las carga)
+  const navItems = todosLosItems.filter((item) => usuario.rol === 'admin' || item.id !== 'config');
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

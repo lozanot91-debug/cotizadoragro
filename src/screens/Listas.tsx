@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
+import { useAuth } from '@/context/AuthContext';
 import { parsearListaCostos, parsearTarifaFlete } from '@/lib/excel';
 import { formatDate, formatUSD } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
@@ -11,6 +12,9 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 
 export default function Listas() {
+  const { usuario } = useAuth();
+  // Los vendedores ven las listas y los costos, pero solo el admin puede cargarlas
+  const esAdmin = usuario.rol === 'admin';
   const data = useData();
   const [listas, setListas] = useState<ListaCostos[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +201,8 @@ export default function Listas() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-gray-800">Listas de costos y flete</h1>
 
-      {/* Upload zones */}
+      {/* Carga de archivos (solo admin) */}
+      {esAdmin && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Lista de costos */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
@@ -274,6 +279,7 @@ export default function Listas() {
           </p>
         </div>
       </div>
+      )}
 
       {/* Mensaje */}
       {mensaje && (

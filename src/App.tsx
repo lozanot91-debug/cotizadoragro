@@ -59,7 +59,7 @@ function AppContent() {
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}
       {screen === 'clientes' && <Clientes />}
-      {screen === 'listas' && usuario.rol === 'admin' && <Listas />}
+      {screen === 'listas' && <Listas />}
       {screen === 'estadisticas' && <Estadisticas />}
       {screen === 'config' && usuario.rol === 'admin' && <ConfigScreen />}
       {screen === 'historial' && <Historial />}
