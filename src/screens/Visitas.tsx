@@ -6,15 +6,14 @@ import { registrarCambio } from '@/lib/historial';
 import { supabase } from '@/lib/supabase';
 import type { Visita, VisitaFoto, Cliente, Cotizacion } from '@/types';
 import { MapPin, Plus, X, Calendar, Clock, Check, Trash2, Edit2, AlertCircle, ChevronLeft, ChevronRight, Camera, MapPinned, Loader2, Image as ImageIcon } from 'lucide-react';
+import { armarFecha, diaDeLaSemana, diasDelMes, hoyAR, partesFecha, sumarDias } from '@/lib/fechas';
 
 const TIPOS = ['Visita técnica', 'Comercial', 'Entrega', 'Postventa'];
 const CULTIVOS = ['Soja', 'Maíz', 'Trigo', 'Cebada', 'Girasol', 'Otro', 'Ninguno'];
 const ESTADOS_VISITA = ['Programada', 'Realizada', 'Cancelada'];
 
 function addDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return sumarDias(hoyAR(), days);
 }
 
 async function comprimirImagen(file: File, maxDim: number = 1600, calidad: number = 0.8): Promise<File> {
@@ -82,10 +81,10 @@ export default function Visitas() {
   const [realizarForm, setRealizarForm] = useState({ observaciones: '', proximos_pasos: '', problema_detectado: '', recomendacion: '', crearTarea: false, tareaFecha: addDays(3) });
 
   // Calendario
-  const [calMes, setCalMes] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [calMes, setCalMes] = useState(() => { const p = partesFecha(hoyAR()); return { y: p.anio, m: p.mes - 1 }; });
   const [calDiaSel, setCalDiaSel] = useState<string | null>(null);
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyAR();
   const en14dias = addDays(14);
 
   const load = useCallback(async () => {
@@ -244,14 +243,12 @@ export default function Visitas() {
 
   // Calendario helpers
   const calDias = useMemo(() => {
-    const primer = new Date(calMes.y, calMes.m, 1);
-    const ultimo = new Date(calMes.y, calMes.m + 1, 0);
-    const diasEnMes = ultimo.getDate();
-    const primerDiaSemana = (primer.getDay() + 6) % 7; // Lunes = 0
+    const diasEnMes = diasDelMes(calMes.y, calMes.m + 1);
+    const primerDiaSemana = (diaDeLaSemana(armarFecha(calMes.y, calMes.m + 1, 1)) + 6) % 7; // Lunes = 0
     const dias: (string | null)[] = [];
     for (let i = 0; i < primerDiaSemana; i++) dias.push(null);
     for (let d = 1; d <= diasEnMes; d++) {
-      const ds = `${calMes.y}-${String(calMes.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const ds = armarFecha(calMes.y, calMes.m + 1, d);
       dias.push(ds);
     }
     return dias;
@@ -340,7 +337,7 @@ export default function Visitas() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => setCalMes((p) => { const m = p.m - 1; return m < 0 ? { y: p.y - 1, m: 11 } : { y: p.y, m }; })} className="p-1 text-gray-400 hover:text-gray-600"><ChevronLeft className="w-5 h-5" /></button>
-            <span className="font-semibold text-gray-700">{new Date(calMes.y, calMes.m).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</span>
+            <span className="font-semibold text-gray-700">{new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(calMes.y, calMes.m, 1)))}</span>
             <button onClick={() => setCalMes((p) => { const m = p.m + 1; return m > 11 ? { y: p.y + 1, m: 0 } : { y: p.y, m }; })} className="p-1 text-gray-400 hover:text-gray-600"><ChevronRight className="w-5 h-5" /></button>
           </div>
           <div className="grid grid-cols-7 gap-1 mb-1">

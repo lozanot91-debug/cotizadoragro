@@ -1,3 +1,5 @@
+import { fechaDeTimestamp, formatearFecha, hoyAR, partesFecha } from '@/lib/fechas';
+
 export function formatARS(value: number, decimals = 2): string {
   return new Intl.NumberFormat('es-AR', {
     minimumFractionDigits: decimals,
@@ -23,22 +25,30 @@ export function formatPercent(value: number, decimals = 1): string {
   return `${formatNumber(value, decimals)}%`;
 }
 
+/** Normaliza lo que llegue (texto 'YYYY-MM-DD', timestamp ISO o Date) a 'YYYY-MM-DD' en zona Argentina. */
+function aFechaAR(date: string | Date): string {
+  if (typeof date === 'string') {
+    // Fecha sin hora: se usa tal cual (new Date('YYYY-MM-DD') la correría un día en Argentina).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    return fechaDeTimestamp(date);
+  }
+  return hoyAR(date);
+}
+
 export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(d);
+  if (!date) return '';
+  return formatearFecha(aFechaAR(date));
 }
 
 export function formatDateLong(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  if (!date) return '';
+  const { anio, mes, dia } = partesFecha(aFechaAR(date));
   return new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'UTC',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
-  }).format(d);
+  }).format(new Date(Date.UTC(anio, mes - 1, dia)));
 }
 
 export function parseNumberInput(value: string): number {

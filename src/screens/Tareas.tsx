@@ -5,25 +5,33 @@ import { formatDate } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
 import type { Tarea, Cliente, Cotizacion } from '@/types';
 import { CheckSquare, Plus, X, Check, Clock, Calendar, Trash2, Edit2, AlertCircle, ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react';
+import { diasDesde, hoyAR, sumarDias } from '@/lib/fechas';
 
 const TIPOS = ['Llamar', 'Visitar', 'Enviar información', 'Cobrar', 'Seguimiento', 'Otro'];
 const PRIORIDADES = ['Alta', 'Normal', 'Baja'];
 
-function diasDesde(fecha: string): number {
-  return Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000);
-}
-
 function addDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return sumarDias(hoyAR(), days);
 }
 
 function generarICS(tarea: Tarea): string {
   const fecha = tarea.fecha_vencimiento;
-  const hora = tarea.hora || '09:00';
-  const dtStart = `${fecha.replace(/-/g, '')}T${hora.replace(/:/g, '')}00`;
-  const dtEnd = `${fecha.replace(/-/g, '')}T${(parseInt(hora.substring(0, 2)) + 1).toString().padStart(2, '0')}${hora.substring(3)}00`;
+  const ymd = fecha.slice(0, 10).replace(/-/g, '');
+  let dtStart: string;
+  let dtEnd: string;
+  if (tarea.hora) {
+    // Evento con hora: dura 1 hora; si cruza la medianoche, termina el mismo día a las 23:59.
+    const hh = parseInt(tarea.hora.substring(0, 2), 10);
+    const mm = tarea.hora.substring(3, 5);
+    dtStart = `DTSTART:${ymd}T${String(hh).padStart(2, '0')}${mm}00`;
+    dtEnd = hh >= 23
+      ? `DTEND:${ymd}T235900`
+      : `DTEND:${ymd}T${String(hh + 1).padStart(2, '0')}${mm}00`;
+  } else {
+    // Sin hora: evento de día completo (DTEND es exclusivo, o sea el día siguiente).
+    dtStart = `DTSTART;VALUE=DATE:${ymd}`;
+    dtEnd = `DTEND;VALUE=DATE:${sumarDias(fecha.slice(0, 10), 1).replace(/-/g, '')}`;
+  }
   const desc = [
     tarea.descripcion || '',
     tarea.cotizacion ? `Cotización N° ${tarea.cotizacion.numero}` : '',
@@ -35,8 +43,8 @@ PRODID:-//Cotizador Agro//CRM//ES
 BEGIN:VEVENT
 UID:${tarea.id}@cotizador-agro
 DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}
-DTSTART:${dtStart}
-DTEND:${dtEnd}
+${dtStart}
+${dtEnd}
 SUMMARY:${tarea.titulo}
 DESCRIPTION:${desc}
 END:VEVENT
@@ -74,7 +82,7 @@ export default function Tareas() {
   const [form, setForm] = useState({ titulo: '', descripcion: '', tipo: 'Seguimiento', prioridad: 'Normal', fecha_vencimiento: addDays(1), hora: '', asignado_a: '', cotizacion_id: '', cliente_id: '' });
   const [completarForm, setCompletarForm] = useState({ resultado: '', agendarProxima: false, proximaFecha: addDays(3) });
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyAR();
   const en7dias = addDays(7);
 
   const load = useCallback(async () => {

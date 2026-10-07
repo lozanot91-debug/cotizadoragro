@@ -5,6 +5,7 @@ import { registrarCambio } from '@/lib/historial';
 import type { Cotizacion, EstadoCotizacion, Cliente, CotizacionLinea, Tarea, Configuracion } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { FileText, Search, ChevronRight, X, AlertCircle, Check, TrendingDown, TrendingUp, Loader2, Pencil, Copy, Lock, Unlock, Trash2 } from 'lucide-react';
+import { diasDesde, hoyAR, sumarDias } from '@/lib/fechas';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida', 'Vencida'];
 const MOTIVOS = ['Precio', 'Plazo de pago', 'Competencia', 'El cliente no compró', 'Otro'];
@@ -80,12 +81,6 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
       return true;
     });
   }, [cotizaciones, filtroCliente, filtroEstado, filtroFecha]);
-
-  function diasDesde(fecha: string): number {
-    const f = new Date(fecha);
-    const hoy = new Date();
-    return Math.floor((hoy.getTime() - f.getTime()) / (1000 * 60 * 60 * 24));
-  }
 
   function esSinRespuesta(c: Cotizacion): boolean {
     if (c.estado !== 'Enviada' && c.estado !== 'En negociación') return false;
@@ -182,10 +177,10 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
   async function confirmarSeguimiento() {
     if (!modalSeguimiento) return;
     if (segOpt.crear) {
-      const d = new Date(); d.setDate(d.getDate() + segOpt.dias);
+      const fechaSeg = sumarDias(hoyAR(), segOpt.dias);
       await data.createTarea({
         titulo: `Seguimiento cotización N° ${modalSeguimiento.numero}`,
-        tipo: 'Seguimiento', fecha_vencimiento: d.toISOString().split('T')[0],
+        tipo: 'Seguimiento', fecha_vencimiento: fechaSeg,
         asignado_a: usuario?.nombre || 'Admin', creada_por: usuario?.nombre || 'Admin',
         cotizacion_id: modalSeguimiento.cotizId,
       });

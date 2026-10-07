@@ -13,6 +13,7 @@ import ConfigScreen from '@/screens/ConfigScreen';
 import Historial from '@/screens/Historial';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { hoyAR } from '@/lib/fechas';
 
 function AppContent() {
   const [screen, setScreen] = useState<Screen>('inicio');
@@ -21,7 +22,7 @@ function AppContent() {
   const [taskBadge, setTaskBadge] = useState(0);
 
   const loadTaskBadge = useCallback(async () => {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = hoyAR();
     const { count } = await supabase
       .from('tareas')
       .select('*', { count: 'exact', head: true })

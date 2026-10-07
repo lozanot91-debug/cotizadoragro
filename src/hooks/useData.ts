@@ -16,6 +16,7 @@ import type {
   Visita,
   VisitaFoto,
 } from '@/types';
+import { hoyAR } from '@/lib/fechas';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFilter = { range: (from: number, to: number) => Promise<{ data: any[] | null; error: unknown }> };
@@ -338,7 +339,7 @@ export function useData() {
   }
 
   async function fetchTareasPendientes(): Promise<Tarea[]> {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = hoyAR();
     const { data } = await supabase
       .from('tareas')
       .select('*, cotizacion:cotizaciones(numero), cliente:clientes(nombre)')

@@ -4,6 +4,7 @@ import { formatUSD, formatDate } from '@/lib/format';
 import type { Cliente, Cotizacion, MargenCliente, ProductoConCosto, Tarea, Visita, Configuracion } from '@/types';
 import { Users, Plus, Search, X, Trash2, Edit2, Loader2, MapPin, CreditCard, FileText, AlertCircle, CheckSquare, Calendar, Clock, Activity } from 'lucide-react';
 import { registrarCambio, fmtMargen } from '@/lib/historial';
+import { diasDesde, fechaDeTimestamp } from '@/lib/fechas';
 
 export default function Clientes() {
   const data = useData();
@@ -105,16 +106,16 @@ export default function Clientes() {
 
   const familias = [...new Set(productos.map((p) => p.familia).filter(Boolean))] as string[];
 
-  function ultimoContacto(): Date | null {
-    let max: Date | null = null;
+  function ultimoContacto(): string | null {
+    let max: string | null = null;
     for (const v of visitasCliente) {
-      if (v.estado === 'Realizada') { const d = new Date(v.fecha); if (!max || d > max) max = d; }
+      if (v.estado === 'Realizada') { const d = v.fecha.slice(0, 10); if (!max || d > max) max = d; }
     }
     for (const t of tareasCliente) {
-      if (t.estado === 'Hecha' && t.completada_at) { const d = new Date(t.completada_at); if (!max || d > max) max = d; }
+      if (t.estado === 'Hecha' && t.completada_at) { const d = fechaDeTimestamp(t.completada_at); if (!max || d > max) max = d; }
     }
     for (const c of cotizsCliente) {
-      if (c.fecha_envio) { const d = new Date(c.fecha_envio); if (!max || d > max) max = d; }
+      if (c.fecha_envio) { const d = fechaDeTimestamp(c.fecha_envio); if (!max || d > max) max = d; }
     }
     return max;
   }
@@ -161,7 +162,7 @@ export default function Clientes() {
             {(() => {
               const ult = ultimoContacto();
               if (!ult) return null;
-              const dias = Math.floor((Date.now() - ult.getTime()) / 86400000);
+              const dias = diasDesde(ult);
               const alerta = configCli && dias > configCli.ultimo_contacto_dias;
               return <span className={`text-xs px-2 py-1 rounded-full font-medium ${alerta ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>Último contacto: hace {dias}d</span>;
             })()}

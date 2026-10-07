@@ -5,6 +5,7 @@ import { formatUSD, formatDate } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
 import type { Cotizacion, EstadoCotizacion, Tarea, Configuracion } from '@/types';
 import { KanbanSquare, List, Search, TrendingUp, TrendingDown, AlertCircle, Clock, Check, X, Calendar, DollarSign, ChevronRight, GripVertical } from 'lucide-react';
+import { diasDesde, mesActualAR } from '@/lib/fechas';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida'];
 const MOTIVOS = ['Precio', 'Plazo de pago', 'Competencia', 'El cliente no compró', 'Otro'];
@@ -27,12 +28,6 @@ const colBg: Record<string, string> = {
 
 interface Props {
   onEdit: (id: string) => void;
-}
-
-function diasDesde(fecha: string): number {
-  const f = new Date(fecha);
-  const now = new Date();
-  return Math.floor((now.getTime() - f.getTime()) / 86400000);
 }
 
 export default function Pipeline({ onEdit }: Props) {
@@ -108,7 +103,7 @@ export default function Pipeline({ onEdit }: Props) {
     const abiertas = filtradas.filter((c) => c.estado === 'Borrador' || c.estado === 'Enviada' || c.estado === 'En negociación');
     const totalAbierto = abiertas.reduce((s, c) => s + c.total_usd, 0);
     const valorPonderado = abiertas.reduce((s, c) => s + c.total_usd * (probabilidad(c) / 100), 0);
-    const mesActual = new Date().toISOString().substring(0, 7);
+    const mesActual = mesActualAR();
     const ganadasMes = filtradas.filter((c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual);
     const perdidasMes = filtradas.filter((c) => c.estado === 'Perdida' && c.fecha.substring(0, 7) === mesActual);
     const ganadoMes = ganadasMes.reduce((s, c) => s + c.total_usd, 0);

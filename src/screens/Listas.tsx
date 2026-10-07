@@ -6,6 +6,7 @@ import { formatDate, formatUSD } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
 import type { ListaCostos, ProductoConCosto, Cotizacion } from '@/types';
 import { Upload, ListChecks, Truck, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp, X } from 'lucide-react';
+import { hoyAR } from '@/lib/fechas';
 
 export default function Listas() {
   const data = useData();
@@ -36,7 +37,7 @@ export default function Listas() {
     try {
       const buffer = await file.arrayBuffer();
       const { filas, fecha } = parsearListaCostos(buffer, file.name);
-      const fechaFinal = fecha || new Date().toISOString().split('T')[0];
+      const fechaFinal = fecha || hoyAR();
 
       // Validate
       if (filas.length === 0) {

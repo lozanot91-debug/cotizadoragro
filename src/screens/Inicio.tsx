@@ -5,16 +5,11 @@ import { formatUSD, formatDate } from '@/lib/format';
 import type { Cotizacion, Tarea, Visita, Configuracion } from '@/types';
 import type { Screen } from '@/components/Layout';
 import { Home, Plus, CheckCircle, Calendar, Clock, AlertCircle, TrendingUp, ArrowRight } from 'lucide-react';
+import { diasDesde, hoyAR, mesActualAR, sumarDias } from '@/lib/fechas';
 
 interface Props {
   onNavigate: (s: Screen) => void;
   onEditCotiz: (id: string) => void;
-}
-
-function diasDesde(fecha: string): number {
-  const f = new Date(fecha);
-  const now = new Date();
-  return Math.floor((now.getTime() - f.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export default function Inicio({ onNavigate, onEditCotiz }: Props) {
@@ -27,12 +22,9 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
   const [tareasPendientes, setTareasPendientes] = useState<Tarea[]>([]);
   const [visitas, setVisitas] = useState<Visita[]>([]);
 
-  const hoy = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const manana = useMemo(
-    () => new Date(Date.now() + 86400000).toISOString().split('T')[0],
-    []
-  );
-  const mesActual = useMemo(() => new Date().toISOString().substring(0, 7), []);
+  const hoy = useMemo(() => hoyAR(), []);
+  const manana = useMemo(() => sumarDias(hoyAR(), 1), []);
+  const mesActual = useMemo(() => mesActualAR(), []);
 
   const load = useCallback(async () => {
     const [cfg, cotizs, tareasPend, todasTareas, visitasData] = await Promise.all([

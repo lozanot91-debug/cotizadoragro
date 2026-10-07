@@ -7,6 +7,7 @@ import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
 import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio } from '@/types';
 import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2 } from 'lucide-react';
+import { hoyAR, formatearFechaHora } from '@/lib/fechas';
 
 interface LineaEditable {
   key: string;
@@ -45,7 +46,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
   const [mostrarNuevoCliente, setMostrarNuevoCliente] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [fecha, setFecha] = useState(hoyAR());
   const [tc, setTc] = useState('');
   const [km, setKm] = useState('');
   const [iva, setIva] = useState('');
@@ -493,7 +494,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   }
 
   function formatFechaHora(iso: string): string {
-    return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(iso));
+    return formatearFechaHora(iso);
   }
 
   if (loading) {

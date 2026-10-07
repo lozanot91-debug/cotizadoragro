@@ -3,20 +3,11 @@ import { supabase } from '@/lib/supabase';
 import type { HistorialCambio } from '@/types';
 import { History, Search, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { formatearFechaHora } from '@/lib/fechas';
 
 const PAGE_SIZE = 50;
 
-function formatFechaHora(iso: string): string {
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'America/Argentina/Buenos_Aires',
-  }).format(d);
-}
+const formatFechaHora = formatearFechaHora;
 
 const tipoLabels: Record<string, string> = {
   estado: 'Estado',
@@ -44,10 +35,10 @@ export default function Historial() {
     let query = supabase.from('historial_cambios').select('*', { count: 'exact' });
 
     if (filtroFechaDesde) {
-      query = query.gte('created_at', `${filtroFechaDesde}T00:00:00`);
+      query = query.gte('created_at', `${filtroFechaDesde}T00:00:00-03:00`);
     }
     if (filtroFechaHasta) {
-      query = query.lte('created_at', `${filtroFechaHasta}T23:59:59`);
+      query = query.lte('created_at', `${filtroFechaHasta}T23:59:59.999-03:00`);
     }
     if (filtroUsuario) {
       query = query.ilike('usuario_nombre', `%${filtroUsuario}%`);
