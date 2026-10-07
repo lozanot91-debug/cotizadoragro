@@ -917,18 +917,25 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
           <textarea value={notas} disabled={esReadOnly} onChange={(e) => setNotas(e.target.value)} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none disabled:bg-gray-50" placeholder="Observaciones..." />
         </div>
-        <div className="bg-gradient-to-br from-emerald-700 to-green-800 rounded-xl shadow-lg p-5 text-white">
-          <h3 className="text-sm font-medium text-emerald-100 mb-3">Resumen</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm"><span className="text-emerald-100">{totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span className="font-medium">{formatUSD(totales.subtotal)} USD</span></div>
-            {totales.recargo > 0 && <div className="flex justify-between text-sm"><span className="text-emerald-100">Financiación <span className="text-emerald-200/70">(según plazo de cada fila)</span></span><span className="font-medium">{formatUSD(totales.recargo)} USD</span></div>}
+        <div className="bg-emerald-900 rounded-xl p-5 text-white">
+          <p className="text-emerald-200 text-sm">{conIva ? 'Total con IVA' : 'Total sin IVA'}</p>
+          <p className="cifra text-6xl mt-1">
+            {formatUSD(totales.total)}
+            <span className="text-2xl font-semibold text-amber-300 ml-2">USD</span>
+          </p>
+          <p className="text-emerald-200 text-sm mt-2">$ {formatUSD(totales.totalARS, 0)} al tipo de cambio de la cotización</p>
+          {conCanje && canjePrecioNum > 0 && (
+            <div className="mt-3 bg-amber-400 text-emerald-950 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
+              <span className="text-sm">Equivale a {canjeNombre || 'grano'} a USD {formatUSD(canjePrecioNum)}/tn</span>
+              <span className="cifra text-2xl">{formatUSD(canjeTn)} tn</span>
+            </div>
+          )}
+          <div className="mt-4 pt-3 border-t border-emerald-700 space-y-1.5 text-sm text-emerald-100">
+            <div className="flex justify-between"><span>{totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span>{formatUSD(totales.subtotal)}</span></div>
+            {totales.recargo > 0 && <div className="flex justify-between"><span>Financiación, según el plazo de cada fila</span><span>{formatUSD(totales.recargo)}</span></div>}
             {conIva && totales.desglose.map((d) => (
-              <div key={d.tasa} className="flex justify-between text-sm"><span className="text-emerald-100">IVA {formatInputNumber(d.tasa, 2) || '0'}% <span className="text-emerald-200/70">(s/ {formatUSD(d.base)})</span></span><span className="font-medium">{formatUSD(d.iva)} USD</span></div>
+              <div key={d.tasa} className="flex justify-between"><span>IVA {formatInputNumber(d.tasa, 2) || '0'}% sobre {formatUSD(d.base)}</span><span>{formatUSD(d.iva)}</span></div>
             ))}
-            {!conIva && <div className="text-xs text-emerald-200/80">Precios sin IVA</div>}
-            <div className="border-t border-emerald-600 pt-2 flex justify-between items-baseline"><span className="text-emerald-100">{conIva ? 'Total USD' : 'Total USD (sin IVA)'}</span><span className="text-2xl font-bold">{formatUSD(totales.total)}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-emerald-100">Total ARS</span><span className="font-medium">$ {formatUSD(totales.totalARS, 0)}</span></div>
-            {conCanje && canjePrecioNum > 0 && <div className="border-t border-emerald-600 pt-2 flex justify-between text-sm"><span className="text-emerald-100">Equivale a ({canjeNombre || 'grano'} a USD {formatUSD(canjePrecioNum)}/tn)</span><span className="font-bold">{formatUSD(canjeTn)} tn</span></div>}
           </div>
         </div>
       </div>

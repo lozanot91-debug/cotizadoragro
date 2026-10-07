@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { formatUSD, formatDate } from '@/lib/format';
 import type { Cotizacion, Tarea, Visita, Configuracion } from '@/types';
 import type { Screen } from '@/components/Layout';
-import { Home, Plus, CheckCircle, Calendar, Clock, AlertCircle, TrendingUp, ArrowRight } from 'lucide-react';
+import { Plus, CheckCircle, Calendar, Clock, AlertCircle, ArrowRight } from 'lucide-react';
 import { diasDesde, hoyAR, mesActualAR, sumarDias } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
@@ -168,30 +168,38 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* ===== Welcome banner ===== */}
-      <div className="bg-gradient-to-br from-emerald-600 to-green-700 rounded-xl p-6 text-white shadow-sm">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-              <Home className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="text-emerald-100 text-sm">Bienvenido,</p>
-              <h1 className="text-2xl font-bold">{usuario.nombre}</h1>
-              <p className="text-emerald-100 text-sm mt-0.5">
-                {formatDate(new Date())}
-              </p>
-            </div>
-          </div>
+      {/* ===== Tablero: el pipeline abierto es lo primero que se lee ===== */}
+      <section className="bg-emerald-900 text-white rounded-xl overflow-hidden">
+        <div className="flex items-start justify-between gap-4 flex-wrap px-5 pt-4">
+          <p className="text-emerald-200 text-sm">
+            Hola, {usuario.nombre}. Hoy es {formatDate(new Date())}.
+          </p>
           <button
             onClick={() => onNavigate('nueva')}
-            className="bg-white text-emerald-700 font-semibold px-4 py-2.5 rounded-lg hover:bg-emerald-50 transition-colors flex items-center gap-2 text-sm shadow-sm"
+            className="bg-amber-400 text-emerald-950 font-semibold px-4 py-2 rounded-lg hover:bg-amber-300 transition-colors flex items-center gap-2 text-sm"
           >
             <Plus className="w-5 h-5" />
             Nueva cotización
           </button>
         </div>
-      </div>
+        <button onClick={() => onNavigate('pipeline')} className="block w-full text-left px-5 pt-3 pb-5 group">
+          <p className="text-emerald-200 text-sm">En negociación abierta ({pipeline.countAbierto} {pipeline.countAbierto === 1 ? 'cotización' : 'cotizaciones'})</p>
+          <p className="cifra text-6xl sm:text-7xl mt-1">
+            {formatUSD(pipeline.totalAbierto, 0)}
+            <span className="text-2xl sm:text-3xl font-semibold text-amber-300 ml-2">USD</span>
+          </p>
+        </button>
+        <div className="grid grid-cols-2 border-t border-emerald-700/70 bg-emerald-950/40">
+          <button onClick={() => onNavigate('pipeline')} className="text-left px-5 py-3 hover:bg-emerald-950/40 transition-colors">
+            <p className="text-emerald-300 text-xs">Valor ponderado por probabilidad</p>
+            <p className="cifra text-2xl mt-1">{formatUSD(pipeline.valorPonderado, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+          </button>
+          <button onClick={() => onNavigate('cotizaciones')} className="text-left px-5 py-3 border-l border-emerald-700/70 hover:bg-emerald-950/40 transition-colors">
+            <p className="text-emerald-300 text-xs">Ganado este mes ({pipeline.countGanado})</p>
+            <p className="cifra text-2xl mt-1">{formatUSD(pipeline.ganadoMes, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+          </button>
+        </div>
+      </section>
 
       {/* ===== Alert bar: tareas de hoy + vencidas ===== */}
       {tareasHoy.length + tareasVencidas.length > 0 && (
@@ -215,70 +223,6 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
           </span>
         </button>
       )}
-
-      {/* ===== Pipeline indicators ===== */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <button
-          onClick={() => onNavigate('pipeline')}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:shadow-md transition-shadow"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Pipeline abierto</p>
-              <p className="text-sm font-bold text-gray-700">
-                {pipeline.countAbierto} cotiz.
-              </p>
-            </div>
-          </div>
-          <p className="text-xl font-bold text-emerald-700">
-            {formatUSD(pipeline.totalAbierto, 0)}{' '}
-            <span className="text-sm font-normal text-gray-400">USD</span>
-          </p>
-        </button>
-
-        <button
-          onClick={() => onNavigate('pipeline')}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:shadow-md transition-shadow"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Valor ponderado</p>
-              <p className="text-sm font-bold text-gray-700">Estimado</p>
-            </div>
-          </div>
-          <p className="text-xl font-bold text-blue-700">
-            {formatUSD(pipeline.valorPonderado, 0)}{' '}
-            <span className="text-sm font-normal text-gray-400">USD</span>
-          </p>
-        </button>
-
-        <button
-          onClick={() => onNavigate('cotizaciones')}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 text-left hover:shadow-md transition-shadow"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Ganado del mes</p>
-              <p className="text-sm font-bold text-gray-700">
-                {pipeline.countGanado} cotiz.
-              </p>
-            </div>
-          </div>
-          <p className="text-xl font-bold text-emerald-700">
-            {formatUSD(pipeline.ganadoMes, 0)}{' '}
-            <span className="text-sm font-normal text-gray-400">USD</span>
-          </p>
-        </button>
-      </div>
 
       {/* ===== Tareas de hoy y vencidas + Visitas ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

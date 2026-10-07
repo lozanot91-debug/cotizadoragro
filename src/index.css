@@ -2,6 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  font-family: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  /* Cifras de ancho fijo: los importes en columna quedan alineados */
+  font-variant-numeric: tabular-nums;
+  background-color: #F3F4EE;
+  color: #272E22;
+}
+
+/* Cifras grandes (totales, tablero): Archivo condensado y pesado, como letrero de tolva */
+@layer components {
+  .cifra {
+    font-stretch: 72%;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .titulo {
+    font-stretch: 82%;
+    font-weight: 750;
+    letter-spacing: -0.005em;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid #C0900F;
+  outline-offset: 2px;
+}
+
 /* Celular: 16px en los campos para que iPhone no haga zoom al tocarlos */
 @media (max-width: 1023px) {
   input:not([type='checkbox']):not([type='radio']),
