@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import InstalarApp from '@/components/InstalarApp';
+import SinConexion from '@/components/SinConexion';
 
 export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos';
 
@@ -65,6 +67,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
           </div>
         </div>
       </header>
+      <SinConexion />
 
       <div className="flex flex-1">
         <aside className={`
@@ -89,6 +92,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
               );
             })}
           </nav>
+          <div className="p-3 pt-0"><InstalarApp /></div>
         </aside>
 
         <main className="flex-1 overflow-x-hidden">
