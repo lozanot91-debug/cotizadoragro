@@ -11,6 +11,7 @@ import type {
   MargenCliente,
   Cotizacion,
   CotizacionLinea,
+  EstadoCotizacion,
   HistorialCambio,
   Tarea,
   Visita,
@@ -18,9 +19,10 @@ import type {
 } from '@/types';
 import { hoyAR } from '@/lib/fechas';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
+import { validarCambioEstado } from '@/lib/estados';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyFilter = { range: (from: number, to: number) => Promise<{ data: any[] | null; error: unknown }> };
+export type AnyFilter = { range: (from: number, to: number) => Promise<{ data: any[] | null; error: unknown }> };
 
 /**
  * Pagina una consulta de Supabase de a 1000 filas hasta traer todo (Supabase corta en 1000).
@@ -246,12 +248,56 @@ export function useData() {
     return data as unknown as Cotizacion;
   }
 
-  async function updateCotizacionEstado(
+  /**
+   * Cambia el estado de una cotización haciendo cumplir las reglas (src/lib/estados.ts):
+   * Perdida exige motivo; desde Ganada/Perdida solo se reabre a En negociación con comentario.
+   * Lee el estado actual de la base (no el de la pantalla) y falla si alguien lo cambió en el medio.
+   * Al salir de Perdida (o en cualquier otro estado) motivo_perdida queda en NULL: el motivo viejo
+   * sobrevive solo en el historial.
+   */
+  async function cambiarEstadoCotizacion(
     id: string,
-    estado: Cotizacion['estado'],
-    extra?: { motivo_perdida?: string | null; cantidades_reales?: Record<string, { cantidad: number; precio: number }> }
-  ) {
-    await ok(supabase.from('cotizaciones').update({ estado, ...extra, updated_at: new Date().toISOString() }).eq('id', id));
+    hacia: EstadoCotizacion,
+    opciones: {
+      motivo?: string | null;
+      comentario?: string | null;
+      cantidadesReales?: Record<string, { cantidad: number; precio: number }>;
+    } = {}
+  ): Promise<{ anterior: EstadoCotizacion; motivoAnterior: string | null }> {
+    const actual = await ok(
+      supabase.from('cotizaciones').select('estado, motivo_perdida, fecha_envio').eq('id', id).maybeSingle()
+    );
+    if (!actual) throw new ErrorApp('La cotización ya no existe. Actualizá la pantalla.');
+
+    const anterior = actual.estado as EstadoCotizacion;
+    const error = validarCambioEstado({ desde: anterior, hacia, motivo: opciones.motivo, comentario: opciones.comentario });
+    if (error) throw new ErrorApp(error);
+
+    const ahora = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      estado: hacia,
+      motivo_perdida: hacia === 'Perdida' ? (opciones.motivo ?? '').trim() : null,
+      updated_at: ahora,
+    };
+    if (hacia === 'Enviada' && !actual.fecha_envio) patch.fecha_envio = ahora;
+    if (hacia === 'Ganada' && opciones.cantidadesReales) patch.cantidades_reales = opciones.cantidadesReales;
+
+    // .eq('estado', anterior): si otra persona lo cambió mientras tanto, no pisamos su cambio
+    const filas = await ok(
+      supabase.from('cotizaciones').update(patch).eq('id', id).eq('estado', anterior).select('id')
+    );
+    if (!filas || filas.length === 0) {
+      throw new ErrorApp('La cotización cambió de estado mientras la editabas. Actualizá la pantalla y probá de nuevo.');
+    }
+    return { anterior, motivoAnterior: actual.motivo_perdida ?? null };
+  }
+
+  /** Ids de las cotizaciones que tienen alguna línea con costo editado (una sola consulta paginada). */
+  async function fetchCotizacionesConCostoEditado(): Promise<Set<string>> {
+    const filas = await fetchAllPaged<{ id: string; cotizacion_id: string }>(() =>
+      supabase.from('cotizacion_lineas').select('id, cotizacion_id').eq('costo_editado', true).order('id') as unknown as AnyFilter
+    );
+    return new Set(filas.map((f) => f.cotizacion_id));
   }
 
   async function fetchMargenesProducto(): Promise<MargenProducto[]> {
@@ -514,7 +560,8 @@ export function useData() {
     fetchCotizacion,
     fetchLineas,
     saveCotizacion,
-    updateCotizacionEstado,
+    cambiarEstadoCotizacion,
+    fetchCotizacionesConCostoEditado,
     fetchMargenesProducto,
     upsertMargenProducto,
     deleteMargenProducto,

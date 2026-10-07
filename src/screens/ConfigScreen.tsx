@@ -5,6 +5,8 @@ import { parsearMargenesExcel } from '@/lib/excel';
 import type { FamiliaConfig, MargenProducto, Configuracion } from '@/types';
 import { Settings, Save, Upload, Loader2, Check, Tag, Building2, Users, AlertCircle } from 'lucide-react';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 export default function ConfigScreen() {
   const data = useData();
@@ -17,7 +19,7 @@ export default function ConfigScreen() {
   const [tab, setTab] = useState<'empresa' | 'familias' | 'margenes' | 'crm'>('empresa');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const [cfg, fams, margs] = await Promise.all([
       data.fetchConfig(),
       data.fetchFamiliasConfig(),
@@ -26,8 +28,9 @@ export default function ConfigScreen() {
     setConfig(cfg);
     setFamilias(fams);
     setMargenesProd(margs as MargenProducto[]);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -154,6 +157,8 @@ export default function ConfigScreen() {
       setMsg({ type: 'error', text: 'Error al importar márgenes' });
     }
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading || !config) {
     return (

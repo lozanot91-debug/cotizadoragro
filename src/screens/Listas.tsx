@@ -7,6 +7,8 @@ import type { ListaCostos, ProductoConCosto, Cotizacion } from '@/types';
 import { Upload, ListChecks, Truck, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp, X } from 'lucide-react';
 import { hoyAR } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 export default function Listas() {
   const data = useData();
@@ -21,13 +23,14 @@ export default function Listas() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fleteInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const ls = await data.fetchListas();
     setListas(ls);
     const tars = await data.fetchTarifasFlete();
     setTarifaStatus(tars.length);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -107,6 +110,12 @@ export default function Listas() {
       });
 
       const resumen = `Lista cargada: ${filas.length} productos (${resultado.productos_nuevos} nuevos, ${resultado.productos_actualizados} actualizados).`;
+      // La vigente es siempre la de fecha más reciente: cargar una más vieja no la cambia
+      const vigente = listas[0];
+      const esAnteriorAVigente = !!vigente && fecha < vigente.fecha;
+      const avisoVigente = esAnteriorAVigente
+        ? ` Esta lista es anterior a la vigente (${formatDate(vigente.fecha)}): la vigente sigue siendo la más reciente.`
+        : '';
 
       // Cotizaciones abiertas que usan algún producto cuyo costo cambió (una sola consulta)
       let afectadas: { numero: number; cliente: string }[] = [];
@@ -125,11 +134,11 @@ export default function Listas() {
         }
         setCambiosCosto(cambios);
         setCotizAfectadas(afectadas);
-        setMensaje({ type: 'warning', text: `${resumen} ${cambios.length} productos cambiaron de costo.${avisoAfectadas}` });
+        setMensaje({ type: 'warning', text: `${resumen} ${cambios.length} productos cambiaron de costo.${avisoAfectadas}${avisoVigente}` });
       } else {
         setMensaje({
-          type: 'success',
-          text: listaAnterior ? resumen : `${resumen} Es la primera lista: no hay costos anteriores para comparar.`,
+          type: esAnteriorAVigente ? 'warning' : 'success',
+          text: `${listaAnterior ? resumen : `${resumen} Es la primera lista: no hay costos anteriores para comparar.`}${avisoVigente}`,
         });
       }
 
@@ -173,6 +182,8 @@ export default function Listas() {
     }
     setUploading(false);
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return (

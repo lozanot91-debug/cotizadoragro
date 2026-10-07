@@ -7,6 +7,8 @@ interface Aviso { id: number; tipo: Tipo; texto: string }
 
 interface ToastCtx {
   error: (e: unknown) => void;
+  /** Aviso de error con un texto propio (no viene de una excepción). */
+  aviso: (texto: string) => void;
   exito: (texto: string) => void;
 }
 
@@ -27,6 +29,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ToastCtx>(() => ({
     error: (e) => agregar('error', traducirError(e)),
+    aviso: (t) => agregar('error', t),
     exito: (t) => agregar('exito', t),
   }), [agregar]);
 

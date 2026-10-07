@@ -3,6 +3,8 @@ import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
 import type { Cotizacion } from '@/types';
 import { BarChart3, TrendingUp, TrendingDown, DollarSign, Package, Trophy, AlertCircle, Loader2 } from 'lucide-react';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 export default function Estadisticas() {
   const data = useData();
@@ -10,11 +12,12 @@ export default function Estadisticas() {
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState<'mes' | 'trimestre' | 'anio' | 'todo'>('todo');
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const cotizs = await data.fetchCotizaciones();
     setCotizaciones(cotizs);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -68,6 +71,8 @@ export default function Estadisticas() {
 
   const maxMontoMes = Math.max(...stats.porMes.map(([, v]) => v.cotizado), 1);
   const maxMontoCliente = Math.max(...stats.porCliente.map(([, v]) => v.cotizado), 1);
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return (

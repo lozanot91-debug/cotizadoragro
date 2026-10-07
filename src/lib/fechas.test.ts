@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verificarFechas, diaDeLaSemana, diasDelMes, esFechaVencida } from './fechas';
+import { verificarFechas, diaDeLaSemana, diasDelMes, esFechaVencida, diasDesde } from './fechas';
 
 describe('fechas (zona Argentina)', () => {
   it('pasa la autoverificación', () => {
@@ -14,5 +14,12 @@ describe('fechas (zona Argentina)', () => {
     const ahora = new Date('2026-10-06T01:30:00Z'); // 05/10 22:30 AR
     expect(esFechaVencida('2026-10-05', ahora)).toBe(false);
     expect(esFechaVencida('2026-10-04', ahora)).toBe(true);
+  });
+  it('diasDesde con timestamp cuenta en fecha argentina, no en UTC', () => {
+    const ahora = new Date('2026-10-05T15:00:00Z'); // 05/10 12:00 AR
+    // Enviada 04/10 22:00 AR = 05/10 01:00 UTC: pasó 1 día (en UTC parecería el mismo día)
+    expect(diasDesde('2026-10-05T01:00:00Z', ahora)).toBe(1);
+    expect(diasDesde('2026-10-04', ahora)).toBe(1);
+    expect(diasDesde('2026-10-05', ahora)).toBe(0);
   });
 });

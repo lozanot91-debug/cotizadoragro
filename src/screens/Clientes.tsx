@@ -5,6 +5,8 @@ import type { Cliente, Cotizacion, MargenCliente, ProductoConCosto, Tarea, Visit
 import { Users, Plus, Search, X, Trash2, Edit2, Loader2, MapPin, CreditCard, FileText, AlertCircle, CheckSquare, Calendar, Clock, Activity } from 'lucide-react';
 import { registrarCambio, fmtMargen } from '@/lib/historial';
 import { diasDesde, fechaDeTimestamp } from '@/lib/fechas';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 export default function Clientes() {
   const data = useData();
@@ -26,11 +28,12 @@ export default function Clientes() {
 
   const [modalEliminar, setModalEliminar] = useState<Cliente | null>(null);
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const cls = await data.fetchClientes();
     setClientes(cls);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -131,6 +134,8 @@ export default function Clientes() {
   const filtrados = busqueda
     ? clientes.filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()) || (c.cuit || '').includes(busqueda))
     : clientes;
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return (

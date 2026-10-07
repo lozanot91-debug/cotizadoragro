@@ -4,6 +4,11 @@ import type { HistorialCambio } from '@/types';
 import { History, Search, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { formatearFechaHora } from '@/lib/fechas';
+import { fetchAllPaged, type AnyFilter } from '@/hooks/useData';
+import { ErrorApp, ok, traducirError } from '@/lib/errores';
+import { useToast } from '@/components/Toast';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 const PAGE_SIZE = 50;
 
@@ -29,46 +34,47 @@ export default function Historial() {
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroCotizNum, setFiltroCotizNum] = useState('');
+  const [exportando, setExportando] = useState(false);
+  const toast = useToast();
 
-  const load = useCallback(async () => {
+  /** id de la cotización filtrada: undefined = sin filtro por número, null = ese número no existe. */
+  async function resolverCotizacion(): Promise<string | null | undefined> {
+    if (!filtroCotizNum) return undefined;
+    const numero = parseInt(filtroCotizNum);
+    if (!numero) return null;
+    const cotiz = await ok(supabase.from('cotizaciones').select('id').eq('numero', numero).maybeSingle());
+    return cotiz?.id ?? null;
+  }
+
+  /** Consulta con todos los filtros. Orden estable (fecha + id) para que la paginación no repita ni saltee filas. */
+  function consulta(cotizId: string | undefined) {
+    let q = supabase.from('historial_cambios').select('*', { count: 'exact' });
+    if (filtroFechaDesde) q = q.gte('created_at', `${filtroFechaDesde}T00:00:00-03:00`);
+    if (filtroFechaHasta) q = q.lte('created_at', `${filtroFechaHasta}T23:59:59.999-03:00`);
+    if (filtroUsuario) q = q.ilike('usuario_nombre', `%${filtroUsuario}%`);
+    if (filtroTipo) q = q.eq('tipo', filtroTipo);
+    if (cotizId) q = q.eq('cotizacion_id', cotizId);
+    return q.order('created_at', { ascending: false }).order('id', { ascending: false });
+  }
+
+  const cargar = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('historial_cambios').select('*', { count: 'exact' });
-
-    if (filtroFechaDesde) {
-      query = query.gte('created_at', `${filtroFechaDesde}T00:00:00-03:00`);
+    const cotizId = await resolverCotizacion();
+    if (cotizId === null) {
+      // El número de cotización pedido no existe: no hay nada que mostrar
+      setRegistros([]);
+      setTotal(0);
+      return;
     }
-    if (filtroFechaHasta) {
-      query = query.lte('created_at', `${filtroFechaHasta}T23:59:59.999-03:00`);
-    }
-    if (filtroUsuario) {
-      query = query.ilike('usuario_nombre', `%${filtroUsuario}%`);
-    }
-    if (filtroTipo) {
-      query = query.eq('tipo', filtroTipo);
-    }
-
-    if (filtroCotizNum) {
-      const { data: cotiz } = await supabase
-        .from('cotizaciones')
-        .select('id')
-        .eq('numero', parseInt(filtroCotizNum) || 0)
-        .maybeSingle();
-      if (cotiz) {
-        query = query.eq('cotizacion_id', cotiz.id);
-      } else {
-        query = query.eq('cotizacion_id', 'impossible');
-      }
-    }
-
-    query = query.order('created_at', { ascending: false });
     const from = page * PAGE_SIZE;
-    query = query.range(from, from + PAGE_SIZE - 1);
-
-    const { data, count } = await query;
+    const { data, count, error } = await consulta(cotizId).range(from, from + PAGE_SIZE - 1);
+    if (error) throw new ErrorApp(traducirError(error), error);
     setRegistros((data || []) as HistorialCambio[]);
     setTotal(count || 0);
-    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, filtroFechaDesde, filtroFechaHasta, filtroUsuario, filtroTipo, filtroCotizNum]);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -86,21 +92,35 @@ export default function Historial() {
     setPage(0);
   }
 
-  function exportarExcel() {
-    const rows = registros.map((r) => ({
-      'Fecha y hora': formatFechaHora(r.created_at),
-      'Usuario': r.usuario_nombre,
-      'Tipo': tipoLabels[r.tipo] || r.tipo,
-      'Entidad': r.entidad || '',
-      'Campo': r.campo || '',
-      'Anterior': r.valor_anterior || '',
-      'Nuevo': r.valor_nuevo || '',
-      'Detalle': r.detalle || '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Historial');
-    XLSX.writeFile(wb, 'Historial_cambios.xlsx');
+  /** Exporta TODO el resultado filtrado (no solo la página que se está viendo). */
+  async function exportarExcel() {
+    if (exportando) return;
+    setExportando(true);
+    try {
+      const cotizId = await resolverCotizacion();
+      const todos = cotizId === null
+        ? []
+        : await fetchAllPaged<HistorialCambio>(() => consulta(cotizId) as unknown as AnyFilter);
+      const rows = todos.map((r) => ({
+        'Fecha y hora': formatFechaHora(r.created_at),
+        'Usuario': r.usuario_nombre,
+        'Tipo': tipoLabels[r.tipo] || r.tipo,
+        'Entidad': r.entidad || '',
+        'Campo': r.campo || '',
+        'Anterior': r.valor_anterior || '',
+        'Nuevo': r.valor_nuevo || '',
+        'Detalle': r.detalle || '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Historial');
+      XLSX.writeFile(wb, 'Historial_cambios.xlsx');
+      toast.exito(`Exportados ${rows.length} registros`);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setExportando(false);
+    }
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -163,7 +183,9 @@ export default function Historial() {
       </div>
 
       {/* Tabla */}
-      {loading ? (
+      {errorCarga && !loading ? (
+        <ErrorCarga error={errorCarga} onReintentar={reintentar} />
+      ) : loading ? (
         <div className="flex items-center justify-center h-32">
           <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" />
         </div>

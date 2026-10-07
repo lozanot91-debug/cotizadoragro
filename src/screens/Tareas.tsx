@@ -6,6 +6,8 @@ import { registrarCambio } from '@/lib/historial';
 import type { Tarea, Cliente, Cotizacion } from '@/types';
 import { CheckSquare, Plus, X, Check, Clock, Calendar, Trash2, Edit2, AlertCircle, ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react';
 import { diasDesde, hoyAR, sumarDias } from '@/lib/fechas';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 const TIPOS = ['Llamar', 'Visitar', 'Enviar información', 'Cobrar', 'Seguimiento', 'Otro'];
 const PRIORIDADES = ['Alta', 'Normal', 'Baja'];
@@ -85,13 +87,14 @@ export default function Tareas() {
   const hoy = hoyAR();
   const en7dias = addDays(7);
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const [tars, cls, cotizs] = await Promise.all([data.fetchTareas(), data.fetchClientes(), data.fetchCotizaciones()]);
     setTareas(tars);
     setClientes(cls);
     setCotizaciones(cotizs);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -238,6 +241,8 @@ export default function Tareas() {
       </div>
     );
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>;

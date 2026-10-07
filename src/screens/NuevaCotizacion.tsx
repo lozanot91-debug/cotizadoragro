@@ -9,6 +9,8 @@ import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configurac
 import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2 } from 'lucide-react';
 import { hoyAR, formatearFechaHora } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 interface LineaEditable {
   key: string;
@@ -72,7 +74,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const puedeVerCostos = true;
   const esReadOnly = editData?.estado === 'Ganada' || editData?.estado === 'Perdida';
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const [cfg, lista, tars, cls] = await Promise.all([
       data.fetchConfig(),
       data.fetchListaVigente(),
@@ -225,9 +227,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         setComparacion({ lineas: compLineas, totalAnt, totalNuevo });
       }
     }
-    setLoading(false);
   }, [editId, duplicateFromId]);
 
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { load(); }, [load]);
 
   const kmNum = parseInt(km) || 0;
@@ -503,6 +505,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   function formatFechaHora(iso: string): string {
     return formatearFechaHora(iso);
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
@@ -800,13 +804,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">Esta acción no se puede deshacer. Se borrarán la cotización, sus líneas y el historial asociado.</p>
+              <p className="text-sm text-red-700">Esta acción no se puede deshacer. Se borrarán la cotización y sus líneas. El registro de que se eliminó queda en el historial.</p>
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setModalEliminar(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
               <button onClick={async () => {
                 await data.deleteCotizacion(editId);
-                await registrarCambio({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'eliminación', valor_anterior: `N° ${editData.numero}`, valor_nuevo: null, detalle: `Cotización eliminada (${editData.cliente_nombre || 'Sin cliente'} · ${formatUSD(editData.total_usd)} USD)` });
+                await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización N° ${editData.numero}`, campo: 'eliminación', valor_anterior: `N° ${editData.numero}`, valor_nuevo: null, detalle: `Cotización eliminada (${editData.cliente_nombre || 'Sin cliente'} · ${formatUSD(editData.total_usd)} USD)` });
                 setModalEliminar(false);
                 if (onDeleted) onDeleted();
               }} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Eliminar</button>

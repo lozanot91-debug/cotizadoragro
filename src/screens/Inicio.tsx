@@ -6,6 +6,8 @@ import type { Cotizacion, Tarea, Visita, Configuracion } from '@/types';
 import type { Screen } from '@/components/Layout';
 import { Home, Plus, CheckCircle, Calendar, Clock, AlertCircle, TrendingUp, ArrowRight } from 'lucide-react';
 import { diasDesde, hoyAR, mesActualAR, sumarDias } from '@/lib/fechas';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 interface Props {
   onNavigate: (s: Screen) => void;
@@ -26,7 +28,7 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
   const manana = useMemo(() => sumarDias(hoyAR(), 1), []);
   const mesActual = useMemo(() => mesActualAR(), []);
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const [cfg, cotizs, tareasPend, todasTareas, visitasData] = await Promise.all([
       data.fetchConfig(),
       data.fetchCotizaciones(),
@@ -39,8 +41,9 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
     setTareasPendientes(tareasPend);
     setTareas(todasTareas);
     setVisitas(visitasData);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => {
     load();
@@ -152,6 +155,8 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
     });
     setTareasPendientes((prev) => prev.filter((t) => t.id !== id));
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return (

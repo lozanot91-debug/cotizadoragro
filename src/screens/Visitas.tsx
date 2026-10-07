@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 import type { Visita, VisitaFoto, Cliente, Cotizacion } from '@/types';
 import { MapPin, Plus, X, Calendar, Clock, Check, Trash2, Edit2, AlertCircle, ChevronLeft, ChevronRight, Camera, MapPinned, Loader2, Image as ImageIcon } from 'lucide-react';
 import { armarFecha, diaDeLaSemana, diasDelMes, hoyAR, partesFecha, sumarDias } from '@/lib/fechas';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 const TIPOS = ['Visita técnica', 'Comercial', 'Entrega', 'Postventa'];
 const CULTIVOS = ['Soja', 'Maíz', 'Trigo', 'Cebada', 'Girasol', 'Otro', 'Ninguno'];
@@ -87,13 +89,14 @@ export default function Visitas() {
   const hoy = hoyAR();
   const en14dias = addDays(14);
 
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const [vs, cls, cotizs] = await Promise.all([data.fetchVisitas(), data.fetchClientes(), data.fetchCotizaciones()]);
     setVisitas(vs);
     setClientes(cls);
     setCotizaciones(cotizs);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
@@ -289,6 +292,8 @@ export default function Visitas() {
       </div>
     );
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>;

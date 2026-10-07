@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useData } from '@/hooks/useData';
-import { useAuth } from '@/context/AuthContext';
 import { formatUSD, formatDate } from '@/lib/format';
-import { registrarCambio } from '@/lib/historial';
 import type { Cotizacion, EstadoCotizacion, Tarea, Configuracion } from '@/types';
-import { KanbanSquare, List, Search, TrendingUp, TrendingDown, AlertCircle, Clock, Check, X, Calendar, DollarSign, ChevronRight, GripVertical } from 'lucide-react';
+import { KanbanSquare, List, Search, TrendingUp, AlertCircle, Clock, X, Calendar, DollarSign, ChevronRight, GripVertical } from 'lucide-react';
 import { diasDesde, mesActualAR } from '@/lib/fechas';
+import { estaCerrada } from '@/lib/estados';
+import { useCambioEstado } from '@/hooks/useCambioEstado';
+import { useCargaSegura } from '@/hooks/useCargaSegura';
+import ErrorCarga from '@/components/ErrorCarga';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida'];
-const MOTIVOS = ['Precio', 'Plazo de pago', 'Competencia', 'El cliente no compró', 'Otro'];
 
 const estadoColors: Record<string, string> = {
   'Borrador': 'bg-gray-100 text-gray-600 border-gray-200',
@@ -32,7 +33,6 @@ interface Props {
 
 export default function Pipeline({ onEdit }: Props) {
   const data = useData();
-  const { usuario } = useAuth();
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [cotizaciones, setCotizaciones] = useState<(Cotizacion & { cliente?: { nombre: string } })[]>([]);
   const [tareas, setTareas] = useState<Tarea[]>([]);
@@ -47,19 +47,17 @@ export default function Pipeline({ onEdit }: Props) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
-  const [modalEstado, setModalEstado] = useState<{
-    cotiz: Cotizacion; nuevoEstado: EstadoCotizacion; motivo: string; otroMotivo: string;
-  } | null>(null);
-
-  const load = useCallback(async () => {
+  const cargar = useCallback(async () => {
     const [cfg, cotizs, tars] = await Promise.all([
       data.fetchConfig(), data.fetchCotizaciones(), data.fetchTareas(),
     ]);
     setConfig(cfg);
     setCotizaciones(cotizs);
     setTareas(tars);
-    setLoading(false);
   }, []);
+
+  const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
+  const { solicitarCambioEstado, modales } = useCambioEstado({ onCambiado: load });
 
   useEffect(() => { load(); }, [load]);
 
@@ -146,39 +144,25 @@ export default function Pipeline({ onEdit }: Props) {
     setDragOverCol(null);
     if (!dragId) return;
     const cotiz = cotizaciones.find((c) => c.id === dragId);
-    if (!cotiz || cotiz.estado === col) { setDragId(null); return; }
-    setModalEstado({ cotiz, nuevoEstado: col as EstadoCotizacion, motivo: '', otroMotivo: '' });
     setDragId(null);
+    if (!cotiz || cotiz.estado === col) return;
+    // Mismo flujo (y mismas reglas) que en la pantalla de Cotizaciones. Si no se puede abrir,
+    // la tarjeta no se mueve: el tablero se dibuja siempre desde el estado guardado.
+    void solicitarCambioEstado(cotiz, col as EstadoCotizacion);
   }
 
-  async function confirmarCambioEstado() {
-    if (!modalEstado) return;
-    const { cotiz, nuevoEstado, motivo, otroMotivo } = modalEstado;
-    if (nuevoEstado === 'Perdida' && !motivo) return;
-    if (nuevoEstado === 'Perdida' && motivo === 'Otro' && !otroMotivo.trim()) return;
-
-    const extra: Record<string, unknown> = {};
-    if (nuevoEstado === 'Perdida') {
-      extra.motivo_perdida = motivo === 'Otro' ? otroMotivo.trim() : motivo;
-    }
-    if (nuevoEstado === 'Enviada' && !cotiz.fecha_envio) {
-      extra.fecha_envio = new Date().toISOString();
-    }
-
-    await data.updateCotizacionEstado(cotiz.id, nuevoEstado, extra);
-    await registrarCambio({ tipo: 'estado', cotizacion_id: cotiz.id, campo: 'estado', valor_anterior: cotiz.estado, valor_nuevo: nuevoEstado, detalle: nuevoEstado === 'Perdida' ? `Motivo: ${extra.motivo_perdida}` : undefined });
-    setModalEstado(null);
-    load();
-  }
-
-  async function quickMover(c: Cotizacion, nuevoEstado: EstadoCotizacion) {
-    setModalEstado({ cotiz: c, nuevoEstado, motivo: '', otroMotivo: '' });
+  /** Estados a los que se puede mover: una cotización cerrada solo se reabre a En negociación. */
+  function destinosPosibles(c: Cotizacion): EstadoCotizacion[] {
+    if (estaCerrada(c.estado)) return ['En negociación'];
+    return ESTADOS.filter((e) => e !== c.estado);
   }
 
   async function setProbabilidad(c: Cotizacion, valor: number) {
     await data.updateCotizacionProbabilidad(c.id, valor);
     load();
   }
+
+  if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>;
@@ -286,11 +270,11 @@ export default function Pipeline({ onEdit }: Props) {
                           {/* Mover a... for mobile */}
                           <select
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => { if (e.target.value) quickMover(c, e.target.value as EstadoCotizacion); e.target.value = ''; }}
+                            onChange={(e) => { if (e.target.value) solicitarCambioEstado(c, e.target.value as EstadoCotizacion); e.target.value = ''; }}
                             value="" className="mt-2 w-full text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 bg-white lg:hidden"
                           >
                             <option value="">Mover a...</option>
-                            {ESTADOS.filter((e) => e !== c.estado).map((e) => <option key={e} value={e}>{e}</option>)}
+                            {destinosPosibles(c).map((e) => <option key={e} value={e}>{e}</option>)}
                           </select>
                         </div>
                       );
@@ -330,9 +314,9 @@ export default function Pipeline({ onEdit }: Props) {
                     <td className="px-3 py-2 text-right text-blue-700 font-medium">{formatUSD(c.total_usd * prob / 100, 0)}</td>
                     <td className="px-3 py-2 text-xs"><span className={vr <= 3 ? 'text-red-600 font-medium' : 'text-gray-400'}>{vr > 0 ? `${vr}d` : vr === 0 ? 'Hoy' : 'Vencida'}</span></td>
                     <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                      <select onChange={(e) => { if (e.target.value) quickMover(c, e.target.value as EstadoCotizacion); e.target.value = ''; }} value="" className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 bg-white">
+                      <select onChange={(e) => { if (e.target.value) solicitarCambioEstado(c, e.target.value as EstadoCotizacion); e.target.value = ''; }} value="" className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 bg-white">
                         <option value="">Mover...</option>
-                        {ESTADOS.filter((e) => e !== c.estado).map((e) => <option key={e} value={e}>{e}</option>)}
+                        {destinosPosibles(c).map((e) => <option key={e} value={e}>{e}</option>)}
                       </select>
                     </td>
                   </tr>
@@ -361,37 +345,7 @@ export default function Pipeline({ onEdit }: Props) {
         </div>
       </div>
 
-      {/* Modal cambio de estado */}
-      {modalEstado && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setModalEstado(null)}>
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${modalEstado.nuevoEstado === 'Perdida' ? 'bg-red-100' : modalEstado.nuevoEstado === 'Ganada' ? 'bg-emerald-100' : 'bg-blue-100'}`}>
-                {modalEstado.nuevoEstado === 'Perdida' ? <TrendingDown className="w-5 h-5 text-red-600" /> : modalEstado.nuevoEstado === 'Ganada' ? <Check className="w-5 h-5 text-emerald-600" /> : <Check className="w-5 h-5 text-blue-600" />}
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800">Cambiar a {modalEstado.nuevoEstado}</h3>
-                <p className="text-sm text-gray-500">Cotización N° {modalEstado.cotiz.numero} · {modalEstado.cotiz.cliente_nombre || 'Sin cliente'} · {formatUSD(modalEstado.cotiz.total_usd)} USD</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">¿Cambiar de <strong>{modalEstado.cotiz.estado}</strong> a <strong>{modalEstado.nuevoEstado}</strong>?</p>
-            {modalEstado.nuevoEstado === 'Perdida' && (
-              <>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Motivo <span className="text-red-500">*</span></label>
-                <select value={modalEstado.motivo} onChange={(e) => setModalEstado({ ...modalEstado, motivo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-3 bg-white">
-                  <option value="">Seleccionar motivo...</option>
-                  {MOTIVOS.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-                {modalEstado.motivo === 'Otro' && <input type="text" value={modalEstado.otroMotivo} onChange={(e) => setModalEstado({ ...modalEstado, otroMotivo: e.target.value })} placeholder="Escribí el motivo..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-3" />}
-              </>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setModalEstado(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
-              <button onClick={confirmarCambioEstado} disabled={modalEstado.nuevoEstado === 'Perdida' && (!modalEstado.motivo || (modalEstado.motivo === 'Otro' && !modalEstado.otroMotivo.trim()))} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">Confirmar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {modales}
     </div>
   );
 }

@@ -61,9 +61,14 @@ export function diasEntre(desde: string, hasta: string): number {
   return Math.round((aUTC(hasta) - aUTC(desde)) / 86400000);
 }
 
-/** Días transcurridos desde una fecha hasta hoy (en Argentina). */
+/**
+ * Días transcurridos desde una fecha hasta hoy (en Argentina).
+ * Acepta una fecha 'YYYY-MM-DD' o un timestamp con hora (fecha_envio, completada_at):
+ * al timestamp se lo pasa primero a fecha argentina (si no, lo enviado a las 22:00 cuenta como "mañana").
+ */
 export function diasDesde(fecha: string, ahora: Date = new Date()): number {
-  return diasEntre(fecha.slice(0, 10), hoyAR(ahora));
+  const desde = fecha.length > 10 ? fechaDeTimestamp(fecha) : fecha;
+  return diasEntre(desde, hoyAR(ahora));
 }
 
 /** 'YYYY-MM-DD' → 'dd/mm/aaaa' cortando el texto, sin new Date(). */
