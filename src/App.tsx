@@ -14,6 +14,7 @@ import Listas from '@/screens/Listas';
 import Estadisticas from '@/screens/Estadisticas';
 import ConfigScreen from '@/screens/ConfigScreen';
 import Historial from '@/screens/Historial';
+import Recotizar from '@/screens/Recotizar';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
@@ -56,6 +57,7 @@ function AppContent() {
       {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} />}
       {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
       {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
+      {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}
       {screen === 'clientes' && <Clientes />}

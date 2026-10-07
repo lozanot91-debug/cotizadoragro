@@ -116,6 +116,14 @@ export interface Cotizacion {
   iva: number;
   /** Cotización formal: incluye IVA. Por defecto no. */
   con_iva: boolean;
+  /** Días de plazo de pago (0 = contado) y tasa mensual (%) con la que se calcula el recargo. */
+  plazo_dias: number;
+  tasa_mensual: number;
+  /** Recargo por financiación en USD, sin IVA. */
+  recargo_usd: number;
+  /** Canje: cultivo y precio de referencia (USD/tn). Precio 0 = sin canje. */
+  canje_cultivo: string | null;
+  canje_precio_usd: number;
   estado: EstadoCotizacion;
   motivo_perdida: string | null;
   vigencia_dias: number;

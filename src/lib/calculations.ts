@@ -169,44 +169,86 @@ export function calcularTotales(
 export interface DesgloseIva { tasa: number; base: number; iva: number }
 
 export interface TotalesIva {
+  /** Suma de las líneas a precio contado, sin IVA. Es el monto que cuentan las estadísticas. */
   subtotal: number;
+  /** Recargo por financiación (pago a plazo), sin IVA. */
+  recargo: number;
   iva: number;
   total: number;
   totalARS: number;
-  /** IVA agrupado por alícuota (ej. 10,5% y 21%), de menor a mayor. */
+  /** IVA agrupado por alícuota (ej. 10,5% y 21%), de menor a mayor. La base ya incluye el recargo. */
   desglose: DesgloseIva[];
-  /** IVA total / subtotal, en %: sirve para mostrar un único número en listados. */
+  /** IVA total / (subtotal + recargo), en %: sirve para mostrar un único número en listados. */
   ivaEfectivo: number;
 }
 
-/** Totales con IVA por línea: cada línea tiene su propia alícuota. */
+/**
+ * Recargo por financiación en %: interés simple, tasa mensual × días / 30.
+ * Contado (0 días) o tasa 0 = sin recargo.
+ */
+export function recargoPorcentaje(plazoDias: number, tasaMensual: number): number {
+  if (!(plazoDias > 0) || !(tasaMensual > 0)) return 0;
+  return Math.round(((tasaMensual * plazoDias) / 30) * 10000) / 10000;
+}
+
+/** Toneladas de grano equivalentes a un monto en USD (canje). 0 si no hay precio. */
+export function toneladasCanje(totalUSD: number, precioGranoUSD: number): number {
+  if (!(precioGranoUSD > 0)) return 0;
+  return totalUSD / precioGranoUSD;
+}
+
+/**
+ * Totales de una cotización. Cada línea tiene su propia alícuota de IVA. El recargo por
+ * financiación se aplica a cada línea y el IVA se calcula sobre el precio ya financiado.
+ */
 export function calcularTotalesIva(
   lineas: { totalUSD: number; ivaPercent: number }[],
-  tc: number
+  tc: number,
+  recargoPct = 0
 ): TotalesIva {
   const porTasa = new Map<number, DesgloseIva>();
   let subtotal = 0;
+  let recargo = 0;
   let iva = 0;
   for (const l of lineas) {
     const base = l.totalUSD || 0;
+    const recargoLinea = base * (recargoPct / 100);
+    const baseFinanciada = base + recargoLinea;
     const tasa = Math.round((l.ivaPercent || 0) * 100) / 100;
-    const ivaLinea = base * (tasa / 100);
+    const ivaLinea = baseFinanciada * (tasa / 100);
     subtotal += base;
+    recargo += recargoLinea;
     iva += ivaLinea;
     const g = porTasa.get(tasa) || { tasa, base: 0, iva: 0 };
-    g.base += base;
+    g.base += baseFinanciada;
     g.iva += ivaLinea;
     porTasa.set(tasa, g);
   }
-  const total = subtotal + iva;
+  const total = subtotal + recargo + iva;
+  const baseTotal = subtotal + recargo;
   return {
     subtotal,
+    recargo,
     iva,
     total,
     totalARS: total * tc,
     desglose: [...porTasa.values()].sort((a, b) => a.tasa - b.tasa),
-    ivaEfectivo: subtotal > 0 ? Math.round((iva / subtotal) * 10000) / 100 : 0,
+    ivaEfectivo: baseTotal > 0 ? Math.round((iva / baseTotal) * 10000) / 100 : 0,
   };
+}
+
+/**
+ * IVA de una línea guardada. En cotizaciones viejas (sin IVA por línea) se usa el de la cabecera,
+ * salvo que sea absurdo (hubo un error que guardaba 105% en vez de 10,5%): ahí se usa el sugerido.
+ */
+export function ivaDeLinea(
+  l: { iva: number | null | undefined; es_fertilizante: boolean },
+  cotiz: { iva: number },
+  cfg: { iva_fertilizantes: number; iva_agroquimicos: number }
+): number {
+  if (l.iva !== null && l.iva !== undefined) return l.iva;
+  if (cotiz.iva > 0 && cotiz.iva <= 30) return cotiz.iva;
+  return l.es_fertilizante ? cfg.iva_fertilizantes : cfg.iva_agroquimicos;
 }
 
 /** Alícuota de IVA sugerida según el tipo de producto (se puede editar en cada línea). */

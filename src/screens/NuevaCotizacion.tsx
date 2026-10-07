@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
-import { calcularLinea, calcularTotalesIva, resolverMargen } from '@/lib/calculations';
+import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, toneladasCanje, ivaDeLinea } from '@/lib/calculations';
 import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
@@ -28,19 +28,7 @@ interface LineaEditable {
   ivaStr: string;
 }
 
-/**
- * IVA de una línea guardada. En cotizaciones viejas (sin IVA por línea) se usa el de la cabecera,
- * salvo que sea absurdo (hubo un error que guardaba 105% en vez de 10,5%): ahí se usa el sugerido.
- */
-function ivaDeLinea(
-  l: CotizacionLinea,
-  cotiz: Cotizacion,
-  cfg: Configuracion
-): number {
-  if (l.iva !== null && l.iva !== undefined) return l.iva;
-  if (cotiz.iva > 0 && cotiz.iva <= 30) return cotiz.iva;
-  return l.es_fertilizante ? cfg.iva_fertilizantes : cfg.iva_agroquimicos;
-}
+const CULTIVOS = ['Soja', 'Trigo', 'Maíz', 'Girasol', 'Cebada'];
 
 interface LineaComparacion {
   cod: string;
@@ -71,6 +59,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const [km, setKm] = useState('');
   const [vigencia, setVigencia] = useState('');
   const [conIva, setConIva] = useState(false);
+  // Condiciones de pago: plazo (0 = contado) con tasa mensual, y canje por granos
+  const [plazo, setPlazo] = useState('0');
+  const [tasaMensual, setTasaMensual] = useState('');
+  const [conCanje, setConCanje] = useState(false);
+  const [canjeCultivo, setCanjeCultivo] = useState('Soja');
+  const [canjeOtro, setCanjeOtro] = useState('');
+  const [canjePrecio, setCanjePrecio] = useState('');
   const [notas, setNotas] = useState('');
   const [lineas, setLineas] = useState<LineaEditable[]>([]);
   const [busqueda, setBusqueda] = useState('');
@@ -91,6 +86,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const { usuario } = useAuth();
   const puedeVerCostos = usuario.puede_ver_costos;
   const esReadOnly = editData?.estado === 'Ganada' || editData?.estado === 'Perdida';
+
+  function cargarCanje(cotiz: Cotizacion) {
+    const hay = (cotiz.canje_precio_usd || 0) > 0 || !!cotiz.canje_cultivo;
+    setConCanje(hay);
+    const cult = cotiz.canje_cultivo || 'Soja';
+    if (CULTIVOS.includes(cult)) { setCanjeCultivo(cult); setCanjeOtro(''); }
+    else { setCanjeCultivo('Otro'); setCanjeOtro(cult); }
+    setCanjePrecio(formatInputNumber(cotiz.canje_precio_usd || 0, 2));
+  }
 
   const cargar = useCallback(async () => {
     const [cfg, lista, tars, cls] = await Promise.all([
@@ -123,6 +127,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         setKm(String(cotiz.km));
         setVigencia(String(cotiz.vigencia_dias));
         setConIva(!!cotiz.con_iva);
+        setPlazo(String(cotiz.plazo_dias || 0));
+        setTasaMensual(formatInputNumber(cotiz.tasa_mensual || 0, 2));
+        cargarCanje(cotiz);
         setNotas(cotiz.notas || '');
         listaIdRef.current = cotiz.lista_id;
 
@@ -185,6 +192,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         setClienteBusqueda(cotiz.cliente_nombre || '');
         setKm(String(cotiz.km));
         setConIva(!!cotiz.con_iva);
+        setPlazo(String(cotiz.plazo_dias || 0));
+        setTasaMensual(formatInputNumber(cotiz.tasa_mensual || 0, 2));
+        cargarCanje(cotiz);
         setNotas(cotiz.notas || '');
         setTc(String(cotiz.tc));
         setVigencia(String(cfg.vigencia_default));
@@ -304,9 +314,16 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     });
   }, [lineas, tcNum, kmNum, tarifas]);
 
+  const plazoNum = Math.max(0, parseInt(plazo) || 0);
+  const tasaNum = parseNumberInput(tasaMensual);
+  const recargoPct = recargoPorcentaje(plazoNum, tasaNum);
+  const canjePrecioNum = parseNumberInput(canjePrecio);
+  const canjeNombre = canjeCultivo === 'Otro' ? canjeOtro.trim() : canjeCultivo;
+
   const totales = useMemo(() => {
-    return calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0 })), tcNum);
-  }, [lineasCalc, tcNum, conIva]);
+    return calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0 })), tcNum, recargoPct);
+  }, [lineasCalc, tcNum, conIva, recargoPct]);
+  const canjeTn = conCanje ? toneladasCanje(totales.total, canjePrecioNum) : 0;
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
@@ -427,7 +444,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
       km: kmNum, con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
-      lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, iva_usd: totales.iva,
+      lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva,
+      plazo_dias: plazoNum, tasa_mensual: plazoNum > 0 ? tasaNum : 0,
+      canje_cultivo: conCanje ? canjeNombre : null, canje_precio_usd: conCanje ? canjePrecioNum : 0,
       total_usd: totales.total, total_ars: totales.totalARS, notas,
       ...(origenId && !editId ? { cotizacion_origen_id: origenId } : {}),
     };
@@ -440,12 +459,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     if (!clienteId || !clienteBusqueda) { setSaveMsg({ type: 'error', text: 'Seleccioná un cliente' }); setSaving(false); return; }
     if (!tcNum || tcNum <= 0) { setSaveMsg({ type: 'error', text: 'El tipo de cambio es obligatorio' }); setSaving(false); return; }
     if (lineas.length === 0) { setSaveMsg({ type: 'error', text: 'Agregá al menos una línea' }); setSaving(false); return; }
+    if (conCanje && (!canjeNombre || canjePrecioNum <= 0)) { setSaveMsg({ type: 'error', text: 'Para el canje cargá el cultivo y el precio del grano (USD/tn), o destildá el canje.' }); setSaving(false); return; }
     if (kmFaltante) { setSaveMsg({ type: 'error', text: 'Hay fertilizantes con flete tildado pero no cargaste los km de destino. Cargá los km o destildá el flete.' }); setSaving(false); return; }
     if (tarifaFaltante) { setSaveMsg({ type: 'error', text: 'Falta tarifa de flete. No se puede guardar.' }); setSaving(false); return; }
     if (costoZero) { setSaveMsg({ type: 'error', text: 'Hay líneas con costo en cero.' }); setSaving(false); return; }
 
     // If editing, compare with previous lines for historial
-    let cambiosHist: CambioHistorial[] = [];
+    const cambiosHist: CambioHistorial[] = [];
     if (editId && editData) {
       const prevLineas = await data.fetchLineas(editId).catch((e) => {
         setSaveMsg({ type: 'error', text: `No se pudo leer la cotización actual. ${traducirError(e)}` });
@@ -480,6 +500,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
 
       // Header changes
       if (!!editData.con_iva !== conIva) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'IVA', valor_anterior: editData.con_iva ? 'Con IVA' : 'Sin IVA', valor_nuevo: conIva ? 'Con IVA' : 'Sin IVA' });
+      if ((editData.plazo_dias || 0) !== plazoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'plazo de pago', valor_anterior: editData.plazo_dias ? `${editData.plazo_dias} días` : 'Contado', valor_nuevo: plazoNum ? `${plazoNum} días` : 'Contado' });
+      if (plazoNum > 0 && (editData.tasa_mensual || 0) !== tasaNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tasa mensual', valor_anterior: `${editData.tasa_mensual || 0}%`, valor_nuevo: `${tasaNum}%` });
+      if ((editData.canje_precio_usd || 0) !== (conCanje ? canjePrecioNum : 0)) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'canje', valor_anterior: editData.canje_precio_usd ? `${editData.canje_cultivo} a USD ${formatUSD(editData.canje_precio_usd)}/tn` : 'Sin canje', valor_nuevo: conCanje ? `${canjeNombre} a USD ${formatUSD(canjePrecioNum)}/tn` : 'Sin canje' });
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if (editData.km !== kmNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km', valor_anterior: String(editData.km), valor_nuevo: String(kmNum) });
       if (editData.cliente_nombre !== clienteBusqueda) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'cliente', valor_anterior: editData.cliente_nombre || '', valor_nuevo: clienteBusqueda });
@@ -511,6 +534,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           setLineas([]); setClienteId(''); setClienteBusqueda(''); setClienteSeleccionado(null);
           setNotas(''); setSaveMsg(null); setOrigenId(null); setOrigenNumero(null);
           setComparacion(null); setProductosFaltantes([]);
+          setPlazo('0'); setTasaMensual(''); setConCanje(false); setCanjePrecio('');
         }, 2000);
       }
     } catch (e) {
@@ -701,6 +725,59 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         </div>
       </div>
 
+      {/* Condiciones de pago: financiación y canje */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Condiciones de pago</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de pago</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {[0, 30, 60, 90].map((d) => (
+                <button key={d} type="button" disabled={esReadOnly} onClick={() => setPlazo(String(d))}
+                  className={`px-3 py-1.5 rounded-lg text-sm border disabled:opacity-60 ${plazoNum === d ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                  {d === 0 ? 'Contado' : `${d} días`}
+                </button>
+              ))}
+              <input type="number" min={0} value={plazo} disabled={esReadOnly} onChange={(e) => setPlazo(e.target.value)} aria-label="Días de plazo"
+                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
+              <span className="text-xs text-gray-400">días</span>
+            </div>
+            {plazoNum > 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <label htmlFor="tasa-mensual" className="text-sm text-gray-600">Tasa mensual</label>
+                <input id="tasa-mensual" type="text" inputMode="decimal" value={tasaMensual} disabled={esReadOnly} onChange={(e) => setTasaMensual(e.target.value)} placeholder="0"
+                  className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
+                <span className="text-xs text-gray-400">%</span>
+                <span className="text-xs text-gray-500">{recargoPct > 0 ? `→ recargo de ${formatInputNumber(recargoPct, 2)}% sobre el precio` : 'cargá la tasa para calcular el recargo'}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className={`flex items-center gap-2 text-sm font-medium text-gray-700 mb-1 ${esReadOnly ? 'opacity-60' : 'cursor-pointer'}`}>
+              <input type="checkbox" checked={conCanje} disabled={esReadOnly} onChange={(e) => setConCanje(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+              Pago en granos (canje)
+            </label>
+            {conCanje && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <select value={canjeCultivo} disabled={esReadOnly} onChange={(e) => setCanjeCultivo(e.target.value)} aria-label="Cultivo"
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50">
+                  {CULTIVOS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value="Otro">Otro</option>
+                </select>
+                {canjeCultivo === 'Otro' && (
+                  <input type="text" value={canjeOtro} disabled={esReadOnly} onChange={(e) => setCanjeOtro(e.target.value)} placeholder="Cultivo" aria-label="Otro cultivo"
+                    className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
+                )}
+                <span className="text-sm text-gray-600">a USD</span>
+                <input type="text" inputMode="decimal" value={canjePrecio} disabled={esReadOnly} onChange={(e) => setCanjePrecio(e.target.value)} placeholder="0,00" aria-label="Precio del grano en USD por tonelada"
+                  className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
+                <span className="text-xs text-gray-400">/tn</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {kmFaltante && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
@@ -814,13 +891,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         <div className="bg-gradient-to-br from-emerald-700 to-green-800 rounded-xl shadow-lg p-5 text-white">
           <h3 className="text-sm font-medium text-emerald-100 mb-3">Resumen</h3>
           <div className="space-y-2">
-            <div className="flex justify-between text-sm"><span className="text-emerald-100">Subtotal</span><span className="font-medium">{formatUSD(totales.subtotal)} USD</span></div>
+            <div className="flex justify-between text-sm"><span className="text-emerald-100">{totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span className="font-medium">{formatUSD(totales.subtotal)} USD</span></div>
+            {totales.recargo > 0 && <div className="flex justify-between text-sm"><span className="text-emerald-100">Financiación {plazoNum} días <span className="text-emerald-200/70">(+{formatInputNumber(recargoPct, 2)}%)</span></span><span className="font-medium">{formatUSD(totales.recargo)} USD</span></div>}
             {conIva && totales.desglose.map((d) => (
               <div key={d.tasa} className="flex justify-between text-sm"><span className="text-emerald-100">IVA {formatInputNumber(d.tasa, 2) || '0'}% <span className="text-emerald-200/70">(s/ {formatUSD(d.base)})</span></span><span className="font-medium">{formatUSD(d.iva)} USD</span></div>
             ))}
             {!conIva && <div className="text-xs text-emerald-200/80">Precios sin IVA</div>}
             <div className="border-t border-emerald-600 pt-2 flex justify-between items-baseline"><span className="text-emerald-100">{conIva ? 'Total USD' : 'Total USD (sin IVA)'}</span><span className="text-2xl font-bold">{formatUSD(totales.total)}</span></div>
             <div className="flex justify-between text-sm"><span className="text-emerald-100">Total ARS</span><span className="font-medium">$ {formatUSD(totales.totalARS, 0)}</span></div>
+            {conCanje && canjePrecioNum > 0 && <div className="border-t border-emerald-600 pt-2 flex justify-between text-sm"><span className="text-emerald-100">Equivale a ({canjeNombre || 'grano'} a USD {formatUSD(canjePrecioNum)}/tn)</span><span className="font-bold">{formatUSD(canjeTn)} tn</span></div>}
           </div>
         </div>
       </div>

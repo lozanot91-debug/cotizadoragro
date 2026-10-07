@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/types';
 import { formatUSD, formatDate } from '@/lib/format';
-import { calcularTotalesIva, type TotalesIva } from '@/lib/calculations';
+import { calcularTotalesIva, recargoPorcentaje, toneladasCanje, type TotalesIva } from '@/lib/calculations';
 
 function tasaTxt(t: number): string {
   return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(t || 0);
@@ -17,8 +17,22 @@ function ivaLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
 export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): TotalesIva {
   return calcularTotalesIva(
     lineas.map((l) => ({ totalUSD: l.total_usd, ivaPercent: cotiz.con_iva ? ivaLinea(l, cotiz) : 0 })),
-    cotiz.tc
+    cotiz.tc,
+    recargoPorcentaje(cotiz.plazo_dias || 0, cotiz.tasa_mensual || 0)
   );
+}
+
+/** Texto de la financiación, ej. "Financiación 60 días (+3%)". Vacío si es contado o sin tasa. */
+function textoFinanciacion(cotiz: Cotizacion): string {
+  const pct = recargoPorcentaje(cotiz.plazo_dias || 0, cotiz.tasa_mensual || 0);
+  if (pct <= 0) return '';
+  return `Financiación ${cotiz.plazo_dias} días (+${tasaTxt(pct)}%)`;
+}
+
+/** Equivalente en granos si la cotización es de canje; null si no. */
+function datosCanje(cotiz: Cotizacion, total: number): { cultivo: string; precio: number; tn: number } | null {
+  if (!(cotiz.canje_precio_usd > 0)) return null;
+  return { cultivo: cotiz.canje_cultivo || 'grano', precio: cotiz.canje_precio_usd, tn: toneladasCanje(total, cotiz.canje_precio_usd) };
 }
 
 export function generarPDF(
@@ -145,10 +159,18 @@ export function generarPDF(
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(40, 40, 40);
-  if (cotiz.con_iva) {
-    doc.text('Subtotal USD:', labelX, y);
+  const hayRecargo = t.recargo > 0;
+  if (cotiz.con_iva || hayRecargo) {
+    doc.text(hayRecargo ? 'Subtotal contado USD:' : 'Subtotal USD:', labelX, y);
     doc.text(formatUSD(t.subtotal), totalX, y, { align: 'right' });
     y += 5;
+  }
+  if (hayRecargo) {
+    doc.text(`${textoFinanciacion(cotiz)}:`, labelX, y);
+    doc.text(formatUSD(t.recargo), totalX, y, { align: 'right' });
+    y += 5;
+  }
+  if (cotiz.con_iva) {
     t.desglose.forEach((d) => {
       doc.text(`IVA ${tasaTxt(d.tasa)}%:`, labelX, y);
       doc.text(formatUSD(d.iva), totalX, y, { align: 'right' });
@@ -164,6 +186,19 @@ export function generarPDF(
   doc.setFontSize(10);
   doc.text(`Total ARS:`, labelX, y);
   doc.text(`$${formatUSD(t.totalARS, 0)}`, totalX, y, { align: 'right' });
+  const canje = datosCanje(cotiz, t.total);
+  if (canje) {
+    y += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}`, totalX, y, { align: 'right' });
+    y += 4.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(110, 110, 110);
+    doc.text(`(precio de referencia USD ${formatUSD(canje.precio)}/tn)`, totalX, y, { align: 'right' });
+    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(10);
+  }
 
   // Notas
   if (cotiz.notas) {
@@ -212,6 +247,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Cliente': cotiz.cliente_nombre,
     'Tipo de cambio': cotiz.tc,
     'KM': cotiz.km,
+    ...(t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Plazo (días)': cotiz.plazo_dias, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
     ...(cotiz.con_iva
       ? {
           'Subtotal USD': t.subtotal,
@@ -221,6 +257,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
         }
       : { 'Total USD (sin IVA)': t.total }),
     'Total ARS': t.totalARS,
+    ...(datosCanje(cotiz, t.total) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje tn': datosCanje(cotiz, t.total)!.tn } : {}),
     'Estado': cotiz.estado,
   }];
   const wsResumen = XLSX.utils.json_to_sheet(resumen);
@@ -252,16 +289,23 @@ export function generarWhatsApp(
   });
 
   const t = totalesDeCotizacion(cotiz, lineas);
-  if (cotiz.con_iva) {
-    msg += `\nSubtotal: ${formatUSD(t.subtotal)} USD\n`;
-    t.desglose.forEach((d) => {
-      msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
-    });
-    msg += `*Total: ${formatUSD(t.total)} USD*\n`;
+  if (cotiz.con_iva || t.recargo > 0) {
+    msg += `\n${t.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}: ${formatUSD(t.subtotal)} USD\n`;
+    if (t.recargo > 0) msg += `${textoFinanciacion(cotiz)}: ${formatUSD(t.recargo)} USD\n`;
+    if (cotiz.con_iva) {
+      t.desglose.forEach((d) => {
+        msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
+      });
+    }
+    msg += `*Total: ${formatUSD(t.total)} USD*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
   } else {
     msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
   }
   msg += `Total ARS: $${formatUSD(t.totalARS, 0)}\n`;
+  const canje = datosCanje(cotiz, t.total);
+  if (canje) {
+    msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}* (precio de referencia USD ${formatUSD(canje.precio)}/tn)\n`;
+  }
 
   return msg;
 }

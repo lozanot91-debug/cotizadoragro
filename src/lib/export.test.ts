@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generarWhatsApp, totalesDeCotizacion } from './export';
-import { calcularTotalesIva } from './calculations';
+import { calcularTotalesIva, recargoPorcentaje, toneladasCanje } from './calculations';
 import { parseNumberInput } from './format';
 import type { Cotizacion, CotizacionLinea, Configuracion } from '@/types';
 
@@ -79,5 +79,47 @@ describe('texto de WhatsApp', () => {
     // flete incluido en el precio, sin separar
     expect(msg).not.toMatch(/flete/i);
     expect(msg).toContain('702,47 USD/tn');
+  });
+});
+
+describe('financiación y canje', () => {
+  it('recargo = tasa mensual × días / 30', () => {
+    expect(recargoPorcentaje(60, 1.5)).toBe(3);
+    expect(recargoPorcentaje(45, 2)).toBe(3);
+    expect(recargoPorcentaje(0, 2)).toBe(0);
+    expect(recargoPorcentaje(30, 0)).toBe(0);
+  });
+
+  it('el recargo se suma al total, el subtotal sigue siendo contado y el IVA va sobre el precio financiado', () => {
+    const t = calcularTotalesIva([{ totalUSD: 1000, ivaPercent: 21 }], 1000, 3);
+    expect(t.subtotal).toBe(1000);
+    expect(t.recargo).toBeCloseTo(30, 6);
+    expect(t.iva).toBeCloseTo(216.3, 6);
+    expect(t.total).toBeCloseTo(1246.3, 6);
+  });
+
+  it('sin IVA: total = contado + recargo', () => {
+    const t = calcularTotalesIva([{ totalUSD: 1000, ivaPercent: 0 }], 1000, 3);
+    expect(t.total).toBeCloseTo(1030, 6);
+    expect(t.iva).toBe(0);
+  });
+
+  it('toneladas de canje', () => {
+    expect(toneladasCanje(10000, 400)).toBe(25);
+    expect(toneladasCanje(10000, 0)).toBe(0);
+  });
+
+  it('WhatsApp muestra financiación y canje', () => {
+    const c = { ...cotiz, con_iva: false, plazo_dias: 60, tasa_mensual: 1.5, canje_cultivo: 'Soja', canje_precio_usd: 400 } as Cotizacion;
+    const msg = generarWhatsApp(c, [linea({ total_usd: 1000 })], config);
+    expect(msg).toContain('Financiación 60 días (+3%)');
+    expect(msg).toContain('Total: 1.030,00 USD');
+    expect(msg).toContain('Equivale a 2,58 tn de Soja');
+  });
+
+  it('cotización común: sin financiación ni canje en el texto', () => {
+    const msg = generarWhatsApp({ ...cotiz, con_iva: false } as Cotizacion, [linea({ total_usd: 1000 })], config);
+    expect(msg).not.toContain('Financiación');
+    expect(msg).not.toContain('Equivale');
   });
 });

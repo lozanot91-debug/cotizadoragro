@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar';
 
 interface Props {
   current: Screen;
@@ -25,6 +25,7 @@ export default function Layout({ current, onNavigate, children, taskBadge }: Pro
     { id: 'nueva', label: 'Nueva cotización', icon: FilePlus },
     { id: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
     { id: 'cotizaciones', label: 'Cotizaciones', icon: FileText },
+    { id: 'recotizar', label: 'Recotizar', icon: RefreshCw },
     { id: 'tareas', label: 'Tareas', icon: CheckSquare, badge: taskBadge },
     { id: 'visitas', label: 'Visitas', icon: MapPin },
     { id: 'clientes', label: 'Clientes', icon: Users },

@@ -361,6 +361,22 @@ export function useData() {
       .map((f) => ({ cod: f.cod, numero: f.cotizaciones!.numero, cliente: f.cotizaciones!.cliente_nombre || 'Sin cliente' }));
   }
 
+  /** Todas las líneas de las cotizaciones abiertas (una sola consulta paginada, con el estado por join). */
+  async function fetchLineasDeCotizacionesAbiertas(): Promise<CotizacionLinea[]> {
+    const filas = await fetchAllPaged<CotizacionLinea & { cotizaciones?: unknown }>(() =>
+      supabase
+        .from('cotizacion_lineas')
+        .select('*, cotizaciones!inner(estado)')
+        .in('cotizaciones.estado', ['Borrador', 'Enviada', 'En negociación'])
+        .order('id') as unknown as AnyFilter
+    );
+    return filas.map((f) => {
+      const { cotizaciones: _omitido, ...linea } = f;
+      void _omitido;
+      return linea as CotizacionLinea;
+    });
+  }
+
   /** La lista inmediatamente anterior a una fecha (para comparar precios). */
   async function fetchListaAnteriorA(fecha: string): Promise<ListaCostos | null> {
     const data = await ok(
@@ -572,6 +588,7 @@ export function useData() {
     fetchListaAnteriorA,
     cargarTarifaFlete,
     fetchLineasCotizacionesAbiertas,
+    fetchLineasDeCotizacionesAbiertas,
     fetchHistorialCotizacion,
     fetchTareas,
     fetchTareasPendientes,
