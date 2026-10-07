@@ -13,7 +13,7 @@ const prod = (o: Partial<ProductoConCosto>): ProductoConCosto => ({
 const linea = (o: Partial<CotizacionLinea>): CotizacionLinea => ({
   id: 'l1', cotizacion_id: 'c1', producto_id: 'p1', cod: 'UREA', producto: 'UREA', familia: 'FERTILIZANTE', proveedor: 'FERTILIZANTE',
   unid: 'KGRS', es_fertilizante: true, cantidad: 20, costo_usd: 610, costo_lista_usd: 610, costo_editado: false, margen: 10,
-  precio_usd: 677.78, flete_usd: 24.69, total_usd: 14049.42, con_flete: true, iva: 10.5, orden: 0, ...o,
+  precio_usd: 677.78, flete_usd: 24.69, total_usd: 14049.42, con_flete: true, iva: 10.5, plazo_dias: null, orden: 0, ...o,
 });
 
 const cotiz = (o: Partial<Cotizacion> = {}): Cotizacion => ({
@@ -72,6 +72,17 @@ describe('recotizar', () => {
     const r = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, config });
     expect(r.totales.recargo).toBeCloseTo(r.totales.subtotal * 0.03, 4);
     expect(r.totales.iva).toBeCloseTo((r.totales.subtotal * 1.03) * 0.105, 4);
+  });
+
+  it('conserva el plazo de cada fila (contado y financiada)', () => {
+    const c = cotiz({ con_iva: false, plazo_dias: 60, tasa_mensual: 1.5 });
+    const r = recotizar({
+      cotiz: c, productos: [prod({})], tarifas, config,
+      lineas: [linea({ plazo_dias: 0 }), linea({ id: 'l2', plazo_dias: 60 })],
+    });
+    expect(r.lineas.map((l) => l.plazo_dias)).toEqual([0, 60]);
+    expect(r.totales.recargo).toBeCloseTo(r.lineas[1].total_usd! * 0.03, 4);
+    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'x' }).plazo_dias).toBe(60);
   });
 
   it('cotización vieja con IVA 105% por error usa el IVA sugerido', () => {

@@ -46,6 +46,7 @@ export function recotizar(input: {
 
   lineas.forEach((l, i) => {
     const iva = ivaDeLinea(l, cotiz, config);
+    const plazo = l.plazo_dias ?? cotiz.plazo_dias ?? 0;
     const prod = (l.producto_id && porId.get(l.producto_id)) || porCod.get(l.cod);
 
     if (!prod) {
@@ -54,7 +55,7 @@ export function recotizar(input: {
         producto_id: l.producto_id, cod: l.cod, producto: l.producto, familia: l.familia, proveedor: l.proveedor,
         unid: l.unid, es_fertilizante: l.es_fertilizante, cantidad: l.cantidad, costo_usd: l.costo_usd,
         costo_lista_usd: l.costo_lista_usd, costo_editado: l.costo_editado, margen: l.margen, precio_usd: l.precio_usd,
-        flete_usd: l.flete_usd, total_usd: l.total_usd, con_flete: l.con_flete, iva, orden: i,
+        flete_usd: l.flete_usd, total_usd: l.total_usd, con_flete: l.con_flete, iva, plazo_dias: plazo, orden: i,
       });
       return;
     }
@@ -72,14 +73,17 @@ export function recotizar(input: {
       proveedor: prod.proveedor || l.proveedor, unid: prod.unid || l.unid, es_fertilizante: prod.es_fertilizante,
       cantidad: l.cantidad, costo_usd: calc.costoUSD, costo_lista_usd: calc.costoListaUSD, costo_editado: calc.costoEditado,
       margen: l.margen, precio_usd: calc.precioUSD, flete_usd: calc.fleteUSD, total_usd: calc.totalUSD,
-      con_flete: l.con_flete, iva, orden: i,
+      con_flete: l.con_flete, iva, plazo_dias: plazo, orden: i,
     });
   });
 
   const totales = calcularTotalesIva(
-    nuevas.map((l) => ({ totalUSD: l.total_usd || 0, ivaPercent: cotiz.con_iva ? l.iva || 0 : 0 })),
-    cotiz.tc,
-    recargoPorcentaje(cotiz.plazo_dias || 0, cotiz.tasa_mensual || 0)
+    nuevas.map((l) => ({
+      totalUSD: l.total_usd || 0,
+      ivaPercent: cotiz.con_iva ? l.iva || 0 : 0,
+      recargoPct: recargoPorcentaje(l.plazo_dias || 0, cotiz.tasa_mensual || 0),
+    })),
+    cotiz.tc
   );
 
   const subtotalAnterior = cotiz.subtotal_usd || 0;
@@ -108,7 +112,7 @@ export function cabeceraRecotizada(
     km: cotiz.km,
     con_iva: cotiz.con_iva,
     iva: cotiz.con_iva ? r.totales.ivaEfectivo : 0,
-    plazo_dias: cotiz.plazo_dias || 0,
+    plazo_dias: r.lineas.reduce((m, l) => Math.max(m, l.plazo_dias || 0), 0),
     tasa_mensual: cotiz.tasa_mensual || 0,
     canje_cultivo: cotiz.canje_cultivo,
     canje_precio_usd: cotiz.canje_precio_usd || 0,

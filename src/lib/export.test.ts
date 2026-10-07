@@ -7,7 +7,7 @@ import type { Cotizacion, CotizacionLinea, Configuracion } from '@/types';
 const linea = (o: Partial<CotizacionLinea>): CotizacionLinea => ({
   id: 'x', cotizacion_id: '', producto_id: null, cod: 'C', producto: 'Producto', familia: 'F', proveedor: 'P',
   unid: 'LT', es_fertilizante: false, cantidad: 1, costo_usd: 0, costo_lista_usd: null, costo_editado: false,
-  margen: 10, precio_usd: 100, flete_usd: 0, total_usd: 100, con_flete: false, iva: 21, orden: 0, ...o,
+  margen: 10, precio_usd: 100, flete_usd: 0, total_usd: 100, con_flete: false, iva: 21, plazo_dias: null, orden: 0, ...o,
 });
 const cotiz = { numero: 1, fecha: '2026-10-07', cliente_nombre: 'ALTOSENA', tc: 1515, km: 0, vigencia_dias: 15, iva: 21, con_iva: true } as Cotizacion;
 const config = { empresa_nombre: 'Agro' } as Configuracion;
@@ -109,12 +109,33 @@ describe('financiación y canje', () => {
     expect(toneladasCanje(10000, 0)).toBe(0);
   });
 
-  it('WhatsApp muestra financiación y canje', () => {
-    const c = { ...cotiz, con_iva: false, plazo_dias: 60, tasa_mensual: 1.5, canje_cultivo: 'Soja', canje_precio_usd: 400 } as Cotizacion;
-    const msg = generarWhatsApp(c, [linea({ total_usd: 1000 })], config);
-    expect(msg).toContain('Financiación 60 días (+3%)');
-    expect(msg).toContain('Total: 1.030,00 USD');
-    expect(msg).toContain('Equivale a 2,58 tn de Soja');
+  it('WhatsApp: financiación unificada en cada fila, con productos de contado y financiados mezclados', () => {
+    const c = { ...cotiz, con_iva: false, tasa_mensual: 1.5, canje_cultivo: 'Soja', canje_precio_usd: 400 } as Cotizacion;
+    const lineas = [
+      linea({ producto: 'GLIFO', precio_usd: 1000, total_usd: 1000, plazo_dias: 0 }),
+      linea({ producto: 'CIPER', precio_usd: 1000, total_usd: 1000, plazo_dias: 60 }),
+    ];
+    const msg = generarWhatsApp(c, lineas, config);
+    expect(msg).toContain('GLIFO · Contado');
+    expect(msg).toContain('CIPER · 60 días');
+    expect(msg).toContain('1 × 1.000,00 USD = 1.000,00 USD');
+    expect(msg).toContain('1 × 1.030,00 USD = 1.030,00 USD');
+    expect(msg).not.toContain('Financiación');
+    expect(msg).not.toContain('Subtotal');
+    expect(msg).toContain('Total: 2.030,00 USD');
+    expect(msg).toContain('Equivale a 5,08 tn de Soja');
+  });
+
+  it('totales por línea: cada fila con su plazo; sin plazo propio usa el de la cabecera', () => {
+    const c = { ...cotiz, con_iva: false, plazo_dias: 30, tasa_mensual: 2 } as Cotizacion;
+    const t = totalesDeCotizacion(c, [
+      linea({ total_usd: 1000, plazo_dias: 0 }),
+      linea({ total_usd: 1000, plazo_dias: 60 }),
+      linea({ total_usd: 1000, plazo_dias: null }),
+    ]);
+    expect(t.subtotal).toBe(3000);
+    expect(t.recargo).toBeCloseTo(40 + 20, 5);
+    expect(t.total).toBeCloseTo(3060, 5);
   });
 
   it('cotización común: sin financiación ni canje en el texto', () => {

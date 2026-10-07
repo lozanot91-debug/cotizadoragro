@@ -198,13 +198,14 @@ export function toneladasCanje(totalUSD: number, precioGranoUSD: number): number
 }
 
 /**
- * Totales de una cotización. Cada línea tiene su propia alícuota de IVA. El recargo por
- * financiación se aplica a cada línea y el IVA se calcula sobre el precio ya financiado.
+ * Totales de una cotización. Cada línea tiene su propia alícuota de IVA y, si corresponde, su propio
+ * recargo por financiación (`recargoPct`; si no lo trae se usa `recargoPctGlobal`). El IVA se calcula
+ * sobre el precio ya financiado.
  */
 export function calcularTotalesIva(
-  lineas: { totalUSD: number; ivaPercent: number }[],
+  lineas: { totalUSD: number; ivaPercent: number; recargoPct?: number }[],
   tc: number,
-  recargoPct = 0
+  recargoPctGlobal = 0
 ): TotalesIva {
   const porTasa = new Map<number, DesgloseIva>();
   let subtotal = 0;
@@ -212,7 +213,7 @@ export function calcularTotalesIva(
   let iva = 0;
   for (const l of lineas) {
     const base = l.totalUSD || 0;
-    const recargoLinea = base * (recargoPct / 100);
+    const recargoLinea = base * ((l.recargoPct ?? recargoPctGlobal) / 100);
     const baseFinanciada = base + recargoLinea;
     const tasa = Math.round((l.ivaPercent || 0) * 100) / 100;
     const ivaLinea = baseFinanciada * (tasa / 100);

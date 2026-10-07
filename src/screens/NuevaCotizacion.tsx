@@ -26,6 +26,9 @@ interface LineaEditable {
   /** Alícuota de IVA de esta línea (%). */
   iva: number;
   ivaStr: string;
+  /** Plazo de pago de esta línea en días (0 = contado). */
+  plazo: number;
+  plazoStr: string;
 }
 
 const CULTIVOS = ['Soja', 'Trigo', 'Maíz', 'Girasol', 'Cebada'];
@@ -178,6 +181,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
             costoStr: formatInputNumber(costoOverride ?? (l.es_fertilizante ? productoLinea.costo * 1000 : productoLinea.costo), 2),
             iva: ivaDeLinea(l, cotiz, cfg),
             ivaStr: formatInputNumber(ivaDeLinea(l, cotiz, cfg), 2),
+            plazo: l.plazo_dias ?? cotiz.plazo_dias ?? 0,
+            plazoStr: String(l.plazo_dias ?? cotiz.plazo_dias ?? 0),
           };
         });
         setLineas(lineasEdit);
@@ -241,6 +246,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
             costoStr: formatInputNumber(costoDisplay, 2),
             iva: ivaDeLinea(l, cotiz, cfg),
             ivaStr: formatInputNumber(ivaDeLinea(l, cotiz, cfg), 2),
+            plazo: l.plazo_dias ?? cotiz.plazo_dias ?? 0,
+            plazoStr: String(l.plazo_dias ?? cotiz.plazo_dias ?? 0),
           });
         }
         setLineas(nuevasLineas);
@@ -300,6 +307,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   }, [clienteId]);
 
   const tcNum = parseNumberInput(tc);
+  /** Plazo por defecto (botones rápidos): se aplica a las líneas nuevas y a todas al tocarlo. */
+  const plazoNum = Math.max(0, parseInt(plazo) || 0);
 
   const lineasCalc = useMemo(() => {
     return lineas.map((l) => {
@@ -314,15 +323,21 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     });
   }, [lineas, tcNum, kmNum, tarifas]);
 
-  const plazoNum = Math.max(0, parseInt(plazo) || 0);
   const tasaNum = parseNumberInput(tasaMensual);
-  const recargoPct = recargoPorcentaje(plazoNum, tasaNum);
+  /** Líneas con su financiación: cada una con su propio plazo (0 = contado). */
+  const lineasFin = useMemo(() => lineasCalc.map((l) => {
+    const recargoPct = recargoPorcentaje(l.plazo, tasaNum);
+    return { ...l, recargoPct, totalFinanciado: l.totalUSD * (1 + recargoPct / 100) };
+  }), [lineasCalc, tasaNum]);
+
   const canjePrecioNum = parseNumberInput(canjePrecio);
   const canjeNombre = canjeCultivo === 'Otro' ? canjeOtro.trim() : canjeCultivo;
 
   const totales = useMemo(() => {
-    return calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0 })), tcNum, recargoPct);
-  }, [lineasCalc, tcNum, conIva, recargoPct]);
+    return calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: l.recargoPct })), tcNum);
+  }, [lineasFin, tcNum, conIva]);
+  const plazoMax = lineas.reduce((m, l) => Math.max(m, l.plazo), 0);
+  const hayFinanciado = plazoMax > 0;
   const canjeTn = conCanje ? toneladasCanje(totales.total, canjePrecioNum) : 0;
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
@@ -347,6 +362,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       margenStr: formatInputNumber(margen, 1), costoOverrideUSD: null,
       costoStr: formatInputNumber(costoDisplay, 2),
       iva: ivaSugerido(producto.es_fertilizante), ivaStr: formatInputNumber(ivaSugerido(producto.es_fertilizante), 2),
+      plazo: plazoNum, plazoStr: String(plazoNum),
     }]);
     setBusqueda('');
   }
@@ -374,6 +390,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       conFlete: false, cantidadStr: '1', margenStr: formatInputNumber(margen, 1),
       costoOverrideUSD: null, costoStr: formatInputNumber(costo, 2),
       iva: ivaSugerido(false), ivaStr: formatInputNumber(ivaSugerido(false), 2),
+      plazo: plazoNum, plazoStr: String(plazoNum),
     }]);
     setInsumoForm({ nombre: '', unid: 'un', costoUSD: '', familia: '' });
     setShowInsumoManual(false);
@@ -392,6 +409,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   /** IVA sugerido según el tipo de producto (config). Se puede editar en cada línea. */
   function ivaSugerido(esFertilizante: boolean): number {
     return esFertilizante ? (config?.iva_fertilizantes ?? 10.5) : (config?.iva_agroquimicos ?? 21);
+  }
+  function aplicarPlazoATodas(d: number) {
+    if (esReadOnly) return;
+    setPlazo(String(d));
+    setLineas((ls) => ls.map((l) => ({ ...l, plazo: d, plazoStr: String(d) })));
+  }
+  function handlePlazoChange(key: string, value: string) {
+    const n = Math.max(0, parseInt(value) || 0);
+    actualizarLinea(key, { plazoStr: value, plazo: n });
   }
   function handleIvaChange(key: string, value: string) {
     const n = parseNumberInput(value);
@@ -435,7 +461,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
       costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
       margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
-      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva,
+      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo,
     }));
   }
 
@@ -445,7 +471,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       km: kmNum, con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
       lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva,
-      plazo_dias: plazoNum, tasa_mensual: plazoNum > 0 ? tasaNum : 0,
+      plazo_dias: plazoMax, tasa_mensual: hayFinanciado ? tasaNum : 0,
       canje_cultivo: conCanje ? canjeNombre : null, canje_precio_usd: conCanje ? canjePrecioNum : 0,
       total_usd: totales.total, total_ars: totales.totalARS, notas,
       ...(origenId && !editId ? { cotizacion_origen_id: origenId } : {}),
@@ -492,6 +518,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           if (prev.margen !== l.margen) cambiosHist.push({ tipo: 'margen', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'margen', valor_anterior: fmtMargen(prev.margen), valor_nuevo: fmtMargen(l.margen) });
           if (prev.con_flete !== l.conFlete) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'flete', valor_anterior: prev.con_flete ? 'Sí' : 'No', valor_nuevo: l.conFlete ? 'Sí' : 'No' });
           if (prev.costo_editado !== l.costoEditado) cambiosHist.push({ tipo: 'costo', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'costo editado', valor_anterior: prev.costo_editado ? 'Sí' : 'No', valor_nuevo: l.costoEditado ? 'Sí' : 'No' });
+          const plazoPrev = prev.plazo_dias ?? editData.plazo_dias ?? 0;
+          if (plazoPrev !== l.plazo) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'plazo de pago', valor_anterior: plazoPrev ? `${plazoPrev} días` : 'Contado', valor_nuevo: l.plazo ? `${l.plazo} días` : 'Contado' });
           const ivaPrev = ivaDeLinea(prev, editData, config!);
           if (conIva && editData.con_iva && ivaPrev !== l.iva) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'IVA', valor_anterior: `${ivaPrev}%`, valor_nuevo: `${l.iva}%` });
           if (Math.abs(prev.precio_usd - l.precioUSD) > 0.01) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'precio', valor_anterior: `USD ${formatUSD(prev.precio_usd)}`, valor_nuevo: `USD ${formatUSD(l.precioUSD)}` });
@@ -500,8 +528,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
 
       // Header changes
       if (!!editData.con_iva !== conIva) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'IVA', valor_anterior: editData.con_iva ? 'Con IVA' : 'Sin IVA', valor_nuevo: conIva ? 'Con IVA' : 'Sin IVA' });
-      if ((editData.plazo_dias || 0) !== plazoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'plazo de pago', valor_anterior: editData.plazo_dias ? `${editData.plazo_dias} días` : 'Contado', valor_nuevo: plazoNum ? `${plazoNum} días` : 'Contado' });
-      if (plazoNum > 0 && (editData.tasa_mensual || 0) !== tasaNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tasa mensual', valor_anterior: `${editData.tasa_mensual || 0}%`, valor_nuevo: `${tasaNum}%` });
+      if (hayFinanciado && (editData.tasa_mensual || 0) !== tasaNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tasa mensual', valor_anterior: `${editData.tasa_mensual || 0}%`, valor_nuevo: `${tasaNum}%` });
       if ((editData.canje_precio_usd || 0) !== (conCanje ? canjePrecioNum : 0)) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'canje', valor_anterior: editData.canje_precio_usd ? `${editData.canje_cultivo} a USD ${formatUSD(editData.canje_precio_usd)}/tn` : 'Sin canje', valor_nuevo: conCanje ? `${canjeNombre} a USD ${formatUSD(canjePrecioNum)}/tn` : 'Sin canje' });
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if (editData.km !== kmNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km', valor_anterior: String(editData.km), valor_nuevo: String(kmNum) });
@@ -554,7 +581,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
       costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
       margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
-      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, orden: i,
+      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, orden: i,
     }));
   }
 
@@ -730,25 +757,25 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Condiciones de pago</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de pago</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de pago <span className="font-normal text-gray-400">(se aplica a todas las filas; después podés cambiarlo fila por fila)</span></label>
             <div className="flex flex-wrap items-center gap-2">
-              {[0, 30, 60, 90].map((d) => (
-                <button key={d} type="button" disabled={esReadOnly} onClick={() => setPlazo(String(d))}
-                  className={`px-3 py-1.5 rounded-lg text-sm border disabled:opacity-60 ${plazoNum === d ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                  {d === 0 ? 'Contado' : `${d} días`}
-                </button>
-              ))}
-              <input type="number" min={0} value={plazo} disabled={esReadOnly} onChange={(e) => setPlazo(e.target.value)} aria-label="Días de plazo"
-                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
-              <span className="text-xs text-gray-400">días</span>
+              {[0, 30, 60, 90].map((d) => {
+                const activo = lineas.length > 0 ? lineas.every((l) => l.plazo === d) : plazoNum === d;
+                return (
+                  <button key={d} type="button" disabled={esReadOnly} onClick={() => aplicarPlazoATodas(d)}
+                    className={`px-3 py-1.5 rounded-lg text-sm border disabled:opacity-60 ${activo ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    {d === 0 ? 'Contado' : `${d} días`}
+                  </button>
+                );
+              })}
             </div>
-            {plazoNum > 0 && (
-              <div className="flex items-center gap-2 mt-2">
+            {(hayFinanciado || plazoNum > 0) && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
                 <label htmlFor="tasa-mensual" className="text-sm text-gray-600">Tasa mensual</label>
                 <input id="tasa-mensual" type="text" inputMode="decimal" value={tasaMensual} disabled={esReadOnly} onChange={(e) => setTasaMensual(e.target.value)} placeholder="0"
                   className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
                 <span className="text-xs text-gray-400">%</span>
-                <span className="text-xs text-gray-500">{recargoPct > 0 ? `→ recargo de ${formatInputNumber(recargoPct, 2)}% sobre el precio` : 'cargá la tasa para calcular el recargo'}</span>
+                <span className="text-xs text-gray-500">{tasaNum > 0 ? 'el recargo se calcula por fila según sus días' : 'cargá la tasa para calcular el recargo'}</span>
               </div>
             )}
           </div>
@@ -858,12 +885,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Margen %</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
                 <th className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Flete</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Plazo (días)</th>
                 {conIva && <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">IVA %</th>}
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total USD</th>
                 <th className="px-2 py-2"></th>
               </tr></thead>
               <tbody>
-                {lineasCalc.map((l) => (
+                {lineasFin.map((l) => (
                   <tr key={l.key} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
@@ -871,8 +899,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
                     <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">+ flete {formatUSD(l.fleteUSD)}</span>}</td>
                     <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmNum <= 0 && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-2 py-2 text-right"><input type="text" inputMode="numeric" value={l.plazoStr} disabled={esReadOnly} aria-label={`Plazo en días de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-14 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} />{l.plazo === 0 && <span className="block text-xs text-gray-400">contado</span>}</td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}
-                    <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalUSD)}</td>
+                    <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalFinanciado)}{l.recargoPct > 0 && <span className="block text-xs font-normal text-gray-400">contado {formatUSD(l.totalUSD)} · +{formatInputNumber(l.recargoPct, 2)}%</span>}</td>
                     <td className="px-2 py-2">{!esReadOnly && <button onClick={() => eliminarLinea(l.key)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</td>
                   </tr>
                 ))}
@@ -892,7 +921,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           <h3 className="text-sm font-medium text-emerald-100 mb-3">Resumen</h3>
           <div className="space-y-2">
             <div className="flex justify-between text-sm"><span className="text-emerald-100">{totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span className="font-medium">{formatUSD(totales.subtotal)} USD</span></div>
-            {totales.recargo > 0 && <div className="flex justify-between text-sm"><span className="text-emerald-100">Financiación {plazoNum} días <span className="text-emerald-200/70">(+{formatInputNumber(recargoPct, 2)}%)</span></span><span className="font-medium">{formatUSD(totales.recargo)} USD</span></div>}
+            {totales.recargo > 0 && <div className="flex justify-between text-sm"><span className="text-emerald-100">Financiación <span className="text-emerald-200/70">(según plazo de cada fila)</span></span><span className="font-medium">{formatUSD(totales.recargo)} USD</span></div>}
             {conIva && totales.desglose.map((d) => (
               <div key={d.tasa} className="flex justify-between text-sm"><span className="text-emerald-100">IVA {formatInputNumber(d.tasa, 2) || '0'}% <span className="text-emerald-200/70">(s/ {formatUSD(d.base)})</span></span><span className="font-medium">{formatUSD(d.iva)} USD</span></div>
             ))}

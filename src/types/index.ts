@@ -116,7 +116,7 @@ export interface Cotizacion {
   iva: number;
   /** Cotización formal: incluye IVA. Por defecto no. */
   con_iva: boolean;
-  /** Días de plazo de pago (0 = contado) y tasa mensual (%) con la que se calcula el recargo. */
+  /** Plazo de pago más largo de las líneas (0 = todo contado) y tasa mensual (%) con la que se calcula el recargo. */
   plazo_dias: number;
   tasa_mensual: number;
   /** Recargo por financiación en USD, sin IVA. */
@@ -231,6 +231,8 @@ export interface CotizacionLinea {
   flete_usd: number;
   total_usd: number;
   con_flete: boolean;
+  /** Plazo de pago de esta línea en días (0 = contado). null en cotizaciones viejas: se usa el de la cabecera. */
+  plazo_dias: number | null;
   /** Alícuota de IVA de esta línea (%). null en cotizaciones viejas: se usa la de la cabecera. */
   iva: number | null;
   orden: number;

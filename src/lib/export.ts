@@ -13,20 +13,39 @@ function ivaLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
   return l.iva ?? cotiz.iva ?? 0;
 }
 
-/** Totales calculados desde las líneas (cada una con su IVA), para que PDF, WhatsApp y Excel coincidan. */
-export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): TotalesIva {
-  return calcularTotalesIva(
-    lineas.map((l) => ({ totalUSD: l.total_usd, ivaPercent: cotiz.con_iva ? ivaLinea(l, cotiz) : 0 })),
-    cotiz.tc,
-    recargoPorcentaje(cotiz.plazo_dias || 0, cotiz.tasa_mensual || 0)
-  );
+/** Plazo de la línea en días (0 = contado); en cotizaciones viejas se usa el de la cabecera. */
+export function plazoLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
+  return l.plazo_dias ?? cotiz.plazo_dias ?? 0;
 }
 
-/** Texto de la financiación, ej. "Financiación 60 días (+3%)". Vacío si es contado o sin tasa. */
-function textoFinanciacion(cotiz: Cotizacion): string {
-  const pct = recargoPorcentaje(cotiz.plazo_dias || 0, cotiz.tasa_mensual || 0);
-  if (pct <= 0) return '';
-  return `Financiación ${cotiz.plazo_dias} días (+${tasaTxt(pct)}%)`;
+/** Datos de financiación de una línea: su plazo, el recargo % y el total ya financiado. */
+export function financiacionLinea(l: CotizacionLinea, cotiz: Cotizacion) {
+  const plazo = plazoLinea(l, cotiz);
+  const pct = recargoPorcentaje(plazo, cotiz.tasa_mensual || 0);
+  const factor = 1 + pct / 100;
+  return { plazo, pct, factor, precioUnit: (l.precio_usd + l.flete_usd) * factor, total: l.total_usd * factor };
+}
+
+/** Hay alguna línea financiada (con recargo real)? */
+function hayFinanciacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): boolean {
+  return lineas.some((l) => financiacionLinea(l, cotiz).pct > 0);
+}
+
+/** "Contado" o "60 días". */
+function condicionTxt(plazo: number): string {
+  return plazo > 0 ? `${plazo} días` : 'Contado';
+}
+
+/** Totales calculados desde las líneas (cada una con su IVA y su financiación), para que PDF, WhatsApp y Excel coincidan. */
+export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): TotalesIva {
+  return calcularTotalesIva(
+    lineas.map((l) => ({
+      totalUSD: l.total_usd,
+      ivaPercent: cotiz.con_iva ? ivaLinea(l, cotiz) : 0,
+      recargoPct: financiacionLinea(l, cotiz).pct,
+    })),
+    cotiz.tc
+  );
 }
 
 /** Equivalente en granos si la cotización es de canje; null si no. */
@@ -106,14 +125,18 @@ export function generarPDF(
 
   // Columnas: x = borde derecho de cada columna numérica
   const hasFert = lineas.some((l) => l.es_fertilizante);
+  const conFin = hayFinanciacion(cotiz, lineas);
   const cols = [
     { label: 'Producto', x: margin, align: 'left' as const },
-    { label: 'Cant.', x: 95, align: 'right' as const },
-    { label: hasFert ? 'Precio USD/tn' : 'Precio USD', x: 128, align: 'right' as const },
+    { label: 'Cant.', x: conFin ? 82 : 95, align: 'right' as const },
+    { label: hasFert ? 'Precio USD/tn' : 'Precio USD', x: conFin ? 110 : 128, align: 'right' as const },
+    { label: 'Pago', x: 130, align: 'right' as const },
     { label: 'IVA %', x: 148, align: 'right' as const },
     { label: cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', x: pageWidth - margin, align: 'right' as const },
-  ].filter((c) => cotiz.con_iva || c.label !== 'IVA %');
+  ].filter((c) => (cotiz.con_iva || c.label !== 'IVA %') && (conFin || c.label !== 'Pago'));
   const iCant = 1, iPrecio = 2;
+  const iPago = cols.findIndex((c) => c.label === 'Pago');
+  const iIva = cols.findIndex((c) => c.label === 'IVA %');
   const iTotal = cols.length - 1;
 
   cols.forEach((c) => {
@@ -134,9 +157,12 @@ export function generarPDF(
     doc.text(productoText, cols[0].x, y);
     doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
     // El flete va incluido en el precio: al cliente no se le muestra por separado
-    doc.text(formatUSD(linea.precio_usd + linea.flete_usd, 2), cols[iPrecio].x, y, { align: 'right' });
-    if (cotiz.con_iva) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[3].x, y, { align: 'right' });
-    doc.text(formatUSD(linea.total_usd, 2), cols[iTotal].x, y, { align: 'right' });
+    // La financiación también va incluida en el precio de cada fila
+    const fin = financiacionLinea(linea, cotiz);
+    doc.text(formatUSD(fin.precioUnit, 2), cols[iPrecio].x, y, { align: 'right' });
+    if (iPago >= 0) doc.text(condicionTxt(fin.plazo), cols[iPago].x, y, { align: 'right' });
+    if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
+    doc.text(formatUSD(fin.total, 2), cols[iTotal].x, y, { align: 'right' });
     y += 5;
     doc.setFontSize(7);
     doc.setTextColor(120, 120, 120);
@@ -159,15 +185,9 @@ export function generarPDF(
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(40, 40, 40);
-  const hayRecargo = t.recargo > 0;
-  if (cotiz.con_iva || hayRecargo) {
-    doc.text(hayRecargo ? 'Subtotal contado USD:' : 'Subtotal USD:', labelX, y);
-    doc.text(formatUSD(t.subtotal), totalX, y, { align: 'right' });
-    y += 5;
-  }
-  if (hayRecargo) {
-    doc.text(`${textoFinanciacion(cotiz)}:`, labelX, y);
-    doc.text(formatUSD(t.recargo), totalX, y, { align: 'right' });
+  if (cotiz.con_iva) {
+    doc.text('Subtotal USD:', labelX, y);
+    doc.text(formatUSD(t.subtotal + t.recargo), totalX, y, { align: 'right' });
     y += 5;
   }
   if (cotiz.con_iva) {
@@ -230,6 +250,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Unidad': l.unid,
     'Cantidad': l.cantidad,
     'Margen %': l.margen,
+    'Plazo (días)': plazoLinea(l, cotiz),
     ...(cotiz.con_iva ? { 'IVA %': ivaLinea(l, cotiz) } : {}),
     'Precio USD': l.precio_usd,
     'Flete USD': l.flete_usd,
@@ -247,7 +268,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Cliente': cotiz.cliente_nombre,
     'Tipo de cambio': cotiz.tc,
     'KM': cotiz.km,
-    ...(t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Plazo (días)': cotiz.plazo_dias, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
+    ...(t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
     ...(cotiz.con_iva
       ? {
           'Subtotal USD': t.subtotal,
@@ -280,23 +301,24 @@ export function generarWhatsApp(
   msg += `Vigencia: ${cotiz.vigencia_dias} días\n`;
   msg += `\n`;
 
+  const conFin = hayFinanciacion(cotiz, lineas);
   lineas.forEach((l) => {
+    // Flete y financiación van incluidos en el precio de cada fila
+    const fin = financiacionLinea(l, cotiz);
+    const pago = conFin ? ` · ${condicionTxt(fin.plazo)}` : '';
     if (l.es_fertilizante) {
-      msg += `• ${l.producto}\n  ${l.cantidad} tn × ${formatUSD(l.precio_usd + l.flete_usd)} USD/tn = ${formatUSD(l.total_usd)} USD\n`;
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${formatUSD(fin.precioUnit)} USD/tn = ${formatUSD(fin.total)} USD\n`;
     } else {
-      msg += `• ${l.producto}\n  ${l.cantidad} × ${formatUSD(l.precio_usd)} USD = ${formatUSD(l.total_usd)} USD\n`;
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} × ${formatUSD(fin.precioUnit)} USD = ${formatUSD(fin.total)} USD\n`;
     }
   });
 
   const t = totalesDeCotizacion(cotiz, lineas);
-  if (cotiz.con_iva || t.recargo > 0) {
-    msg += `\n${t.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}: ${formatUSD(t.subtotal)} USD\n`;
-    if (t.recargo > 0) msg += `${textoFinanciacion(cotiz)}: ${formatUSD(t.recargo)} USD\n`;
-    if (cotiz.con_iva) {
-      t.desglose.forEach((d) => {
-        msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
-      });
-    }
+  if (cotiz.con_iva) {
+    msg += `\nSubtotal: ${formatUSD(t.subtotal + t.recargo)} USD\n`;
+    t.desglose.forEach((d) => {
+      msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
+    });
     msg += `*Total: ${formatUSD(t.total)} USD*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
   } else {
     msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
