@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
-import { supabase } from '@/lib/supabase';
 import { parsearListaCostos, parsearTarifaFlete } from '@/lib/excel';
 import { formatDate, formatUSD } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
 import type { ListaCostos, ProductoConCosto, Cotizacion } from '@/types';
 import { Upload, ListChecks, Truck, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp, X } from 'lucide-react';
 import { hoyAR } from '@/lib/fechas';
+import { traducirError } from '@/lib/errores';
 
 export default function Listas() {
   const data = useData();
@@ -17,7 +17,7 @@ export default function Listas() {
   const [cambiosCosto, setCambiosCosto] = useState<{ cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] | null>(null);
   const [cotizAfectadas, setCotizAfectadas] = useState<{ numero: number; cliente: string }[]>([]);
   const [tarifaStatus, setTarifaStatus] = useState<number | null>(null);
-  const [modalConfirmar, setModalConfirmar] = useState<{ fecha: string; file: File; filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[] } | null>(null);
+  const [modalConfirmar, setModalConfirmar] = useState<{ fecha: string; file: File; filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[]; afectadas: { total: number; abiertas: number } } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fleteInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,14 +55,15 @@ export default function Listas() {
       // Check if a lista with this fecha already exists
       const existente = await data.fetchListaByFecha(fechaFinal);
       if (existente) {
+        const afectadas = await data.cotizacionesAfectadas(fechaFinal);
         setUploading(false);
-        setModalConfirmar({ fecha: fechaFinal, file, filas });
+        setModalConfirmar({ fecha: fechaFinal, file, filas, afectadas });
         return;
       }
 
       await procesarCarga(fechaFinal, file.name, filas, false);
     } catch (err) {
-      setMensaje({ type: 'error', text: `Error al procesar el archivo: ${err instanceof Error ? err.message : 'desconocido'}` });
+      setMensaje({ type: 'error', text: `Error al procesar el archivo: ${traducirError(err)}` });
     }
     setUploading(false);
   }
@@ -70,82 +71,74 @@ export default function Listas() {
   async function procesarCarga(fecha: string, nombreArchivo: string, filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[], reemplazar: boolean) {
     setUploading(true);
     setMensaje(null);
+    try {
+      // Lista inmediatamente anterior a la fecha que se carga (no "la primera de la lista")
+      const listaAnterior = await data.fetchListaAnteriorA(fecha);
+      const productosAnt: ProductoConCosto[] = listaAnterior ? await data.fetchProductosConCosto(listaAnterior.id) : [];
 
-    // Fetch previous lista costs for comparison
-    const listaAnterior = listas[0];
-    let productosAnt: ProductoConCosto[] = [];
-    if (listaAnterior) {
-      productosAnt = await data.fetchProductosConCosto(listaAnterior.id);
-    }
+      // Carga atómica en la base: o se carga todo o no se carga nada
+      const resultado = await data.cargarLista(fecha, nombreArchivo, filas, reemplazar);
 
-    // Call the RPC to load everything atomically
-    const resultado = await data.cargarLista(fecha, nombreArchivo, filas, reemplazar);
+      // Comparar costos con la lista anterior
+      const cambios: { cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] = [];
+      if (listaAnterior) {
+        const costoAntMap = new Map(productosAnt.map((p) => [p.cod, p]));
+        for (const fila of filas) {
+          const prodAnt = costoAntMap.get(fila.cod);
+          if (prodAnt && prodAnt.costo !== fila.costo) {
+            const pct = prodAnt.costo > 0 ? ((fila.costo - prodAnt.costo) / prodAnt.costo) * 100 : 0;
+            cambios.push({
+              cod: fila.cod,
+              producto: fila.producto,
+              costoAnt: prodAnt.costo,
+              costoNuevo: fila.costo,
+              diff: fila.costo - prodAnt.costo,
+              pct,
+            });
+          }
+        }
+      }
 
-    if (!resultado) {
-      setMensaje({ type: 'error', text: 'Error al cargar la lista. Intentá nuevamente.' });
+      await registrarCambio({
+        tipo: 'lista',
+        campo: 'lista de costos',
+        valor_nuevo: `${filas.length} productos`,
+        detalle: `Fecha: ${fecha}${reemplazar ? ' (reemplazo)' : ''}`,
+      });
+
+      const resumen = `Lista cargada: ${filas.length} productos (${resultado.productos_nuevos} nuevos, ${resultado.productos_actualizados} actualizados).`;
+
+      // Cotizaciones abiertas que usan algún producto cuyo costo cambió (una sola consulta)
+      let afectadas: { numero: number; cliente: string }[] = [];
+      let avisoAfectadas = '';
+      if (cambios.length > 0) {
+        try {
+          const codsCambiados = new Set(cambios.map((c) => c.cod));
+          const lineasAbiertas = await data.fetchLineasCotizacionesAbiertas();
+          const porNumero = new Map<number, string>();
+          for (const l of lineasAbiertas) {
+            if (codsCambiados.has(l.cod)) porNumero.set(l.numero, l.cliente);
+          }
+          afectadas = [...porNumero].sort((x, y) => x[0] - y[0]).map(([numero, cliente]) => ({ numero, cliente }));
+        } catch {
+          avisoAfectadas = ' No se pudo calcular qué cotizaciones abiertas se ven afectadas.';
+        }
+        setCambiosCosto(cambios);
+        setCotizAfectadas(afectadas);
+        setMensaje({ type: 'warning', text: `${resumen} ${cambios.length} productos cambiaron de costo.${avisoAfectadas}` });
+      } else {
+        setMensaje({
+          type: 'success',
+          text: listaAnterior ? resumen : `${resumen} Es la primera lista: no hay costos anteriores para comparar.`,
+        });
+      }
+
+      load();
+    } catch (err) {
+      setMensaje({ type: 'error', text: `No se cargó la lista (no se guardó nada). ${traducirError(err)}` });
+    } finally {
       setUploading(false);
-      return;
     }
-
-    // Compare costs with previous lista
-    const cambios: { cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] = [];
-    if (listaAnterior) {
-      const costoAntMap = new Map(productosAnt.map((p) => [p.cod, p]));
-      for (const fila of filas) {
-        const prodAnt = costoAntMap.get(fila.cod);
-        if (prodAnt && prodAnt.costo !== fila.costo) {
-          const pct = prodAnt.costo > 0 ? ((fila.costo - prodAnt.costo) / prodAnt.costo) * 100 : 0;
-          cambios.push({
-            cod: fila.cod,
-            producto: fila.producto,
-            costoAnt: prodAnt.costo,
-            costoNuevo: fila.costo,
-            diff: fila.costo - prodAnt.costo,
-            pct,
-          });
-        }
-      }
-    }
-
-    // Find affected open cotizaciones
-    let afectadas: { numero: number; cliente: string }[] = [];
-    if (cambios.length > 0) {
-      const codsCambiados = new Set(cambios.map((c) => c.cod));
-      const cotizs = await data.fetchCotizaciones();
-      const abiertas = cotizs.filter((c) =>
-        c.estado === 'Borrador' || c.estado === 'Enviada' || c.estado === 'En negociación'
-      );
-      for (const cot of abiertas) {
-        const lineas = await data.fetchLineas(cot.id);
-        const tieneCambio = lineas.some((l) => codsCambiados.has(l.cod));
-        if (tieneCambio) {
-          afectadas.push({ numero: cot.numero, cliente: cot.cliente_nombre || 'Sin cliente' });
-        }
-      }
-    }
-
-    if (cambios.length > 0) {
-      setCambiosCosto(cambios);
-      setCotizAfectadas(afectadas);
-      setMensaje({
-        type: 'warning',
-        text: `Lista cargada: ${filas.length} productos (${resultado.productos_nuevos} nuevos, ${resultado.productos_actualizados} actualizados). ${cambios.length} productos cambiaron de costo.`,
-      });
-    } else {
-      setMensaje({
-        type: 'success',
-        text: `Lista cargada: ${filas.length} productos (${resultado.productos_nuevos} nuevos, ${resultado.productos_actualizados} actualizados).`,
-      });
-    }
-
-    await registrarCambio({
-      tipo: 'lista',
-      campo: 'lista de costos',
-      valor_nuevo: `${filas.length} productos`,
-      detalle: `Fecha: ${fecha}${reemplazar ? ' (reemplazo)' : ''}`,
-    });
-
-    load();
   }
 
   async function handleUploadFlete(file: File) {
@@ -161,12 +154,8 @@ export default function Listas() {
         return;
       }
 
-      // Delete existing and insert in batches of 1000
-      await supabase.from('tarifa_flete').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      for (let i = 0; i < filas.length; i += 1000) {
-        const batch = filas.slice(i, i + 1000).map((f) => ({ km: f.km, tarifa: f.tarifa }));
-        await supabase.from('tarifa_flete').insert(batch);
-      }
+      // Una sola transacción: si algo falla queda la tarifa anterior intacta
+      await data.cargarTarifaFlete(filas.map((f) => ({ km: f.km, tarifa: f.tarifa })));
 
       const maxKm = filas[filas.length - 1]?.km || filas.length;
       setMensaje({ type: 'success', text: `Tarifa cargada: ${filas.length} km` });
@@ -180,7 +169,7 @@ export default function Listas() {
 
       load();
     } catch (err) {
-      setMensaje({ type: 'error', text: `Error: ${err instanceof Error ? err.message : 'desconocido'}` });
+      setMensaje({ type: 'error', text: `No se cargó la tarifa (queda la anterior). ${traducirError(err)}` });
     }
     setUploading(false);
   }
@@ -387,8 +376,15 @@ export default function Listas() {
               </div>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              ¿Querés reemplazar la lista existente? Se borrarán los costos anteriores y se cargarán los nuevos.
+              ¿Querés reemplazar la lista existente? Se reemplazarán todos sus costos por los del archivo nuevo.
             </p>
+            {modalConfirmar.afectadas.total > 0 && (
+              <div className="text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 mb-4">
+                Hay {modalConfirmar.afectadas.total} cotización(es) hechas con esta lista
+                {modalConfirmar.afectadas.abiertas > 0 ? ` (${modalConfirmar.afectadas.abiertas} todavía abierta/s)` : ''}.
+                Sus precios ya guardados <strong>no cambian</strong>; solo se actualizan los costos de la lista para cotizaciones nuevas.
+              </div>
+            )}
             <div className="flex gap-2 justify-end">
               <button onClick={() => setModalConfirmar(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
               <button

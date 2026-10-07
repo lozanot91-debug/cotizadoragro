@@ -8,6 +8,7 @@ import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } fr
 import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio } from '@/types';
 import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2 } from 'lucide-react';
 import { hoyAR, formatearFechaHora } from '@/lib/fechas';
+import { traducirError } from '@/lib/errores';
 
 interface LineaEditable {
   key: string;
@@ -411,7 +412,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     // If editing, compare with previous lines for historial
     let cambiosHist: CambioHistorial[] = [];
     if (editId && editData) {
-      const prevLineas = await data.fetchLineas(editId);
+      const prevLineas = await data.fetchLineas(editId).catch((e) => {
+        setSaveMsg({ type: 'error', text: `No se pudo leer la cotización actual. ${traducirError(e)}` });
+        return null;
+      });
+      if (!prevLineas) { setSaving(false); return; }
       const prevByCod = new Map(prevLineas.map((l) => [l.cod, l]));
       const newCods = new Set(lineasCalc.map((l) => l.producto.cod));
 
@@ -444,8 +449,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       if (editData.vigencia_dias !== (parseInt(vigencia) || 15)) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'vigencia', valor_anterior: `${editData.vigencia_dias} días`, valor_nuevo: `${parseInt(vigencia) || 15} días` });
     }
 
-    const saved = await data.saveCotizacion(buildCotizData(), buildLineasData(), editId);
-    if (saved) {
+    try {
+      const saved = await data.saveCotizacion(buildCotizData(), buildLineasData(), editId);
       setSaveMsg({ type: 'success', text: `Cotización N° ${saved.numero} guardada` });
       setEditData(saved);
 
@@ -471,10 +476,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           setComparacion(null); setProductosFaltantes([]);
         }, 2000);
       }
-    } else {
-      setSaveMsg({ type: 'error', text: 'Error al guardar la cotización' });
+    } catch (e) {
+      // La cotización NO se guardó (la operación es atómica): lo que está en pantalla sigue intacto.
+      setSaveMsg({ type: 'error', text: `No se pudo guardar la cotización. ${traducirError(e)}` });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   function handleCopiarWhatsApp() {

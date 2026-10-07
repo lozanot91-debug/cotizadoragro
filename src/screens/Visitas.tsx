@@ -43,7 +43,7 @@ async function comprimirImagen(file: File, maxDim: number = 1600, calidad: numbe
 export default function Visitas() {
   const data = useData();
   const { usuario } = useAuth();
-  const [visitas, setVisitas] = useState<(Visita & { cliente?: { nombre: string } })[]>([]);
+  const [visitas, setVisitas] = useState<(Visita & { cliente?: { nombre: string } | null })[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [loading, setLoading] = useState(true);

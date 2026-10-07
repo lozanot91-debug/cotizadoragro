@@ -1,4 +1,5 @@
 import { AuthProvider } from '@/context/AuthContext';
+import { ToastProvider } from '@/components/Toast';
 import Layout, { type Screen } from '@/components/Layout';
 import Inicio from '@/screens/Inicio';
 import NuevaCotizacion from '@/screens/NuevaCotizacion';
@@ -66,7 +67,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }
