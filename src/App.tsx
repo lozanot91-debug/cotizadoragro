@@ -1,4 +1,6 @@
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth, useSesion } from '@/context/AuthContext';
+import AuthScreen from '@/screens/AuthScreen';
+import { Loader2 } from 'lucide-react';
 import { ToastProvider } from '@/components/Toast';
 import Layout, { type Screen } from '@/components/Layout';
 import Inicio from '@/screens/Inicio';
@@ -17,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
 
 function AppContent() {
+  const { usuario } = useAuth();
   const [screen, setScreen] = useState<Screen>('inicio');
   const [editCotizId, setEditCotizId] = useState<string | undefined>(undefined);
   const [duplicateFromId, setDuplicateFromId] = useState<string | undefined>(undefined);
@@ -56,19 +59,29 @@ function AppContent() {
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}
       {screen === 'clientes' && <Clientes />}
-      {screen === 'listas' && <Listas />}
+      {screen === 'listas' && usuario.rol === 'admin' && <Listas />}
       {screen === 'estadisticas' && <Estadisticas />}
-      {screen === 'config' && <ConfigScreen />}
+      {screen === 'config' && usuario.rol === 'admin' && <ConfigScreen />}
       {screen === 'historial' && <Historial />}
     </Layout>
   );
+}
+
+/** Sin sesión iniciada solo se ve la pantalla de ingreso. */
+function Puerta() {
+  const { cargando, usuario } = useSesion();
+  if (cargando) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
+  }
+  if (!usuario) return <AuthScreen />;
+  return <AppContent />;
 }
 
 export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AppContent />
+        <Puerta />
       </ToastProvider>
     </AuthProvider>
   );

@@ -88,7 +88,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const [showInsumoManual, setShowInsumoManual] = useState(false);
   const [insumoForm, setInsumoForm] = useState({ nombre: '', unid: 'un', costoUSD: '', familia: '' });
 
-  const puedeVerCostos = true;
+  const { usuario } = useAuth();
+  const puedeVerCostos = usuario.puede_ver_costos;
   const esReadOnly = editData?.estado === 'Ganada' || editData?.estado === 'Perdida';
 
   const cargar = useCallback(async () => {

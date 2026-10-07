@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, Home, KanbanSquare, CheckSquare, MapPin } from 'lucide-react';
+import { useState } from 'react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
 
 export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial';
 
@@ -14,38 +13,14 @@ interface Props {
 
 export default function Layout({ current, onNavigate, children, taskBadge }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { usuario, setUsuarioNombre } = useAuth();
-  const [modalOperador, setModalOperador] = useState(false);
-  const [vendedores, setVendedores] = useState<string[]>([]);
-  const [nuevoNombre, setNuevoNombre] = useState('');
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('operador_nombre');
-      if (!stored) setModalOperador(true);
-    } catch {
-      setModalOperador(true);
-    }
-    supabase.from('usuarios').select('nombre').then(({ data }) => {
-      if (data && data.length > 0) {
-        setVendedores(data.map((d: { nombre: string }) => d.nombre).filter(Boolean));
-      }
-    });
-  }, []);
+  const { usuario, signOut } = useAuth();
 
   function handleNav(s: Screen) {
     onNavigate(s);
     setMenuOpen(false);
   }
 
-  function confirmarOperador() {
-    const nombre = nuevoNombre.trim() || 'Admin';
-    setUsuarioNombre(nombre);
-    setModalOperador(false);
-    setNuevoNombre('');
-  }
-
-  const navItems: { id: Screen; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+  const todosLosItems: { id: Screen; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'inicio', label: 'Inicio', icon: Home },
     { id: 'nueva', label: 'Nueva cotización', icon: FilePlus },
     { id: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
@@ -58,6 +33,8 @@ export default function Layout({ current, onNavigate, children, taskBadge }: Pro
     { id: 'config', label: 'Márgenes y config.', icon: Settings },
     { id: 'historial', label: 'Historial', icon: History },
   ];
+  // Cargar listas y tocar márgenes/configuración es solo del administrador
+  const navItems = todosLosItems.filter((item) => usuario.rol === 'admin' || (item.id !== 'listas' && item.id !== 'config'));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -70,10 +47,13 @@ export default function Layout({ current, onNavigate, children, taskBadge }: Pro
             <span className="font-bold text-gray-800 hidden sm:block">Cotizador Agro</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setModalOperador(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100">
+            <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600">
               <UserCircle className="w-5 h-5 text-emerald-600" />
               <span className="hidden sm:block font-medium">{usuario.nombre}</span>
-              <span className="text-xs text-gray-400 hidden sm:block">(Cambiar)</span>
+              {usuario.rol === 'admin' && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full hidden sm:block">Admin</span>}
+            </div>
+            <button onClick={() => { void signOut(); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100" title="Cerrar sesión">
+              <LogOut className="w-4 h-4" /> <span className="hidden sm:block">Salir</span>
             </button>
             <button onClick={() => setMenuOpen(!menuOpen)} className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -114,33 +94,6 @@ export default function Layout({ current, onNavigate, children, taskBadge }: Pro
         </main>
       </div>
 
-      {modalOperador && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { if (usuario.nombre) setModalOperador(false); }}>
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                <UserCircle className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div><h3 className="font-bold text-gray-800">¿Quién sos?</h3><p className="text-sm text-gray-500">Identificáte para registrar los cambios</p></div>
-            </div>
-            {vendedores.length > 0 && (
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vendedores cargados</label>
-                <div className="flex flex-wrap gap-2">
-                  {vendedores.map((v) => (
-                    <button key={v} onClick={() => { setUsuarioNombre(v); setModalOperador(false); }} className="px-3 py-1.5 rounded-lg text-sm border border-gray-300 hover:bg-emerald-50 hover:border-emerald-400">{v}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <label className="block text-sm font-medium text-gray-700 mb-1">O escribir nombre</label>
-            <input type="text" value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') confirmarOperador(); }} placeholder="Tu nombre..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 mb-4" autoFocus />
-            <div className="flex gap-2 justify-end">
-              <button onClick={confirmarOperador} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">Confirmar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

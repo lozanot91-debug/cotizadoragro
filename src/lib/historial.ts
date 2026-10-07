@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
+import { usuarioActual } from '@/lib/usuarioActual';
 import { formatUSD } from '@/lib/format';
 
 export interface CambioHistorial {
@@ -13,12 +13,7 @@ export interface CambioHistorial {
 }
 
 function getUsuarioNombre(): string {
-  try {
-    const stored = localStorage.getItem('operador_nombre');
-    return stored || 'Admin';
-  } catch {
-    return 'Admin';
-  }
+  return usuarioActual();
 }
 
 export async function registrarCambio(cambio: CambioHistorial): Promise<void> {
