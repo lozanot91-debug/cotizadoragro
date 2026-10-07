@@ -377,6 +377,18 @@ export function useData() {
     });
   }
 
+  /** Todas las líneas de todas las cotizaciones (para rentabilidad). */
+  async function fetchTodasLasLineas(): Promise<CotizacionLinea[]> {
+    return fetchAllPaged<CotizacionLinea>(() =>
+      supabase.from('cotizacion_lineas').select('*').order('id') as unknown as AnyFilter
+    );
+  }
+
+  /** Cambia la vigencia (en días desde la fecha de la cotización). */
+  async function actualizarVigencia(id: string, vigenciaDias: number) {
+    await ok(supabase.from('cotizaciones').update({ vigencia_dias: vigenciaDias }).eq('id', id));
+  }
+
   /** La lista inmediatamente anterior a una fecha (para comparar precios). */
   async function fetchListaAnteriorA(fecha: string): Promise<ListaCostos | null> {
     const data = await ok(
@@ -589,6 +601,8 @@ export function useData() {
     cargarTarifaFlete,
     fetchLineasCotizacionesAbiertas,
     fetchLineasDeCotizacionesAbiertas,
+    fetchTodasLasLineas,
+    actualizarVigencia,
     fetchHistorialCotizacion,
     fetchTareas,
     fetchTareasPendientes,

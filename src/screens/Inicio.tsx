@@ -419,10 +419,10 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
             Cotizaciones por vencer
           </h2>
           <button
-            onClick={() => onNavigate('cotizaciones')}
+            onClick={() => onNavigate('vencimientos')}
             className="text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
           >
-            Ver todas <ArrowRight className="w-4 h-4" />
+            Ver vencimientos <ArrowRight className="w-4 h-4" />
           </button>
         </div>
 

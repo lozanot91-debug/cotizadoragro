@@ -15,6 +15,9 @@ import Estadisticas from '@/screens/Estadisticas';
 import ConfigScreen from '@/screens/ConfigScreen';
 import Historial from '@/screens/Historial';
 import Recotizar from '@/screens/Recotizar';
+import Rentabilidad from '@/screens/Rentabilidad';
+import Vencimientos from '@/screens/Vencimientos';
+import { vencimientos } from '@/lib/vencimientos';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
@@ -25,6 +28,7 @@ function AppContent() {
   const [editCotizId, setEditCotizId] = useState<string | undefined>(undefined);
   const [duplicateFromId, setDuplicateFromId] = useState<string | undefined>(undefined);
   const [taskBadge, setTaskBadge] = useState(0);
+  const [vencBadge, setVencBadge] = useState(0);
 
   const loadTaskBadge = useCallback(async () => {
     const hoy = hoyAR();
@@ -36,7 +40,17 @@ function AppContent() {
     setTaskBadge(count || 0);
   }, []);
 
-  useEffect(() => { loadTaskBadge(); }, [loadTaskBadge, screen]);
+  /** Cotizaciones abiertas vencidas o que vencen en los próximos 3 días. */
+  const loadVencBadge = useCallback(async () => {
+    const { data } = await supabase
+      .from('cotizaciones')
+      .select('id, fecha, vigencia_dias, estado, numero')
+      .in('estado', ['Borrador', 'Enviada', 'En negociación'])
+      .limit(1000);
+    setVencBadge(vencimientos((data || []) as never, hoyAR(), 3).length);
+  }, []);
+
+  useEffect(() => { loadTaskBadge(); loadVencBadge(); }, [loadTaskBadge, loadVencBadge, screen]);
 
   function handleNavigate(s: Screen) {
     setScreen(s);
@@ -52,12 +66,14 @@ function AppContent() {
   }
 
   return (
-    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge}>
+    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge}>
       {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} />}
       {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} />}
       {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
       {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
       {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
+      {screen === 'vencimientos' && <Vencimientos onEdit={handleEditCotiz} />}
+      {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}
       {screen === 'clientes' && <Clientes />}
