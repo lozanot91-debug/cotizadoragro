@@ -16,7 +16,7 @@ function ivaLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
 /** Totales calculados desde las líneas (cada una con su IVA), para que PDF, WhatsApp y Excel coincidan. */
 export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): TotalesIva {
   return calcularTotalesIva(
-    lineas.map((l) => ({ totalUSD: l.total_usd, ivaPercent: ivaLinea(l, cotiz) })),
+    lineas.map((l) => ({ totalUSD: l.total_usd, ivaPercent: cotiz.con_iva ? ivaLinea(l, cotiz) : 0 })),
     cotiz.tc
   );
 }
@@ -98,8 +98,10 @@ export function generarPDF(
     { label: hasFert ? 'Precio USD/tn' : 'Precio USD', x: 98, align: 'right' as const },
     { label: hasFert ? 'Flete USD/tn' : 'Flete USD', x: 120, align: 'right' as const },
     { label: 'IVA %', x: 134, align: 'right' as const },
-    { label: 'Total USD', x: pageWidth - margin, align: 'right' as const },
-  ];
+    { label: cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', x: pageWidth - margin, align: 'right' as const },
+  ].filter((c) => cotiz.con_iva || c.label !== 'IVA %');
+  const iCant = 1, iPrecio = 2, iFlete = 3;
+  const iTotal = cols.length - 1;
 
   cols.forEach((c) => {
     doc.text(c.label, c.x, y, { align: c.align });
@@ -117,11 +119,11 @@ export function generarPDF(
     doc.setFontSize(8);
     const productoText = linea.producto.length > 30 ? linea.producto.substring(0, 28) + '…' : linea.producto;
     doc.text(productoText, cols[0].x, y);
-    doc.text(formatUSD(linea.cantidad, 2), cols[1].x, y, { align: 'right' });
-    doc.text(formatUSD(linea.precio_usd, 2), cols[2].x, y, { align: 'right' });
-    doc.text(formatUSD(linea.flete_usd, 2), cols[3].x, y, { align: 'right' });
-    doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[4].x, y, { align: 'right' });
-    doc.text(formatUSD(linea.total_usd, 2), cols[5].x, y, { align: 'right' });
+    doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
+    doc.text(formatUSD(linea.precio_usd, 2), cols[iPrecio].x, y, { align: 'right' });
+    doc.text(formatUSD(linea.flete_usd, 2), cols[iFlete].x, y, { align: 'right' });
+    if (cotiz.con_iva) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[4].x, y, { align: 'right' });
+    doc.text(formatUSD(linea.total_usd, 2), cols[iTotal].x, y, { align: 'right' });
     y += 5;
     doc.setFontSize(7);
     doc.setTextColor(120, 120, 120);
@@ -144,17 +146,19 @@ export function generarPDF(
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(40, 40, 40);
-  doc.text('Subtotal USD:', labelX, y);
-  doc.text(formatUSD(t.subtotal), totalX, y, { align: 'right' });
-  y += 5;
-  t.desglose.forEach((d) => {
-    doc.text(`IVA ${tasaTxt(d.tasa)}%:`, labelX, y);
-    doc.text(formatUSD(d.iva), totalX, y, { align: 'right' });
+  if (cotiz.con_iva) {
+    doc.text('Subtotal USD:', labelX, y);
+    doc.text(formatUSD(t.subtotal), totalX, y, { align: 'right' });
     y += 5;
-  });
+    t.desglose.forEach((d) => {
+      doc.text(`IVA ${tasaTxt(d.tasa)}%:`, labelX, y);
+      doc.text(formatUSD(d.iva), totalX, y, { align: 'right' });
+      y += 5;
+    });
+  }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('Total USD:', labelX, y);
+  doc.text(cotiz.con_iva ? 'Total USD:' : 'Total USD (sin IVA):', labelX, y);
   doc.text(formatUSD(t.total), totalX, y, { align: 'right' });
   y += 5;
   doc.setFont('helvetica', 'normal');
@@ -192,7 +196,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Unidad': l.unid,
     'Cantidad': l.cantidad,
     'Margen %': l.margen,
-    'IVA %': ivaLinea(l, cotiz),
+    ...(cotiz.con_iva ? { 'IVA %': ivaLinea(l, cotiz) } : {}),
     'Precio USD': l.precio_usd,
     'Flete USD': l.flete_usd,
     'Total USD': l.total_usd,
@@ -209,10 +213,14 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Cliente': cotiz.cliente_nombre,
     'Tipo de cambio': cotiz.tc,
     'KM': cotiz.km,
-    'Subtotal USD': t.subtotal,
-    ...Object.fromEntries(t.desglose.map((d) => [`IVA ${tasaTxt(d.tasa)}% USD`, d.iva])),
-    'IVA total USD': t.iva,
-    'Total USD': t.total,
+    ...(cotiz.con_iva
+      ? {
+          'Subtotal USD': t.subtotal,
+          ...Object.fromEntries(t.desglose.map((d) => [`IVA ${tasaTxt(d.tasa)}% USD`, d.iva])),
+          'IVA total USD': t.iva,
+          'Total USD': t.total,
+        }
+      : { 'Total USD (sin IVA)': t.total }),
     'Total ARS': t.totalARS,
     'Estado': cotiz.estado,
   }];
@@ -249,11 +257,15 @@ export function generarWhatsApp(
   });
 
   const t = totalesDeCotizacion(cotiz, lineas);
-  msg += `\nSubtotal: ${formatUSD(t.subtotal)} USD\n`;
-  t.desglose.forEach((d) => {
-    msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
-  });
-  msg += `*Total: ${formatUSD(t.total)} USD*\n`;
+  if (cotiz.con_iva) {
+    msg += `\nSubtotal: ${formatUSD(t.subtotal)} USD\n`;
+    t.desglose.forEach((d) => {
+      msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
+    });
+    msg += `*Total: ${formatUSD(t.total)} USD*\n`;
+  } else {
+    msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
+  }
   msg += `Total ARS: $${formatUSD(t.totalARS, 0)}\n`;
 
   return msg;

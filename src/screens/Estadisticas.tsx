@@ -26,8 +26,8 @@ export default function Estadisticas() {
     const ganadas = cotizaciones.filter((c) => c.estado === 'Ganada');
     const perdidas = cotizaciones.filter((c) => c.estado === 'Perdida');
     const tasaConversion = enviadas.length > 0 ? (ganadas.length / enviadas.length) * 100 : 0;
-    const montoCotizado = cotizaciones.reduce((sum, c) => sum + (c.total_usd || 0), 0);
-    const montoGanado = ganadas.reduce((sum, c) => sum + (c.total_usd || 0), 0);
+    const montoCotizado = cotizaciones.reduce((sum, c) => sum + (c.subtotal_usd || 0), 0);
+    const montoGanado = ganadas.reduce((sum, c) => sum + (c.subtotal_usd || 0), 0);
 
     // Motivos de pérdida
     const motivos: Record<string, number> = {};
@@ -41,9 +41,9 @@ export default function Estadisticas() {
     cotizaciones.forEach((c) => {
       const nombre = c.cliente_nombre || 'Sin cliente';
       if (!porCliente[nombre]) porCliente[nombre] = { cotizado: 0, ganado: 0, count: 0 };
-      porCliente[nombre].cotizado += c.total_usd || 0;
+      porCliente[nombre].cotizado += c.subtotal_usd || 0;
       porCliente[nombre].count++;
-      if (c.estado === 'Ganada') porCliente[nombre].ganado += c.total_usd || 0;
+      if (c.estado === 'Ganada') porCliente[nombre].ganado += c.subtotal_usd || 0;
     });
 
     // Por mes
@@ -51,8 +51,8 @@ export default function Estadisticas() {
     cotizaciones.forEach((c) => {
       const mes = c.fecha?.substring(0, 7) || 'Sin fecha';
       if (!porMes[mes]) porMes[mes] = { cotizado: 0, ganado: 0 };
-      porMes[mes].cotizado += c.total_usd || 0;
-      if (c.estado === 'Ganada') porMes[mes].ganado += c.total_usd || 0;
+      porMes[mes].cotizado += c.subtotal_usd || 0;
+      if (c.estado === 'Ganada') porMes[mes].ganado += c.subtotal_usd || 0;
     });
 
     return {

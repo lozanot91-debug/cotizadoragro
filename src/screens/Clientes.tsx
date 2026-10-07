@@ -249,7 +249,7 @@ export default function Clientes() {
                   {cotizsCliente.map((c) => (
                     <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                       <div><span className="text-sm font-medium text-gray-700">N° {c.numero}</span><span className="text-xs text-gray-400 ml-2">{formatDate(c.fecha)} · {c.estado}</span></div>
-                      <span className="text-sm font-medium text-gray-700">{formatUSD(c.total_usd)} USD</span>
+                      <span className="text-sm font-medium text-gray-700">{formatUSD(c.subtotal_usd)} USD</span>
                     </div>
                   ))}
                 </div>

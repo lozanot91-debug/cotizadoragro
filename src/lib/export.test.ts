@@ -9,7 +9,7 @@ const linea = (o: Partial<CotizacionLinea>): CotizacionLinea => ({
   unid: 'LT', es_fertilizante: false, cantidad: 1, costo_usd: 0, costo_lista_usd: null, costo_editado: false,
   margen: 10, precio_usd: 100, flete_usd: 0, total_usd: 100, con_flete: false, iva: 21, orden: 0, ...o,
 });
-const cotiz = { numero: 1, fecha: '2026-10-07', cliente_nombre: 'ALTOSENA', tc: 1515, km: 0, vigencia_dias: 15, iva: 21 } as Cotizacion;
+const cotiz = { numero: 1, fecha: '2026-10-07', cliente_nombre: 'ALTOSENA', tc: 1515, km: 0, vigencia_dias: 15, iva: 21, con_iva: true } as Cotizacion;
 const config = { empresa_nombre: 'Agro' } as Configuracion;
 
 describe('parseNumberInput', () => {
@@ -43,6 +43,20 @@ describe('IVA por línea', () => {
   it('líneas sin IVA propio usan el de la cabecera', () => {
     const t = totalesDeCotizacion(cotiz, [linea({ iva: null, total_usd: 100 })]);
     expect(t.iva).toBeCloseTo(21, 6);
+  });
+});
+
+describe('cotización sin IVA (por defecto)', () => {
+  const sinIva = { ...cotiz, con_iva: false } as Cotizacion;
+  it('los totales no suman IVA', () => {
+    const t = totalesDeCotizacion(sinIva, [linea({ total_usd: 100, iva: 21 })]);
+    expect(t.iva).toBe(0);
+    expect(t.total).toBe(100);
+  });
+  it('WhatsApp no menciona IVA y aclara que no lo incluye', () => {
+    const msg = generarWhatsApp(sinIva, [linea({ total_usd: 100 })], config);
+    expect(msg).not.toMatch(/IVA \d/);
+    expect(msg).toContain('sin IVA');
   });
 });
 

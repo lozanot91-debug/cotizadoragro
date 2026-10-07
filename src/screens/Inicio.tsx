@@ -123,7 +123,7 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
         c.estado === 'Enviada' ||
         c.estado === 'En negociación'
     );
-    const totalAbierto = abiertas.reduce((s, c) => s + c.total_usd, 0);
+    const totalAbierto = abiertas.reduce((s, c) => s + c.subtotal_usd, 0);
     const valorPonderado = abiertas.reduce((s, c) => {
       const prob =
         c.probabilidad !== null
@@ -133,12 +133,12 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
           : c.estado === 'Enviada'
           ? config.prob_enviada
           : config.prob_negociacion;
-      return s + c.total_usd * (prob / 100);
+      return s + c.subtotal_usd * (prob / 100);
     }, 0);
     const ganadasMes = cotizaciones.filter(
       (c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual
     );
-    const ganadoMes = ganadasMes.reduce((s, c) => s + c.total_usd, 0);
+    const ganadoMes = ganadasMes.reduce((s, c) => s + c.subtotal_usd, 0);
     return {
       totalAbierto,
       valorPonderado,
@@ -462,7 +462,7 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm font-semibold text-gray-800">
-                    {formatUSD(c.total_usd, 0)} USD
+                    {formatUSD(c.subtotal_usd, 0)} USD
                   </p>
                   <p
                     className={`text-xs font-medium ${
@@ -540,7 +540,7 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold text-gray-800">
-                      {formatUSD(c.total_usd, 0)} USD
+                      {formatUSD(c.subtotal_usd, 0)} USD
                     </p>
                     <p className="text-xs text-amber-600">
                       hace {dias}d sin actividad

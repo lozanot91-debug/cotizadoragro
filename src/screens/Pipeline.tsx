@@ -99,13 +99,13 @@ export default function Pipeline({ onEdit }: Props) {
 
   const indicadores = useMemo(() => {
     const abiertas = filtradas.filter((c) => c.estado === 'Borrador' || c.estado === 'Enviada' || c.estado === 'En negociación');
-    const totalAbierto = abiertas.reduce((s, c) => s + c.total_usd, 0);
-    const valorPonderado = abiertas.reduce((s, c) => s + c.total_usd * (probabilidad(c) / 100), 0);
+    const totalAbierto = abiertas.reduce((s, c) => s + c.subtotal_usd, 0);
+    const valorPonderado = abiertas.reduce((s, c) => s + c.subtotal_usd * (probabilidad(c) / 100), 0);
     const mesActual = mesActualAR();
     const ganadasMes = filtradas.filter((c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual);
     const perdidasMes = filtradas.filter((c) => c.estado === 'Perdida' && c.fecha.substring(0, 7) === mesActual);
-    const ganadoMes = ganadasMes.reduce((s, c) => s + c.total_usd, 0);
-    const perdidoMes = perdidasMes.reduce((s, c) => s + c.total_usd, 0);
+    const ganadoMes = ganadasMes.reduce((s, c) => s + c.subtotal_usd, 0);
+    const perdidoMes = perdidasMes.reduce((s, c) => s + c.subtotal_usd, 0);
     const tasa = ganadasMes.length + perdidasMes.length > 0
       ? (ganadasMes.length / (ganadasMes.length + perdidasMes.length)) * 100 : 0;
     return { totalAbierto, valorPonderado, ganadoMes, perdidoMes, tasa, countAbierto: abiertas.length };
@@ -116,7 +116,7 @@ export default function Pipeline({ onEdit }: Props) {
     const porMes: Record<string, number> = {};
     let sinFecha = 0;
     for (const c of abiertas) {
-      const ponderado = c.total_usd * (probabilidad(c) / 100);
+      const ponderado = c.subtotal_usd * (probabilidad(c) / 100);
       if (c.fecha_cierre_estimada) {
         const mes = c.fecha_cierre_estimada.substring(0, 7);
         porMes[mes] = (porMes[mes] || 0) + ponderado;
@@ -224,7 +224,7 @@ export default function Pipeline({ onEdit }: Props) {
           <div className="flex gap-3 min-w-max">
             {ESTADOS.map((estado) => {
               const cols = filtradas.filter((c) => c.estado === estado);
-              const sum = cols.reduce((s, c) => s + c.total_usd, 0);
+              const sum = cols.reduce((s, c) => s + c.subtotal_usd, 0);
               return (
                 <div
                   key={estado}
@@ -257,9 +257,9 @@ export default function Pipeline({ onEdit }: Props) {
                             </div>
                             <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0" />
                           </div>
-                          <p className="text-sm font-semibold text-gray-800 mt-1">{formatUSD(c.total_usd, 0)} USD</p>
+                          <p className="text-sm font-semibold text-gray-800 mt-1">{formatUSD(c.subtotal_usd, 0)} USD</p>
                           <div className="flex items-center gap-1 flex-wrap mt-1">
-                            <span className="text-xs text-gray-400">Pond: {formatUSD(c.total_usd * prob / 100, 0)}</span>
+                            <span className="text-xs text-gray-400">Pond: {formatUSD(c.subtotal_usd * prob / 100, 0)}</span>
                             {tp > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">{tp} tarea{tp !== 1 ? 's' : ''}</span>}
                             {sr && <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> sin respuesta</span>}
                             {vr <= 3 && vr >= 0 && c.estado !== 'Ganada' && c.estado !== 'Perdida' && <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Vence en {vr}d</span>}
@@ -309,9 +309,9 @@ export default function Pipeline({ onEdit }: Props) {
                     <td className="px-3 py-2 font-medium text-gray-800">{c.numero}</td>
                     <td className="px-3 py-2 text-gray-600">{c.cliente_nombre || 'Sin cliente'}</td>
                     <td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estadoColors[c.estado]}`}>{c.estado}</span></td>
-                    <td className="px-3 py-2 text-right font-semibold">{formatUSD(c.total_usd, 0)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatUSD(c.subtotal_usd, 0)}</td>
                     <td className="px-3 py-2 text-right text-gray-500">{prob}%</td>
-                    <td className="px-3 py-2 text-right text-blue-700 font-medium">{formatUSD(c.total_usd * prob / 100, 0)}</td>
+                    <td className="px-3 py-2 text-right text-blue-700 font-medium">{formatUSD(c.subtotal_usd * prob / 100, 0)}</td>
                     <td className="px-3 py-2 text-xs"><span className={vr <= 3 ? 'text-red-600 font-medium' : 'text-gray-400'}>{vr > 0 ? `${vr}d` : vr === 0 ? 'Hoy' : 'Vencida'}</span></td>
                     <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <select onChange={(e) => { if (e.target.value) solicitarCambioEstado(c, e.target.value as EstadoCotizacion); e.target.value = ''; }} value="" className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 bg-white">

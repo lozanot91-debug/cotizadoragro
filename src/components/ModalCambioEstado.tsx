@@ -53,7 +53,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
           <div>
             <h3 className="font-bold text-gray-800">{reabre ? 'Reabrir cotización' : `Cambiar a ${hacia}`}</h3>
             <p className="text-sm text-gray-500">
-              Cotización N° {cotiz.numero} · {cotiz.cliente_nombre || 'Sin cliente'} · {formatUSD(cotiz.total_usd)} USD
+              Cotización N° {cotiz.numero} · {cotiz.cliente_nombre || 'Sin cliente'} · {formatUSD(cotiz.subtotal_usd)} USD
             </p>
           </div>
         </div>

@@ -89,7 +89,7 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
     if (!modalEliminar) return;
     const c = modalEliminar;
     await data.deleteCotizacion(c.id);
-    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización N° ${c.numero}`, campo: 'eliminación', valor_anterior: `N° ${c.numero}`, valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.total_usd)} USD)` });
+    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización N° ${c.numero}`, campo: 'eliminación', valor_anterior: `N° ${c.numero}`, valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.subtotal_usd)} USD)` });
     setModalEliminar(null);
     load();
   }
@@ -179,8 +179,8 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-gray-800">{formatUSD(c.total_usd)} USD</p>
-                    <p className="text-xs text-gray-400">$ {formatUSD(c.total_ars, 0)}</p>
+                    <p className="font-bold text-gray-800">{formatUSD(c.subtotal_usd)} USD</p>
+                    <p className="text-xs text-gray-400">$ {formatUSD(c.subtotal_usd * c.tc, 0)}</p>
                   </div>
                 </div>
 
@@ -233,7 +233,7 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">Eliminar cotización</h3>
-                <p className="text-sm text-gray-500">N° {modalEliminar.numero} · {modalEliminar.cliente_nombre || 'Sin cliente'} · {formatUSD(modalEliminar.total_usd)} USD</p>
+                <p className="text-sm text-gray-500">N° {modalEliminar.numero} · {modalEliminar.cliente_nombre || 'Sin cliente'} · {formatUSD(modalEliminar.subtotal_usd)} USD</p>
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">

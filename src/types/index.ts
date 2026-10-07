@@ -114,6 +114,8 @@ export interface Cotizacion {
   tc: number;
   km: number;
   iva: number;
+  /** Cotización formal: incluye IVA. Por defecto no. */
+  con_iva: boolean;
   estado: EstadoCotizacion;
   motivo_perdida: string | null;
   vigencia_dias: number;
