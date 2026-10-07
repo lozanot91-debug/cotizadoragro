@@ -94,13 +94,12 @@ export function generarPDF(
   const hasFert = lineas.some((l) => l.es_fertilizante);
   const cols = [
     { label: 'Producto', x: margin, align: 'left' as const },
-    { label: 'Cant.', x: 72, align: 'right' as const },
-    { label: hasFert ? 'Precio USD/tn' : 'Precio USD', x: 98, align: 'right' as const },
-    { label: hasFert ? 'Flete USD/tn' : 'Flete USD', x: 120, align: 'right' as const },
-    { label: 'IVA %', x: 134, align: 'right' as const },
+    { label: 'Cant.', x: 95, align: 'right' as const },
+    { label: hasFert ? 'Precio USD/tn' : 'Precio USD', x: 128, align: 'right' as const },
+    { label: 'IVA %', x: 148, align: 'right' as const },
     { label: cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', x: pageWidth - margin, align: 'right' as const },
   ].filter((c) => cotiz.con_iva || c.label !== 'IVA %');
-  const iCant = 1, iPrecio = 2, iFlete = 3;
+  const iCant = 1, iPrecio = 2;
   const iTotal = cols.length - 1;
 
   cols.forEach((c) => {
@@ -120,9 +119,9 @@ export function generarPDF(
     const productoText = linea.producto.length > 30 ? linea.producto.substring(0, 28) + '…' : linea.producto;
     doc.text(productoText, cols[0].x, y);
     doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
-    doc.text(formatUSD(linea.precio_usd, 2), cols[iPrecio].x, y, { align: 'right' });
-    doc.text(formatUSD(linea.flete_usd, 2), cols[iFlete].x, y, { align: 'right' });
-    if (cotiz.con_iva) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[4].x, y, { align: 'right' });
+    // El flete va incluido en el precio: al cliente no se le muestra por separado
+    doc.text(formatUSD(linea.precio_usd + linea.flete_usd, 2), cols[iPrecio].x, y, { align: 'right' });
+    if (cotiz.con_iva) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[3].x, y, { align: 'right' });
     doc.text(formatUSD(linea.total_usd, 2), cols[iTotal].x, y, { align: 'right' });
     y += 5;
     doc.setFontSize(7);
@@ -246,11 +245,7 @@ export function generarWhatsApp(
 
   lineas.forEach((l) => {
     if (l.es_fertilizante) {
-      msg += `• ${l.producto}\n  ${l.cantidad} tn × ${formatUSD(l.precio_usd + l.flete_usd)} USD/tn`;
-      if (l.flete_usd > 0) {
-        msg += ` (prod: ${formatUSD(l.precio_usd)} + flete: ${formatUSD(l.flete_usd)})`;
-      }
-      msg += ` = ${formatUSD(l.total_usd)} USD\n`;
+      msg += `• ${l.producto}\n  ${l.cantidad} tn × ${formatUSD(l.precio_usd + l.flete_usd)} USD/tn = ${formatUSD(l.total_usd)} USD\n`;
     } else {
       msg += `• ${l.producto}\n  ${l.cantidad} × ${formatUSD(l.precio_usd)} USD = ${formatUSD(l.total_usd)} USD\n`;
     }

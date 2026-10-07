@@ -76,5 +76,8 @@ describe('texto de WhatsApp', () => {
     expect(msg).toContain('IVA 10,5%');
     expect(msg).toContain('IVA 21%');
     expect(msg).not.toMatch(/105%/);
+    // flete incluido en el precio, sin separar
+    expect(msg).not.toMatch(/flete/i);
+    expect(msg).toContain('702,47 USD/tn');
   });
 });
