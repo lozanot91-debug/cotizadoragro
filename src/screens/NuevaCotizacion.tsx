@@ -691,7 +691,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           <div className="flex items-end">
             <label className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm w-full ${conIva ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-300 text-gray-700'} ${esReadOnly ? 'opacity-60' : 'cursor-pointer'}`}>
               <input type="checkbox" checked={conIva} disabled={esReadOnly} onChange={(e) => setConIva(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
-              Cotización formal: incluir IVA
+              Incluir IVA
             </label>
           </div>
         </div>
