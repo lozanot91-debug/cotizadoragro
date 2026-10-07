@@ -308,6 +308,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   }, [lineasCalc, tcNum, conIva]);
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
+  // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
+  const kmFaltante = kmNum <= 0 && lineasCalc.some((l) => l.producto.es_fertilizante && l.conFlete);
   const costoZero = lineasCalc.some((l) => l.costoUSD <= 0);
 
   function agregarProducto(producto: ProductoConCosto) {
@@ -437,6 +439,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     if (!clienteId || !clienteBusqueda) { setSaveMsg({ type: 'error', text: 'Seleccioná un cliente' }); setSaving(false); return; }
     if (!tcNum || tcNum <= 0) { setSaveMsg({ type: 'error', text: 'El tipo de cambio es obligatorio' }); setSaving(false); return; }
     if (lineas.length === 0) { setSaveMsg({ type: 'error', text: 'Agregá al menos una línea' }); setSaving(false); return; }
+    if (kmFaltante) { setSaveMsg({ type: 'error', text: 'Hay fertilizantes con flete tildado pero no cargaste los km de destino. Cargá los km o destildá el flete.' }); setSaving(false); return; }
     if (tarifaFaltante) { setSaveMsg({ type: 'error', text: 'Falta tarifa de flete. No se puede guardar.' }); setSaving(false); return; }
     if (costoZero) { setSaveMsg({ type: 'error', text: 'Hay líneas con costo en cero.' }); setSaving(false); return; }
 
@@ -697,6 +700,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         </div>
       </div>
 
+      {kmFaltante && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <span className="text-sm text-amber-800">Hay fertilizantes con flete tildado y falta cargar los <strong>km de destino</strong>: por eso el flete no se está sumando.</span>
+        </div>
+      )}
+
       {tarifaFaltante && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
@@ -779,10 +789,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                   <tr key={l.key} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
-                    {puedeVerCostos && (<td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}{l.margenEfectivo !== null && l.margenEfectivo < 0 && <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1 justify-end"><AlertTriangle className="w-3 h-3" /> Margen negativo</p>}</td>)}
+                    {puedeVerCostos && (<td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>)}
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
-                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}</td>
-                    <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">+ flete {formatUSD(l.fleteUSD)}</span>}</td>
+                    <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmNum <= 0 && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}
                     <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalUSD)}</td>
                     <td className="px-2 py-2">{!esReadOnly && <button onClick={() => eliminarLinea(l.key)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</td>
@@ -817,7 +827,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       {/* Botones */}
       <div className="flex flex-wrap gap-2">
         {!esReadOnly && (
-          <button onClick={handleGuardar} disabled={saving || tarifaFaltante || costoZero} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:opacity-50">
+          <button onClick={handleGuardar} disabled={saving || tarifaFaltante || kmFaltante || costoZero} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
           </button>
         )}
