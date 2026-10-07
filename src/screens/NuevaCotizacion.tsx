@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, toneladasCanje, ivaDeLinea } from '@/lib/calculations';
-import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
+import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
 import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio } from '@/types';
@@ -11,6 +11,7 @@ import { hoyAR, formatearFechaHora } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { ultimaCotizacion, type LineaDeCliente } from '@/lib/historialCliente';
 
 interface LineaEditable {
   key: string;
@@ -65,6 +66,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   // Condiciones de pago: plazo (0 = contado) con tasa mensual, y canje por granos
   const [plazo, setPlazo] = useState('0');
   const [tasaMensual, setTasaMensual] = useState('');
+  /** Lo que se le cotizó antes a este cliente, para mostrar "la última vez" en cada producto. */
+  const [historialCliente, setHistorialCliente] = useState<LineaDeCliente[]>([]);
   const [conCanje, setConCanje] = useState(false);
   const [canjeCultivo, setCanjeCultivo] = useState('Soja');
   const [canjeOtro, setCanjeOtro] = useState('');
@@ -322,6 +325,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
   }, [lineas, tcNum, kmNum, tarifas]);
+
+  useEffect(() => {
+    let vivo = true;
+    if (!clienteId) { setHistorialCliente([]); return; }
+    data.fetchLineasDeCliente(clienteId)
+      .then((ls) => { if (vivo) setHistorialCliente(ls); })
+      .catch((e) => console.error('No se pudo cargar el historial del cliente:', e));
+    return () => { vivo = false; };
+  }, [clienteId]);
 
   const tasaNum = parseNumberInput(tasaMensual);
   /** Líneas con su financiación: cada una con su propio plazo (0 = contado). */
@@ -893,7 +905,17 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
               <tbody>
                 {lineasFin.map((l) => (
                   <tr key={l.key} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}</td>
+                    <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{(() => {
+                      const u = ultimaCotizacion(historialCliente, l.producto.cod, editId);
+                      if (!u) return null;
+                      const dif = u.precio > 0 ? ((l.precioUSD - u.precio) / u.precio) * 100 : 0;
+                      return (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Última vez: USD {formatUSD(u.precio)} (N° {u.numero}, {formatDate(u.fecha)}, {u.estado.toLowerCase()})
+                          {Math.abs(dif) >= 0.5 && <span className={dif > 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif > 0 ? 'Ahora +' : 'Ahora '}{formatUSD(dif, 1)}%</span>}
+                        </p>
+                      );
+                    })()}{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
                     {puedeVerCostos && (<td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>)}
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>

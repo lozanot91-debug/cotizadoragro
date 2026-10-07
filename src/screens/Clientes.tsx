@@ -7,6 +7,8 @@ import { registrarCambio, fmtMargen } from '@/lib/historial';
 import { diasDesde, fechaDeTimestamp } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { productosDelCliente, type LineaDeCliente } from '@/lib/historialCliente';
+import { hoyAR } from '@/lib/fechas';
 
 export default function Clientes() {
   const data = useData();
@@ -18,13 +20,14 @@ export default function Clientes() {
   const [form, setForm] = useState({ nombre: '', cuit: '', zona: '', condiciones_pago: '' });
   const [detalle, setDetalle] = useState<Cliente | null>(null);
   const [cotizsCliente, setCotizsCliente] = useState<Cotizacion[]>([]);
+  const [lineasCliente, setLineasCliente] = useState<LineaDeCliente[]>([]);
   const [margenes, setMargenes] = useState<MargenCliente[]>([]);
   const [productos, setProductos] = useState<ProductoConCosto[]>([]);
   const [nuevoMargen, setNuevoMargen] = useState({ producto_id: '', familia: '', margen: '' });
   const [tareasCliente, setTareasCliente] = useState<Tarea[]>([]);
   const [visitasCliente, setVisitasCliente] = useState<Visita[]>([]);
   const [configCli, setConfigCli] = useState<Configuracion | null>(null);
-  const [tabCli, setTabCli] = useState<'cotizaciones' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
+  const [tabCli, setTabCli] = useState<'cotizaciones' | 'productos' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
 
   const [modalEliminar, setModalEliminar] = useState<Cliente | null>(null);
 
@@ -40,10 +43,12 @@ export default function Clientes() {
   async function verDetalle(c: Cliente) {
     setDetalle(c);
     setTabCli('cotizaciones');
-    const [todas, margs, lista, tars, viss, cfg] = await Promise.all([
+    const [todas, margs, lista, tars, viss, cfg, lineas] = await Promise.all([
       data.fetchCotizaciones(), data.fetchMargenesCliente(c.id), data.fetchListaVigente(),
       data.fetchTareasByCliente(c.id), data.fetchVisitasByCliente(c.id), data.fetchConfig(),
+      data.fetchLineasDeCliente(c.id),
     ]);
+    setLineasCliente(lineas);
     setCotizsCliente(todas.filter((cot) => cot.cliente_id === c.id));
     setMargenes(margs);
     setTareasCliente(tars);
@@ -191,9 +196,27 @@ export default function Clientes() {
           </div>
         </div>
 
+        {/* Resumen comercial */}
+        {(() => {
+          const cotizado = cotizsCliente.reduce((s, c) => s + (c.subtotal_usd || 0), 0);
+          const ganadas = cotizsCliente.filter((c) => c.estado === 'Ganada');
+          const ganado = ganadas.reduce((s, c) => s + (c.subtotal_usd || 0), 0);
+          const ultima = ganadas.map((c) => c.fecha).sort().pop();
+          const tasa = cotizsCliente.length > 0 ? (ganadas.length / cotizsCliente.length) * 100 : 0;
+          return (
+            <div className="bg-emerald-900 text-white rounded-xl grid grid-cols-2 sm:grid-cols-4">
+              <div className="px-4 py-3"><p className="text-emerald-300 text-xs">Ganado</p><p className="cifra text-3xl mt-1">{formatUSD(ganado, 0)}<span className="text-sm font-semibold text-amber-300 ml-1">USD</span></p></div>
+              <div className="px-4 py-3 sm:border-l border-emerald-700/70"><p className="text-emerald-300 text-xs">Cotizado</p><p className="cifra text-2xl mt-1">{formatUSD(cotizado, 0)}</p></div>
+              <div className="px-4 py-3 border-t sm:border-t-0 sm:border-l border-emerald-700/70"><p className="text-emerald-300 text-xs">Cotizaciones ganadas</p><p className="cifra text-2xl mt-1">{ganadas.length} de {cotizsCliente.length}<span className="text-sm font-semibold text-emerald-300 ml-1">({formatUSD(tasa, 0)}%)</span></p></div>
+              <div className="px-4 py-3 border-t sm:border-t-0 border-l sm:border-l border-emerald-700/70"><p className="text-emerald-300 text-xs">Última compra</p><p className="cifra text-2xl mt-1">{ultima ? formatDate(ultima) : 'Todavía no'}</p></div>
+            </div>
+          );
+        })()}
+
         {/* Tabs */}
         <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
           <button onClick={() => setTabCli('cotizaciones')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'cotizaciones' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Cotizaciones</button>
+          <button onClick={() => setTabCli('productos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'productos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Productos</button>
           <button onClick={() => setTabCli('tareas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'tareas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Tareas</button>
           <button onClick={() => setTabCli('visitas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'visitas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Visitas</button>
           <button onClick={() => setTabCli('timeline')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'timeline' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Línea de tiempo</button>
@@ -256,6 +279,41 @@ export default function Clientes() {
               )}
             </div>
           </>
+        )}
+
+        {/* Tab: Productos */}
+        {tabCli === 'productos' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+            {(() => {
+              const prods = productosDelCliente(lineasCliente, hoyAR());
+              if (prods.length === 0) return <p className="p-5 text-sm text-gray-400">Todavía no le cotizaste productos.</p>;
+              return (
+                <>
+                  <p className="px-4 pt-3 text-sm text-gray-500">Primero lo que ya compró, del que hace más tiempo no repone al más reciente. Después lo que solo se cotizó.</p>
+                  <table className="w-full text-sm mt-2">
+                    <thead><tr className="bg-gray-50 border-y border-gray-200 text-gray-600">
+                      <th className="text-left px-3 py-2 font-medium">Producto</th>
+                      <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Cotizaciones</th>
+                      <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Última cotización</th>
+                      <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Última compra</th>
+                    </tr></thead>
+                    <tbody>
+                      {prods.map((p) => (
+                        <tr key={p.cod} className="border-b border-gray-100">
+                          <td className="px-3 py-2"><span className="font-medium text-gray-800">{p.producto}</span><span className="block text-xs text-gray-400">{p.cod}</span></td>
+                          <td className="px-3 py-2 text-right text-gray-600">{p.veces}</td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">USD {formatUSD(p.ultima.precio)}<span className="block text-xs text-gray-400">{formatDate(p.ultima.fecha)}, {p.ultima.estado.toLowerCase()}</span></td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">
+                            {p.ultimaCompra ? (<>{formatDate(p.ultimaCompra.fecha)}<span className={`block text-xs ${p.diasDesdeCompra! > 60 ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>hace {p.diasDesdeCompra} días, {formatUSD(p.ultimaCompra.cantidad, 2)} a USD {formatUSD(p.ultimaCompra.precio)}</span></>) : <span className="text-gray-400">Nunca</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              );
+            })()}
+          </div>
         )}
 
         {/* Tab: Tareas */}

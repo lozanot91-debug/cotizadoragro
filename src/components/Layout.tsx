@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import SinConexion from '@/components/SinConexion';
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos';
 
 interface Props {
   current: Screen;
@@ -12,9 +12,10 @@ interface Props {
   children: React.ReactNode;
   taskBadge?: number;
   vencBadge?: number;
+  cobroBadge?: number;
 }
 
-export default function Layout({ current, onNavigate, children, taskBadge, vencBadge }: Props) {
+export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { usuario, signOut } = useAuth();
 
@@ -30,17 +31,19 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
     { id: 'cotizaciones', label: 'Cotizaciones', icon: FileText },
     { id: 'vencimientos', label: 'Vencimientos', icon: CalendarClock, badge: vencBadge },
     { id: 'recotizar', label: 'Recotizar', icon: RefreshCw },
+    { id: 'cobranzas', label: 'Cobranzas', icon: Wallet, badge: cobroBadge },
     { id: 'tareas', label: 'Tareas', icon: CheckSquare, badge: taskBadge },
     { id: 'visitas', label: 'Visitas', icon: MapPin },
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'listas', label: 'Listas', icon: ListChecks },
     { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
     { id: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUp },
+    { id: 'costos', label: 'Evolución de costos', icon: LineChart },
     { id: 'config', label: 'Márgenes y config.', icon: Settings },
     { id: 'historial', label: 'Historial', icon: History },
   ];
   // Tocar márgenes y configuración es solo del administrador (las listas las ven todos, solo el admin las carga)
-  const navItems = todosLosItems.filter((item) => (usuario.rol === 'admin' || item.id !== 'config') && (usuario.puede_ver_costos || item.id !== 'rentabilidad'));
+  const navItems = todosLosItems.filter((item) => (usuario.rol === 'admin' || item.id !== 'config') && (usuario.puede_ver_costos || (item.id !== 'rentabilidad' && item.id !== 'costos')));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

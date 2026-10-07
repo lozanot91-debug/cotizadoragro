@@ -17,6 +17,8 @@ import Historial from '@/screens/Historial';
 import Recotizar from '@/screens/Recotizar';
 import Rentabilidad from '@/screens/Rentabilidad';
 import Vencimientos from '@/screens/Vencimientos';
+import Cobranzas from '@/screens/Cobranzas';
+import EvolucionCostos from '@/screens/EvolucionCostos';
 import { vencimientos } from '@/lib/vencimientos';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -29,6 +31,7 @@ function AppContent() {
   const [duplicateFromId, setDuplicateFromId] = useState<string | undefined>(undefined);
   const [taskBadge, setTaskBadge] = useState(0);
   const [vencBadge, setVencBadge] = useState(0);
+  const [cobroBadge, setCobroBadge] = useState(0);
 
   const loadTaskBadge = useCallback(async () => {
     const hoy = hoyAR();
@@ -50,7 +53,17 @@ function AppContent() {
     setVencBadge(vencimientos((data || []) as never, hoyAR(), 3).length);
   }, []);
 
-  useEffect(() => { loadTaskBadge(); loadVencBadge(); }, [loadTaskBadge, loadVencBadge, screen]);
+  /** Cobros pendientes que vencen hoy o ya están atrasados. */
+  const loadCobroBadge = useCallback(async () => {
+    const { count } = await supabase
+      .from('cobranzas')
+      .select('*', { count: 'exact', head: true })
+      .eq('estado', 'Pendiente')
+      .lte('vencimiento', hoyAR());
+    setCobroBadge(count || 0);
+  }, []);
+
+  useEffect(() => { loadTaskBadge(); loadVencBadge(); loadCobroBadge(); }, [loadTaskBadge, loadVencBadge, loadCobroBadge, screen]);
 
   function handleNavigate(s: Screen) {
     setScreen(s);
@@ -66,13 +79,15 @@ function AppContent() {
   }
 
   return (
-    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge}>
+    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge}>
       {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} />}
       {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} />}
       {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
       {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
       {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
       {screen === 'vencimientos' && <Vencimientos onEdit={handleEditCotiz} />}
+      {screen === 'cobranzas' && <Cobranzas onEdit={handleEditCotiz} />}
+      {screen === 'costos' && <EvolucionCostos />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}

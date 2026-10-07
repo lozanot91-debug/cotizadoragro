@@ -8,6 +8,8 @@ import { Plus, CheckCircle, Calendar, Clock, AlertCircle, ArrowRight } from 'luc
 import { diasDesde, hoyAR, mesActualAR, sumarDias } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { resumenCobranzas } from '@/lib/cobranzas';
+import type { Cobranza } from '@/types';
 
 interface Props {
   onNavigate: (s: Screen) => void;
@@ -23,24 +25,27 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [tareasPendientes, setTareasPendientes] = useState<Tarea[]>([]);
   const [visitas, setVisitas] = useState<Visita[]>([]);
+  const [cobros, setCobros] = useState<Cobranza[]>([]);
 
   const hoy = useMemo(() => hoyAR(), []);
   const manana = useMemo(() => sumarDias(hoyAR(), 1), []);
   const mesActual = useMemo(() => mesActualAR(), []);
 
   const cargar = useCallback(async () => {
-    const [cfg, cotizs, tareasPend, todasTareas, visitasData] = await Promise.all([
+    const [cfg, cotizs, tareasPend, todasTareas, visitasData, cobrosData] = await Promise.all([
       data.fetchConfig(),
       data.fetchCotizaciones(),
       data.fetchTareasPendientes(),
       data.fetchTareas(),
       data.fetchVisitas(),
+      data.fetchCobranzas(),
     ]);
     setConfig(cfg);
     setCotizaciones(cotizs);
     setTareasPendientes(tareasPend);
     setTareas(todasTareas);
     setVisitas(visitasData);
+    setCobros(cobrosData);
   }, []);
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
@@ -48,6 +53,8 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const resumenCobros = useMemo(() => resumenCobranzas(cobros, hoy), [cobros, hoy]);
 
   // Tareas split: hoy vs vencidas
   const tareasHoy = useMemo(
@@ -189,14 +196,18 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
             <span className="text-2xl sm:text-3xl font-semibold text-amber-300 ml-2">USD</span>
           </p>
         </button>
-        <div className="grid grid-cols-2 border-t border-emerald-700/70 bg-emerald-950/40">
-          <button onClick={() => onNavigate('pipeline')} className="text-left px-5 py-3 hover:bg-emerald-950/40 transition-colors">
-            <p className="text-emerald-300 text-xs">Valor ponderado por probabilidad</p>
-            <p className="cifra text-2xl mt-1">{formatUSD(pipeline.valorPonderado, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+        <div className="grid grid-cols-3 border-t border-emerald-700/70 bg-emerald-950/40">
+          <button onClick={() => onNavigate('pipeline')} className="text-left px-3 sm:px-5 py-3 hover:bg-emerald-950/40 transition-colors">
+            <p className="text-emerald-300 text-xs">Ponderado por probabilidad</p>
+            <p className="cifra text-xl sm:text-2xl mt-1">{formatUSD(pipeline.valorPonderado, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
           </button>
-          <button onClick={() => onNavigate('cotizaciones')} className="text-left px-5 py-3 border-l border-emerald-700/70 hover:bg-emerald-950/40 transition-colors">
+          <button onClick={() => onNavigate('cotizaciones')} className="text-left px-3 sm:px-5 py-3 border-l border-emerald-700/70 hover:bg-emerald-950/40 transition-colors">
             <p className="text-emerald-300 text-xs">Ganado este mes ({pipeline.countGanado})</p>
-            <p className="cifra text-2xl mt-1">{formatUSD(pipeline.ganadoMes, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+            <p className="cifra text-xl sm:text-2xl mt-1">{formatUSD(pipeline.ganadoMes, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+          </button>
+          <button onClick={() => onNavigate('cobranzas')} className="text-left px-3 sm:px-5 py-3 border-l border-emerald-700/70 hover:bg-emerald-950/40 transition-colors">
+            <p className="text-emerald-300 text-xs">Por cobrar{resumenCobros.vencido > 0 ? `, ${formatUSD(resumenCobros.vencido, 0)} vencido` : ''}</p>
+            <p className={`cifra text-xl sm:text-2xl mt-1 ${resumenCobros.vencido > 0 ? 'text-amber-300' : ''}`}>{formatUSD(resumenCobros.porCobrar, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
           </button>
         </div>
       </section>

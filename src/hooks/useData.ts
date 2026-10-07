@@ -14,12 +14,14 @@ import type {
   EstadoCotizacion,
   HistorialCambio,
   Tarea,
+  Cobranza,
   Visita,
   VisitaFoto,
 } from '@/types';
 import { hoyAR } from '@/lib/fechas';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
 import { validarCambioEstado } from '@/lib/estados';
+import type { LineaDeCliente } from '@/lib/historialCliente';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyFilter = { range: (from: number, to: number) => Promise<{ data: any[] | null; error: unknown }> };
@@ -168,6 +170,18 @@ export function useData() {
       resultado.push(prodConCosto);
     }
     return resultado;
+  }
+
+  /** Costo de un producto en cada lista cargada (para ver cómo fue cambiando). */
+  async function fetchCostosDeProducto(productoId: string): Promise<{ fecha: string; costo: number }[]> {
+    const [filas, listas] = await Promise.all([
+      ok(supabase.from('costos_historial').select('costo, lista_id').eq('producto_id', productoId)),
+      fetchListas(),
+    ]);
+    const fechaDe = new Map(listas.map((l) => [l.id, l.fecha]));
+    return (filas || [])
+      .map((f) => ({ fecha: fechaDe.get(f.lista_id as string) || '', costo: Number(f.costo) }))
+      .filter((f) => f.fecha);
   }
 
   async function fetchTarifasFlete(): Promise<TarifaFlete[]> {
@@ -377,6 +391,21 @@ export function useData() {
     });
   }
 
+  /** Todas las líneas que se le cotizaron a un cliente, con los datos de su cotización. */
+  async function fetchLineasDeCliente(clienteId: string): Promise<LineaDeCliente[]> {
+    const filas = await fetchAllPaged<CotizacionLinea & { cotizaciones: { id: string; numero: number; fecha: string; estado: string } }>(() =>
+      supabase
+        .from('cotizacion_lineas')
+        .select('*, cotizaciones!inner(id, numero, fecha, estado, cliente_id)')
+        .eq('cotizaciones.cliente_id', clienteId)
+        .order('id') as unknown as AnyFilter
+    );
+    return filas.map((f) => {
+      const { cotizaciones: c, ...linea } = f;
+      return { linea: linea as CotizacionLinea, cotizacionId: c.id, numero: c.numero, fecha: c.fecha, estado: c.estado };
+    });
+  }
+
   /** Todas las líneas de todas las cotizaciones (para rentabilidad). */
   async function fetchTodasLasLineas(): Promise<CotizacionLinea[]> {
     return fetchAllPaged<CotizacionLinea>(() =>
@@ -410,6 +439,36 @@ export function useData() {
       .eq('cotizacion_id', cotizacionId)
       .order('created_at', { ascending: false }));
     return (data || []) as HistorialCambio[];
+  }
+
+  // ============ COBRANZAS ============
+  async function fetchCobranzas(): Promise<Cobranza[]> {
+    return fetchAllPaged<Cobranza>(() =>
+      supabase
+        .from('cobranzas')
+        .select('*, cotizacion:cotizaciones(numero, cliente_nombre, canje_cultivo, canje_precio_usd, con_iva)')
+        .order('vencimiento')
+        .order('id') as unknown as AnyFilter
+    );
+  }
+
+  async function crearCobranzas(filas: { cotizacion_id: string; vencimiento: string; plazo_dias: number; monto_usd: number }[]) {
+    if (filas.length === 0) return;
+    await ok(supabase.from('cobranzas').insert(filas));
+  }
+
+  async function actualizarCobranza(id: string, cambios: Partial<Pick<Cobranza, 'vencimiento' | 'monto_usd' | 'estado' | 'cobrada_el' | 'nota'>>) {
+    await ok(supabase.from('cobranzas').update({ ...cambios, updated_at: new Date().toISOString() }).eq('id', id));
+  }
+
+  /** Al reabrir una cotización ganada se borran sus cobros que todavía no se cobraron. */
+  async function borrarCobranzasPendientes(cotizacionId: string) {
+    await ok(supabase.from('cobranzas').delete().eq('cotizacion_id', cotizacionId).eq('estado', 'Pendiente'));
+  }
+
+  async function contarCobranzas(cotizacionId: string): Promise<number> {
+    const filas = await ok(supabase.from('cobranzas').select('id').eq('cotizacion_id', cotizacionId));
+    return (filas || []).length;
   }
 
   // ============ TAREAS ============
@@ -579,6 +638,7 @@ export function useData() {
     fetchListaByFecha,
     fetchProductosConCosto,
     fetchTarifasFlete,
+    fetchCostosDeProducto,
     fetchClientes,
     createCliente,
     updateCliente,
@@ -602,8 +662,14 @@ export function useData() {
     fetchLineasCotizacionesAbiertas,
     fetchLineasDeCotizacionesAbiertas,
     fetchTodasLasLineas,
+    fetchLineasDeCliente,
     actualizarVigencia,
     fetchHistorialCotizacion,
+    fetchCobranzas,
+    crearCobranzas,
+    actualizarCobranza,
+    borrarCobranzasPendientes,
+    contarCobranzas,
     fetchTareas,
     fetchTareasPendientes,
     fetchTareasByCotizacion,

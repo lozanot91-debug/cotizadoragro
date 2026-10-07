@@ -6,6 +6,7 @@ import { ModalCambioEstado, ModalSeguimiento, type DatosConfirmacion } from '@/c
 import { registrarCambio } from '@/lib/historial';
 import { esReapertura, estaCerrada } from '@/lib/estados';
 import { hoyAR, sumarDias } from '@/lib/fechas';
+import { generarCobranzas } from '@/lib/cobranzas';
 import { parseNumberInput } from '@/lib/format';
 import type { Cotizacion, CotizacionLinea, EstadoCotizacion } from '@/types';
 
@@ -96,6 +97,19 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
 
       setPedido(null);
       toast.exito(`Cotización N° ${cotiz.numero}: ${hacia}`);
+
+      // Cobranzas: al ganar se cargan los cobros por plazo; al reabrir se borran los que faltan cobrar
+      try {
+        if (hacia === 'Ganada' && (await data.contarCobranzas(cotiz.id)) === 0) {
+          const cobros = generarCobranzas(cotiz, pedido.lineas, hoyAR());
+          await data.crearCobranzas(cobros.map((c) => ({ cotizacion_id: cotiz.id, ...c })));
+          if (cobros.length > 0) toast.exito(cobros.length === 1 ? 'Se cargó 1 cobro en Cobranzas.' : `Se cargaron ${cobros.length} cobros en Cobranzas.`);
+        } else if (anterior === 'Ganada') {
+          await data.borrarCobranzasPendientes(cotiz.id);
+        }
+      } catch (e) {
+        toast.aviso(`La cotización quedó en ${hacia}, pero no se pudieron actualizar los cobros: ${e instanceof Error ? e.message : 'error desconocido'}`);
+      }
 
       if (hacia === 'Enviada') {
         let dias = 3;

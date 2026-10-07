@@ -245,3 +245,18 @@ export interface ProductoConCosto extends Producto {
   margen_producto: number | null;
   es_fertilizante: boolean;
 }
+
+export interface Cobranza {
+  id: string;
+  cotizacion_id: string;
+  vencimiento: string;
+  plazo_dias: number;
+  /** Monto a cobrar en USD: con financiación e IVA si la cotización lo lleva. */
+  monto_usd: number;
+  estado: 'Pendiente' | 'Cobrada';
+  cobrada_el: string | null;
+  nota: string | null;
+  created_at: string;
+  updated_at: string;
+  cotizacion?: Pick<Cotizacion, 'numero' | 'cliente_nombre' | 'canje_cultivo' | 'canje_precio_usd' | 'con_iva'> | null;
+}
