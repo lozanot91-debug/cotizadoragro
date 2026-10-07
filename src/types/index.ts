@@ -17,6 +17,8 @@ export interface Configuracion {
   margen_general: number;
   tipo_cambio_default: number;
   iva_default: number;
+  iva_fertilizantes: number;
+  iva_agroquimicos: number;
   vigencia_default: number;
   prob_borrador: number;
   prob_enviada: number;
@@ -219,6 +221,8 @@ export interface CotizacionLinea {
   flete_usd: number;
   total_usd: number;
   con_flete: boolean;
+  /** Alícuota de IVA de esta línea (%). null en cotizaciones viejas: se usa la de la cabecera. */
+  iva: number | null;
   orden: number;
 }
 

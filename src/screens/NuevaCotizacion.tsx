@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
-import { calcularLinea, calcularTotales, resolverMargen } from '@/lib/calculations';
+import { calcularLinea, calcularTotalesIva, resolverMargen } from '@/lib/calculations';
 import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
@@ -23,6 +23,23 @@ interface LineaEditable {
   margenStr: string;
   costoOverrideUSD: number | null;
   costoStr: string;
+  /** Alícuota de IVA de esta línea (%). */
+  iva: number;
+  ivaStr: string;
+}
+
+/**
+ * IVA de una línea guardada. En cotizaciones viejas (sin IVA por línea) se usa el de la cabecera,
+ * salvo que sea absurdo (hubo un error que guardaba 105% en vez de 10,5%): ahí se usa el sugerido.
+ */
+function ivaDeLinea(
+  l: CotizacionLinea,
+  cotiz: Cotizacion,
+  cfg: Configuracion
+): number {
+  if (l.iva !== null && l.iva !== undefined) return l.iva;
+  if (cotiz.iva > 0 && cotiz.iva <= 30) return cotiz.iva;
+  return l.es_fertilizante ? cfg.iva_fertilizantes : cfg.iva_agroquimicos;
 }
 
 interface LineaComparacion {
@@ -52,7 +69,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const [fecha, setFecha] = useState(hoyAR());
   const [tc, setTc] = useState('');
   const [km, setKm] = useState('');
-  const [iva, setIva] = useState('');
   const [vigencia, setVigencia] = useState('');
   const [notas, setNotas] = useState('');
   const [lineas, setLineas] = useState<LineaEditable[]>([]);
@@ -83,7 +99,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     ]);
     setConfig(cfg);
     setTc(String(cfg.tipo_cambio_default));
-    setIva(String(cfg.iva_default));
     setVigencia(String(cfg.vigencia_default));
     setTarifas(tars);
     setClientes(cls);
@@ -104,7 +119,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         setFecha(cotiz.fecha);
         setTc(String(cotiz.tc));
         setKm(String(cotiz.km));
-        setIva(String(cotiz.iva));
         setVigencia(String(cotiz.vigencia_dias));
         setNotas(cotiz.notas || '');
         listaIdRef.current = cotiz.lista_id;
@@ -152,6 +166,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
             margenStr: formatInputNumber(l.margen, 1),
             costoOverrideUSD: costoOverride,
             costoStr: formatInputNumber(costoOverride ?? (l.es_fertilizante ? productoLinea.costo * 1000 : productoLinea.costo), 2),
+            iva: ivaDeLinea(l, cotiz, cfg),
+            ivaStr: formatInputNumber(ivaDeLinea(l, cotiz, cfg), 2),
           };
         });
         setLineas(lineasEdit);
@@ -165,7 +181,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         setClienteId(cotiz.cliente_id || '');
         setClienteBusqueda(cotiz.cliente_nombre || '');
         setKm(String(cotiz.km));
-        setIva(String(cotiz.iva));
         setNotas(cotiz.notas || '');
         setTc(String(cotiz.tc));
         setVigencia(String(cfg.vigencia_default));
@@ -210,6 +225,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
             margenStr: formatInputNumber(margen, 1),
             costoOverrideUSD: null,
             costoStr: formatInputNumber(costoDisplay, 2),
+            iva: ivaDeLinea(l, cotiz, cfg),
+            ivaStr: formatInputNumber(ivaDeLinea(l, cotiz, cfg), 2),
           });
         }
         setLineas(nuevasLineas);
@@ -269,7 +286,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   }, [clienteId]);
 
   const tcNum = parseNumberInput(tc);
-  const ivaNum = parseNumberInput(iva);
 
   const lineasCalc = useMemo(() => {
     return lineas.map((l) => {
@@ -285,8 +301,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   }, [lineas, tcNum, kmNum, tarifas]);
 
   const totales = useMemo(() => {
-    return calcularTotales(lineasCalc.map((l) => ({ totalUSD: l.totalUSD })), ivaNum, tcNum);
-  }, [lineasCalc, ivaNum, tcNum]);
+    return calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: l.iva })), tcNum);
+  }, [lineasCalc, tcNum]);
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   const costoZero = lineasCalc.some((l) => l.costoUSD <= 0);
@@ -307,6 +323,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       conFlete: producto.es_fertilizante, cantidadStr: '1',
       margenStr: formatInputNumber(margen, 1), costoOverrideUSD: null,
       costoStr: formatInputNumber(costoDisplay, 2),
+      iva: ivaSugerido(producto.es_fertilizante), ivaStr: formatInputNumber(ivaSugerido(producto.es_fertilizante), 2),
     }]);
     setBusqueda('');
   }
@@ -333,6 +350,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       key: Math.random().toString(36), producto: productoManual, cantidad: 1, margen, margenOriginal: margen,
       conFlete: false, cantidadStr: '1', margenStr: formatInputNumber(margen, 1),
       costoOverrideUSD: null, costoStr: formatInputNumber(costo, 2),
+      iva: ivaSugerido(false), ivaStr: formatInputNumber(ivaSugerido(false), 2),
     }]);
     setInsumoForm({ nombre: '', unid: 'un', costoUSD: '', familia: '' });
     setShowInsumoManual(false);
@@ -347,6 +365,14 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   }
   function handleMargenChange(key: string, value: string) {
     actualizarLinea(key, { margenStr: value, margen: parseNumberInput(value) });
+  }
+  /** IVA sugerido según el tipo de producto (config). Se puede editar en cada línea. */
+  function ivaSugerido(esFertilizante: boolean): number {
+    return esFertilizante ? (config?.iva_fertilizantes ?? 10.5) : (config?.iva_agroquimicos ?? 21);
+  }
+  function handleIvaChange(key: string, value: string) {
+    const n = parseNumberInput(value);
+    actualizarLinea(key, { ivaStr: value, iva: Math.min(100, Math.max(0, n)) });
   }
   function handleCostoChange(key: string, value: string) {
     actualizarLinea(key, { costoStr: value, costoOverrideUSD: parseNumberInput(value) });
@@ -386,14 +412,14 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
       costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
       margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
-      total_usd: l.totalUSD, con_flete: l.conFlete,
+      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva,
     }));
   }
 
   function buildCotizData(): Partial<Cotizacion> {
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
-      km: kmNum, iva: ivaNum, vigencia_dias: parseInt(vigencia) || 15,
+      km: kmNum, iva: totales.ivaEfectivo, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
       lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, iva_usd: totales.iva,
       total_usd: totales.total, total_ars: totales.totalARS, notas,
@@ -439,6 +465,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           if (prev.margen !== l.margen) cambiosHist.push({ tipo: 'margen', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'margen', valor_anterior: fmtMargen(prev.margen), valor_nuevo: fmtMargen(l.margen) });
           if (prev.con_flete !== l.conFlete) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'flete', valor_anterior: prev.con_flete ? 'Sí' : 'No', valor_nuevo: l.conFlete ? 'Sí' : 'No' });
           if (prev.costo_editado !== l.costoEditado) cambiosHist.push({ tipo: 'costo', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'costo editado', valor_anterior: prev.costo_editado ? 'Sí' : 'No', valor_nuevo: l.costoEditado ? 'Sí' : 'No' });
+          const ivaPrev = ivaDeLinea(prev, editData, config!);
+          if (ivaPrev !== l.iva) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'IVA', valor_anterior: `${ivaPrev}%`, valor_nuevo: `${l.iva}%` });
           if (Math.abs(prev.precio_usd - l.precioUSD) > 0.01) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'precio', valor_anterior: `USD ${formatUSD(prev.precio_usd)}`, valor_nuevo: `USD ${formatUSD(l.precioUSD)}` });
         }
       }
@@ -446,7 +474,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       // Header changes
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if (editData.km !== kmNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km', valor_anterior: String(editData.km), valor_nuevo: String(kmNum) });
-      if (editData.iva !== ivaNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'iva', valor_anterior: `${editData.iva}%`, valor_nuevo: `${ivaNum}%` });
       if (editData.cliente_nombre !== clienteBusqueda) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'cliente', valor_anterior: editData.cliente_nombre || '', valor_nuevo: clienteBusqueda });
       if (editData.vigencia_dias !== (parseInt(vigencia) || 15)) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'vigencia', valor_anterior: `${editData.vigencia_dias} días`, valor_nuevo: `${parseInt(vigencia) || 15} días` });
     }
@@ -486,20 +513,51 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     }
   }
 
-  function handleCopiarWhatsApp() {
-    const cotizTemp = { id: editData?.id || '', numero: editData?.numero || 0, ...buildCotizData(), motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
-    const msg = generarWhatsApp(cotizTemp, lineasCalc as unknown as CotizacionLinea[], config!);
-    navigator.clipboard.writeText(msg);
-    setSaveMsg({ type: 'success', text: 'Texto copiado para WhatsApp' });
-    setTimeout(() => setSaveMsg(null), 2000);
+  /** Líneas en el formato que esperan PDF / WhatsApp / Excel (CotizacionLinea). */
+  function lineasParaExport(): CotizacionLinea[] {
+    return lineasCalc.map((l, i) => ({
+      id: l.key, cotizacion_id: editData?.id || '', producto_id: l.producto.id || null,
+      cod: l.producto.cod, producto: l.producto.producto || '', familia: l.producto.familia || '',
+      proveedor: l.producto.proveedor || '', unid: l.producto.unid || '',
+      es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
+      costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
+      margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
+      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, orden: i,
+    }));
+  }
+
+  function cotizParaExport(): Cotizacion {
+    return { id: editData?.id || '', numero: editData?.numero || 0, ...buildCotizData(), motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
+  }
+  function avisarExport(type: 'success' | 'error', text: string, ms = 3000) {
+    setSaveMsg({ type, text });
+    setTimeout(() => setSaveMsg(null), ms);
+  }
+  async function handleCopiarWhatsApp() {
+    try {
+      const msg = generarWhatsApp(cotizParaExport(), lineasParaExport(), config!);
+      await navigator.clipboard.writeText(msg);
+      avisarExport('success', 'Texto copiado para WhatsApp', 2000);
+    } catch (e) {
+      console.error('Error al copiar para WhatsApp:', e);
+      avisarExport('error', 'No se pudo copiar el texto. Probá de nuevo.');
+    }
   }
   function handleDescargarPDF() {
-    const cotizTemp = { id: editData?.id || '', numero: editData?.numero || 0, ...buildCotizData(), motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
-    generarPDF(cotizTemp, lineasCalc as unknown as CotizacionLinea[], clienteSeleccionado, config!);
+    try {
+      generarPDF(cotizParaExport(), lineasParaExport(), clienteSeleccionado, config!);
+    } catch (e) {
+      console.error('Error al generar el PDF:', e);
+      avisarExport('error', 'No se pudo generar el PDF. Probá de nuevo.');
+    }
   }
   function handleDescargarExcel() {
-    const cotizTemp = { id: editData?.id || '', numero: editData?.numero || 0, ...buildCotizData(), motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
-    generarExcel(cotizTemp, lineasCalc as unknown as CotizacionLinea[]);
+    try {
+      generarExcel(cotizParaExport(), lineasParaExport());
+    } catch (e) {
+      console.error('Error al generar el Excel:', e);
+      avisarExport('error', 'No se pudo generar el Excel. Probá de nuevo.');
+    }
   }
 
   function formatFechaHora(iso: string): string {
@@ -624,7 +682,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" value={fecha} disabled={esReadOnly} onChange={(e) => setFecha(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de cambio ($/USD)</label><input type="text" value={tc} disabled={esReadOnly} onChange={(e) => setTc(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">KM destino</label><input type="number" value={km} disabled={esReadOnly} onChange={(e) => setKm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" />{kmWarning && <p className="text-xs text-red-500 mt-1">Fuera de tabla (máx. 1200 km)</p>}</div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">IVA %</label><input type="text" value={iva} disabled={esReadOnly} onChange={(e) => setIva(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
+          
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Vigencia (días)</label><input type="number" value={vigencia} disabled={esReadOnly} onChange={(e) => setVigencia(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
         </div>
       </div>
@@ -702,6 +760,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Margen %</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
                 <th className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Flete</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">IVA %</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total USD</th>
                 <th className="px-2 py-2"></th>
               </tr></thead>
@@ -714,6 +773,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
                     <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}</td>
                     <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>
                     <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalUSD)}</td>
                     <td className="px-2 py-2">{!esReadOnly && <button onClick={() => eliminarLinea(l.key)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</td>
                   </tr>
@@ -734,7 +794,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           <h3 className="text-sm font-medium text-emerald-100 mb-3">Resumen</h3>
           <div className="space-y-2">
             <div className="flex justify-between text-sm"><span className="text-emerald-100">Subtotal</span><span className="font-medium">{formatUSD(totales.subtotal)} USD</span></div>
-            <div className="flex justify-between text-sm"><span className="text-emerald-100">IVA ({formatInputNumber(ivaNum, 1)}%)</span><span className="font-medium">{formatUSD(totales.iva)} USD</span></div>
+            {totales.desglose.map((d) => (
+              <div key={d.tasa} className="flex justify-between text-sm"><span className="text-emerald-100">IVA {formatInputNumber(d.tasa, 2) || '0'}% <span className="text-emerald-200/70">(s/ {formatUSD(d.base)})</span></span><span className="font-medium">{formatUSD(d.iva)} USD</span></div>
+            ))}
+            {totales.desglose.length === 0 && <div className="flex justify-between text-sm"><span className="text-emerald-100">IVA</span><span className="font-medium">{formatUSD(0)} USD</span></div>}
             <div className="border-t border-emerald-600 pt-2 flex justify-between items-baseline"><span className="text-emerald-100">Total USD</span><span className="text-2xl font-bold">{formatUSD(totales.total)}</span></div>
             <div className="flex justify-between text-sm"><span className="text-emerald-100">Total ARS</span><span className="font-medium">$ {formatUSD(totales.totalARS, 0)}</span></div>
           </div>

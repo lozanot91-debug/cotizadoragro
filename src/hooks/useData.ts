@@ -63,6 +63,8 @@ export function useData() {
       margen_general: parseFloat(map.margen_general || '8'),
       tipo_cambio_default: parseFloat(map.tipo_cambio_default || '1400'),
       iva_default: parseFloat(map.iva_default || '10.5'),
+      iva_fertilizantes: parseFloat(map.iva_fertilizantes || '10.5'),
+      iva_agroquimicos: parseFloat(map.iva_agroquimicos || '21'),
       vigencia_default: parseInt(map.vigencia_default || '15', 10),
       prob_borrador: parseFloat(map.prob_borrador || '10'),
       prob_enviada: parseFloat(map.prob_enviada || '25'),

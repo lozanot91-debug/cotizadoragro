@@ -45,7 +45,8 @@ export default function ConfigScreen() {
       { clave: 'empresa_direccion', valor: config.empresa_direccion },
       { clave: 'margen_general', valor: String(config.margen_general) },
       { clave: 'tipo_cambio_default', valor: String(config.tipo_cambio_default) },
-      { clave: 'iva_default', valor: String(config.iva_default) },
+      { clave: 'iva_fertilizantes', valor: String(config.iva_fertilizantes) },
+      { clave: 'iva_agroquimicos', valor: String(config.iva_agroquimicos) },
       { clave: 'vigencia_default', valor: String(config.vigencia_default) },
       { clave: 'prob_borrador', valor: String(config.prob_borrador) },
       { clave: 'prob_enviada', valor: String(config.prob_enviada) },
@@ -63,8 +64,11 @@ export default function ConfigScreen() {
       if (u.clave === 'tipo_cambio_default' && prev.tipo_cambio_default !== config.tipo_cambio_default) {
         cambios.push({ tipo: 'config', campo: 'tipo de cambio default', valor_anterior: String(prev.tipo_cambio_default), valor_nuevo: String(config.tipo_cambio_default) });
       }
-      if (u.clave === 'iva_default' && prev.iva_default !== config.iva_default) {
-        cambios.push({ tipo: 'config', campo: 'IVA default', valor_anterior: `${prev.iva_default}%`, valor_nuevo: `${config.iva_default}%` });
+      if (u.clave === 'iva_fertilizantes' && prev.iva_fertilizantes !== config.iva_fertilizantes) {
+        cambios.push({ tipo: 'config', campo: 'IVA fertilizantes', valor_anterior: `${prev.iva_fertilizantes}%`, valor_nuevo: `${config.iva_fertilizantes}%` });
+      }
+      if (u.clave === 'iva_agroquimicos' && prev.iva_agroquimicos !== config.iva_agroquimicos) {
+        cambios.push({ tipo: 'config', campo: 'IVA agroquímicos', valor_anterior: `${prev.iva_agroquimicos}%`, valor_nuevo: `${config.iva_agroquimicos}%` });
       }
       if (u.clave === 'vigencia_default' && prev.vigencia_default !== config.vigencia_default) {
         cambios.push({ tipo: 'config', campo: 'vigencia default', valor_anterior: `${prev.vigencia_default} días`, valor_nuevo: `${config.vigencia_default} días` });
@@ -209,8 +213,12 @@ export default function ConfigScreen() {
               <input type="number" value={config.tipo_cambio_default} onChange={(e) => setConfig({ ...config, tipo_cambio_default: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">IVA default (%)</label>
-              <input type="number" step="0.1" value={config.iva_default} onChange={(e) => setConfig({ ...config, iva_default: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">IVA fertilizantes (%)</label>
+              <input type="number" step="0.1" value={config.iva_fertilizantes} onChange={(e) => setConfig({ ...config, iva_fertilizantes: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">IVA agroquímicos (%)</label>
+              <input type="number" step="0.1" value={config.iva_agroquimicos} onChange={(e) => setConfig({ ...config, iva_agroquimicos: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vigencia default (días)</label>

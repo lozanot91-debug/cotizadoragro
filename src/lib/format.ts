@@ -51,10 +51,17 @@ export function formatDateLong(date: string | Date): string {
   }).format(new Date(Date.UTC(anio, mes - 1, dia)));
 }
 
+/**
+ * Convierte lo que se escribe en un campo a número. Acepta formato argentino ("1.500,25")
+ * y también punto decimal ("10.5"). Un punto seguido de exactamente 3 dígitos se toma
+ * como separador de miles ("1.500" = 1500).
+ */
 export function parseNumberInput(value: string): number {
   if (!value) return 0;
-  const cleaned = value.replace(/\./g, '').replace(',', '.');
-  const n = parseFloat(cleaned);
+  let s = String(value).trim().replace(/\s/g, '');
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
 

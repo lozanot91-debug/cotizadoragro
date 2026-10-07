@@ -166,6 +166,57 @@ export function calcularTotales(
   return { subtotal, iva, total, totalARS };
 }
 
+export interface DesgloseIva { tasa: number; base: number; iva: number }
+
+export interface TotalesIva {
+  subtotal: number;
+  iva: number;
+  total: number;
+  totalARS: number;
+  /** IVA agrupado por alícuota (ej. 10,5% y 21%), de menor a mayor. */
+  desglose: DesgloseIva[];
+  /** IVA total / subtotal, en %: sirve para mostrar un único número en listados. */
+  ivaEfectivo: number;
+}
+
+/** Totales con IVA por línea: cada línea tiene su propia alícuota. */
+export function calcularTotalesIva(
+  lineas: { totalUSD: number; ivaPercent: number }[],
+  tc: number
+): TotalesIva {
+  const porTasa = new Map<number, DesgloseIva>();
+  let subtotal = 0;
+  let iva = 0;
+  for (const l of lineas) {
+    const base = l.totalUSD || 0;
+    const tasa = Math.round((l.ivaPercent || 0) * 100) / 100;
+    const ivaLinea = base * (tasa / 100);
+    subtotal += base;
+    iva += ivaLinea;
+    const g = porTasa.get(tasa) || { tasa, base: 0, iva: 0 };
+    g.base += base;
+    g.iva += ivaLinea;
+    porTasa.set(tasa, g);
+  }
+  const total = subtotal + iva;
+  return {
+    subtotal,
+    iva,
+    total,
+    totalARS: total * tc,
+    desglose: [...porTasa.values()].sort((a, b) => a.tasa - b.tasa),
+    ivaEfectivo: subtotal > 0 ? Math.round((iva / subtotal) * 10000) / 100 : 0,
+  };
+}
+
+/** Alícuota de IVA sugerida según el tipo de producto (se puede editar en cada línea). */
+export function ivaPorDefecto(
+  esFertilizante: boolean,
+  cfg: { iva_fertilizantes: number; iva_agroquimicos: number }
+): number {
+  return esFertilizante ? cfg.iva_fertilizantes : cfg.iva_agroquimicos;
+}
+
 export function resolverMargen(
   producto: ProductoConCosto,
   margenGeneral: number,
