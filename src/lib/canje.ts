@@ -71,7 +71,7 @@ export const PARAMS_CANJE_BASE: ParamsCanje = {
 /** Alícuotas de IVA para elegir (grano e insumos). */
 export const ALICUOTAS_IVA = [10.5, 21, 0];
 
-export const CULTIVOS_CANJE = ['Soja', 'Maíz', 'Trigo', 'Girasol', 'Cebada'];
+export const CULTIVOS_CANJE = ['Soja', 'Maíz', 'Trigo', 'Girasol', 'Cebada', 'Sorgo'];
 
 const num = (v: unknown, def: number) => {
   const n = typeof v === 'string' ? parseFloat(v) : (v as number);

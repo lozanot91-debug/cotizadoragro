@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { precioDelDia, relacion, resumirRelacion, seriePrecioGrano, serieRelacion } from './relacion';
-import type { PrecioGrano } from '@/types';
+import { precioDelDia, relacion, resumirRelacion, seriePizarra, seriePrecioGrano, serieRelacion, ultimaPizarra, unirSeries } from './relacion';
+import type { PizarraGrano, PrecioGrano } from '@/types';
 
 const pg = (fecha: string, cultivo: string, precio_usd: number): PrecioGrano => ({ id: fecha + cultivo, fecha, cultivo, precio_usd, destino: null, usuario_nombre: null, created_at: '', updated_at: '' });
 
@@ -47,5 +47,31 @@ describe('serieRelacion', () => {
     expect(r.promedio).toBeCloseTo(6.2 / 3, 9);
     expect(r.vsPromedioPct).toBeCloseTo((2 - 6.2 / 3) / (6.2 / 3) * 100, 9);
     expect(resumirRelacion([])).toBeNull();
+  });
+});
+
+describe('pizarras', () => {
+  const pz = (fecha: string, plaza: string, cultivo: string, precio_usd: number | null, precio_ars: number | null = null): PizarraGrano => ({ fecha, plaza, cultivo, precio_usd, precio_ars });
+  const filas = [
+    pz('2026-10-05', 'Quequén', 'Soja', 355), pz('2026-10-01', 'Quequén', 'Soja', 360),
+    pz('2026-10-06', 'Quequén', 'Girasol', 450),
+    pz('2026-10-06', 'Rosario', 'Soja', null, 560000), pz('2026-10-07', 'Rosario', 'Soja', 371.6, 560000),
+    pz('2026-10-02', 'Quequén', 'Maíz', 185),
+  ];
+  it('última de la plaza, aunque sea de días atrás (s/c los días siguientes)', () => {
+    expect(ultimaPizarra(filas, 'Quequén', 'Soja')).toMatchObject({ fecha: '2026-10-05', usd: 355, convertido: false });
+    expect(ultimaPizarra(filas, 'Quequén', 'maiz')).toMatchObject({ fecha: '2026-10-02', usd: 185 });
+    expect(ultimaPizarra(filas, 'Bahía Blanca', 'Soja')).toBeNull();
+  });
+  it('Rosario en pesos: con USD propio o convertido al TC de hoy', () => {
+    expect(ultimaPizarra(filas, 'Rosario', 'Soja', 1500)).toMatchObject({ fecha: '2026-10-07', usd: 371.6, convertido: false });
+    const solo = [pz('2026-10-06', 'Rosario', 'Soja', null, 560000)];
+    expect(ultimaPizarra(solo, 'Rosario', 'Soja', 1500)).toMatchObject({ usd: 373.33, convertido: true });
+    expect(ultimaPizarra(solo, 'Rosario', 'Soja', null)).toBeNull();
+  });
+  it('serie y unión con los cargados a mano', () => {
+    expect(seriePizarra(filas, 'Quequén', 'Soja').map((p) => p.valor)).toEqual([360, 355]);
+    expect(unirSeries([{ fecha: '2026-10-01', valor: 360 }], [{ fecha: '2026-10-01', valor: 362 }, { fecha: '2026-10-08', valor: 350 }]))
+      .toEqual([{ fecha: '2026-10-01', valor: 362 }, { fecha: '2026-10-08', valor: 350 }]);
   });
 });

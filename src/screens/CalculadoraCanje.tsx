@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye, Check } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
@@ -12,11 +12,11 @@ import {
 } from '@/lib/canje';
 import { montoCanjeDeCotizacion } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
-import { precioDelDia } from '@/lib/relacion';
-import { hoyAR } from '@/lib/fechas';
+import { PLAZAS_PIZARRA, PLAZA_DEFECTO, precioDelDia, ultimaPizarra } from '@/lib/relacion';
+import { diasEntre, hoyAR } from '@/lib/fechas';
 import { registrarCambio } from '@/lib/historial';
 import { formatDate, formatUSD } from '@/lib/format';
-import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, PrecioGrano, TipoCambioBNA } from '@/types';
+import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, PizarraGrano, PrecioGrano, TipoCambioBNA } from '@/types';
 import VistaPreviaCotizacion from '@/components/VistaPreviaCotizacion';
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
@@ -43,6 +43,8 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const [historial, setHistorial] = useState<CanjeGuardado[]>([]);
   const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
   const [preciosGrano, setPreciosGrano] = useState<PrecioGrano[]>([]);
+  const [pizarras, setPizarras] = useState<PizarraGrano[]>([]);
+  const [plaza, setPlaza] = useState<string>(PLAZA_DEFECTO);
   const [camposCliente, setCamposCliente] = useState<Campo[]>([]);
 
   // Formulario
@@ -69,6 +71,9 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     const [cls, cots, cfg, hist, convs] = await Promise.all([data.fetchClientes(), data.fetchCotizaciones(), data.fetchConfig(), data.fetchCanjes(), data.fetchConvenios()]);
     setConvenios(convs);
     data.fetchPreciosGrano(300).then(setPreciosGrano).catch(() => setPreciosGrano([]));
+    // Pizarras: se muestran las guardadas y, si tienen más de 4 h, se piden de nuevo
+    data.fetchPizarrasRecientes().then(setPizarras).catch(() => setPizarras([]));
+    void data.actualizarPizarras().then((nuevas) => { if (nuevas) data.fetchPizarrasRecientes().then(setPizarras).catch(() => {}); });
     setClientes(cls);
     setCotizaciones(cots);
     setDefaults(cfg.canje_parametros);
@@ -106,12 +111,27 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente?.id]);
   const cultivoNombre = cultivo === 'Otro' ? cultivoOtro.trim() : cultivo;
-  // Precio del grano del día (Relación insumo/grano): se sugiere y, si el precio está vacío, se carga solo
-  const precioDia = cultivoNombre ? precioDelDia(preciosGrano, cultivoNombre) : null;
+  // Precio sugerido: la pizarra de la plaza elegida (Quequén por defecto; si el último día salió sin cotización,
+  // la última que haya, con su fecha). Si alguien cargó a mano un precio más nuevo para esa plaza, ese.
+  const tcHoy = tcBna?.compra || tcRespaldo || null;
+  const pizarra = cultivoNombre ? ultimaPizarra(pizarras, plaza, cultivoNombre, tcHoy) : null;
+  const manual = cultivoNombre ? precioDelDia(preciosGrano.filter((p) => !p.destino || p.destino === plaza), cultivoNombre) : null;
+  const sugerido: { fecha: string; usd: number; origen: string; convertido: boolean } | null =
+    manual && (!pizarra || manual.fecha > pizarra.fecha) ? { fecha: manual.fecha, usd: manual.precio_usd, origen: 'cargado a mano', convertido: false }
+      : pizarra ? { fecha: pizarra.fecha, usd: pizarra.usd, origen: `pizarra ${plaza}`, convertido: pizarra.convertido } : null;
+  // Se carga solo si el precio está vacío o sigue siendo el último que se cargó solo (no lo tocaron a mano)
+  const precioAutoRef = useRef<number | null>(null);
+  const claveSugerido = sugerido ? `${plaza}|${cultivoNombre}|${sugerido.fecha}|${sugerido.usd}` : `${plaza}|${cultivoNombre}|-`;
   useEffect(() => {
-    if (precioDia && precio === 0) setPrecio(precioDia.precio_usd);
+    if (!sugerido) return;
+    if (precio === 0 || precio === precioAutoRef.current) { setPrecio(sugerido.usd); precioAutoRef.current = sugerido.usd; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [precioDia?.id]);
+  }, [claveSugerido]);
+
+  function cambiarPlaza(p: string) {
+    setPlaza(p);
+    setParams((x) => ({ ...x, destino: `${p}, condiciones cámara` }));
+  }
   const neto = netoPorTn(precio, params);
   const montoConIva = modo === 'monto' ? conIvaInsumos(monto, ivaInsumos ?? 0) : montoPorToneladas(tnIngresadas, neto);
   const tn = modo === 'monto' ? toneladasPorMonto(montoConIva, neto) : tnIngresadas;
@@ -140,7 +160,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   }
 
   function limpiar() {
-    setCotizacionId(''); setPrecio(0); setMonto(0); setTnIngresadas(0); setIvaInsumos(null); setNotas(''); setParams({ ...defaults });
+    setCotizacionId(''); setPrecio(sugerido?.usd ?? 0); precioAutoRef.current = sugerido?.usd ?? null; setMonto(0); setTnIngresadas(0); setIvaInsumos(null); setNotas(''); setParams({ ...defaults });
   }
 
   const errores: string[] = [];
@@ -251,7 +271,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
           <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
             <div><dt className="text-emerald-300 text-xs">Neto liquidación</dt><dd className="font-semibold">USD {fmt(neto)}/tn</dd></div>
             <div><dt className="text-emerald-300 text-xs">{modo === 'monto' ? 'Insumos con IVA' : 'Toneladas'}</dt><dd>{modo === 'monto' ? `USD ${fmt(montoConIva)}` : `${fmt(tn)} tn`}</dd></div>
-            {precio > 0 && neto > 0 && <div><dt className="text-emerald-300 text-xs">Descuentos</dt><dd>{fmt((1 - neto / precio) * 100, 1)} %</dd></div>}
+            {precio > 0 && neto > 0 && <div title="Gastos, impuestos y retenciones sobre el precio con IVA del grano"><dt className="text-emerald-300 text-xs">Descuentos</dt><dd>{fmt((1 - neto / (precio * (1 + params.iva_grano_pct / 100))) * 100, 1)} %</dd></div>}
           </dl>
           <div className="flex gap-2 ml-auto">
             <button onClick={() => void guardar()} disabled={guardando} className="px-3 py-2 bg-amber-400 text-emerald-950 rounded-lg text-sm font-semibold hover:bg-amber-300 disabled:opacity-60 flex items-center gap-1.5">
@@ -304,7 +324,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
               </label>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <label className="block">
                 <span className="block text-xs font-medium text-gray-600 mb-1">Cultivo</span>
                 <div className="flex gap-2">
@@ -315,15 +335,24 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                   {cultivo === 'Otro' && <input value={cultivoOtro} onChange={(e) => setCultivoOtro(e.target.value)} placeholder="Cultivo" aria-label="Otro cultivo" className={inputCls} />}
                 </div>
               </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-gray-600 mb-1">Plaza</span>
+                <select value={plaza} onChange={(e) => cambiarPlaza(e.target.value)} className={inputCls} aria-label="Plaza de la pizarra">
+                  {PLAZAS_PIZARRA.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
               <div>
-              <CampoNumero label="Precio del grano" sufijo="USD/tn" value={precio} onChange={setPrecio} ayuda={precioDia ? undefined : 'El que pasa el acopio'} />
-              {precioDia && (
-                <span className="block text-[11px] text-gray-400 mt-0.5">
-                  Precio {precioDia.fecha === hoyAR() ? 'de hoy' : `del ${formatDate(precioDia.fecha)}`}: USD {fmt(precioDia.precio_usd)}
-                  {Math.abs(precioDia.precio_usd - precio) > 0.001 && <button type="button" onClick={() => setPrecio(precioDia.precio_usd)} className="ml-1.5 text-emerald-700 font-medium hover:underline">Usar</button>}
-                </span>
-              )}
-            </div>
+                <CampoNumero label="Precio del grano" sufijo="USD/tn" value={precio} onChange={setPrecio} />
+                {sugerido ? (
+                  <span className={`block text-[11px] mt-0.5 ${diasEntre(sugerido.fecha, hoyAR()) > 7 ? 'text-amber-700' : 'text-gray-400'}`}>
+                    {sugerido.origen === 'cargado a mano' ? 'Cargado a mano' : `Pizarra ${plaza}`} {sugerido.fecha === hoyAR() ? 'de hoy' : `del ${formatDate(sugerido.fecha)}`}: USD {fmt(sugerido.usd)}
+                    {sugerido.convertido ? ' (pesos al TC comprador)' : ''}
+                    {Math.abs(sugerido.usd - precio) > 0.001 && <button type="button" onClick={() => { setPrecio(sugerido.usd); precioAutoRef.current = sugerido.usd; }} className="ml-1.5 text-emerald-700 font-medium hover:underline">Usar</button>}
+                  </span>
+                ) : cultivoNombre && (
+                  <span className="block text-[11px] text-amber-700 mt-0.5">Sin pizarra de {cultivoNombre.toLowerCase()} en {plaza}: cargalo a mano.</span>
+                )}
+              </div>
             </div>
 
             <div className="pt-4 border-t border-gray-100">

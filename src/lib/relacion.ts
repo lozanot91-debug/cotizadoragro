@@ -4,7 +4,7 @@
  * - Resto (precio por L, kg o unidad): kg de grano por unidad.
  * Los precios van sin IVA y en USD. El grano puede ir lleno (el que pasa el acopio) o neto de liquidación.
  */
-import type { PrecioGrano } from '@/types';
+import type { PizarraGrano, PrecioGrano } from '@/types';
 
 export interface PuntoPrecio { fecha: string; valor: number }
 
@@ -87,4 +87,57 @@ export function resumirRelacion(serie: PuntoRelacion[]): ResumenRelacion | null 
   const promedio = suma / serie.length;
   const actual = serie[serie.length - 1].relacion;
   return { actual, minimo, maximo, promedio, vsPromedioPct: promedio > 0 ? ((actual - promedio) / promedio) * 100 : 0 };
+}
+
+// ---- Pizarras automáticas (Bolsa de Cereales y Productos de Bahía Blanca) ----
+
+export const PLAZAS_PIZARRA = ['Quequén', 'Bahía Blanca', 'Rosario', 'Dársena'] as const;
+export const PLAZA_DEFECTO = 'Quequén';
+
+export interface PrecioPizarra {
+  fecha: string;
+  plaza: string;
+  usd: number;
+  /** El USD salió de convertir pesos al TC comprador de hoy (Rosario sin TC del día) */
+  convertido: boolean;
+  ars: number | null;
+}
+
+/** USD de una fila; si solo hay pesos, al TC indicado (o null). */
+export function usdDePizarra(p: Pick<PizarraGrano, 'precio_usd' | 'precio_ars'>, tc: number | null | undefined): { usd: number; convertido: boolean } | null {
+  if (p.precio_usd && p.precio_usd > 0) return { usd: Number(p.precio_usd), convertido: false };
+  if (p.precio_ars && p.precio_ars > 0 && tc && tc > 0) return { usd: Number(p.precio_ars) / tc, convertido: true };
+  return null;
+}
+
+/**
+ * Última pizarra con precio de una plaza y cultivo (si el último día salió sin cotización, queda la anterior
+ * con su fecha). `tcHoy` convierte los pesos de Rosario cuando no hay TC de ese día.
+ */
+export function ultimaPizarra(filas: PizarraGrano[], plaza: string, cultivo: string, tcHoy?: number | null): PrecioPizarra | null {
+  const k = normCultivo(cultivo);
+  let mejor: PizarraGrano | null = null;
+  for (const f of filas) {
+    if (f.plaza !== plaza || normCultivo(f.cultivo) !== k) continue;
+    if (!usdDePizarra(f, tcHoy)) continue;
+    if (!mejor || f.fecha > mejor.fecha) mejor = f;
+  }
+  if (!mejor) return null;
+  const u = usdDePizarra(mejor, tcHoy)!;
+  return { fecha: mejor.fecha, plaza, usd: Math.round(u.usd * 100) / 100, convertido: u.convertido, ars: mejor.precio_ars };
+}
+
+/** Serie en USD de una plaza y cultivo (solo días con USD propio, sin convertir con el TC de hoy). */
+export function seriePizarra(filas: PizarraGrano[], plaza: string, cultivo: string): PuntoPrecio[] {
+  const k = normCultivo(cultivo);
+  return filas.filter((f) => f.plaza === plaza && normCultivo(f.cultivo) === k && f.precio_usd && f.precio_usd > 0)
+    .map((f) => ({ fecha: f.fecha, valor: Number(f.precio_usd) }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+/** Une dos series por fecha; la segunda (precios cargados a mano) pisa a la primera el mismo día. */
+export function unirSeries(base: PuntoPrecio[], encima: PuntoPrecio[]): PuntoPrecio[] {
+  const m = new Map(base.map((p) => [p.fecha, p.valor]));
+  for (const p of encima) m.set(p.fecha, p.valor);
+  return [...m.entries()].map(([fecha, valor]) => ({ fecha, valor })).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }

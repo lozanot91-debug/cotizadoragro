@@ -30,6 +30,7 @@ import type {
   ComentarioFicha,
   CanjeGuardado,
   PrecioGrano,
+  PizarraGrano,
 } from '@/types';
 import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
@@ -353,6 +354,28 @@ export function useData() {
     const r: Record<string, string[]> = {};
     for (const l of (data || []) as { cotizacion_id: string; producto: string }[]) (r[l.cotizacion_id] ||= []).push(l.producto);
     return r;
+  }
+
+  // ---- Pizarras automáticas ----
+  /** Pizarras de los últimos días (todas las plazas), para el precio del día. */
+  async function fetchPizarrasRecientes(dias = 45): Promise<PizarraGrano[]> {
+    const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+    return fetchAllPaged<PizarraGrano>(() => supabase.from('pizarras_granos').select('fecha, plaza, cultivo, precio_usd, precio_ars').gte('fecha', desde).order('fecha', { ascending: false }).order('plaza').order('cultivo') as unknown as AnyFilter);
+  }
+
+  /** Historia de una plaza y cultivo. */
+  async function fetchSeriePizarra(plaza: string, cultivo: string): Promise<PizarraGrano[]> {
+    return fetchAllPaged<PizarraGrano>(() => supabase.from('pizarras_granos').select('fecha, plaza, cultivo, precio_usd, precio_ars').eq('plaza', plaza).eq('cultivo', cultivo).order('fecha') as unknown as AnyFilter);
+  }
+
+  /** Pide releer las pizarras (la función solo lo hace si la última lectura tiene más de 4 h). true si trajo datos nuevos. */
+  async function actualizarPizarras(): Promise<boolean> {
+    try {
+      const { data, error } = await supabase.functions.invoke('pizarra-granos', { body: { accion: 'actualizar' } });
+      return !error && !!data && !data.fresco && Number(data.filas) > 0;
+    } catch {
+      return false;
+    }
   }
 
   // ---- Precio del grano del día ----
@@ -1089,6 +1112,9 @@ export function useData() {
     posponerRecompra,
     fetchProductosDeCotizaciones,
     fetchPreciosGrano,
+    fetchPizarrasRecientes,
+    fetchSeriePizarra,
+    actualizarPizarras,
     cargarPrecioGrano,
     eliminarPrecioGrano,
     fetchCampos,

@@ -497,3 +497,13 @@ export interface PrecioGrano {
   created_at: string;
   updated_at: string;
 }
+
+/** Precio pizarra (de Cámara) de un día, plaza y cultivo, leído automáticamente. */
+export interface PizarraGrano {
+  fecha: string;
+  plaza: string;
+  cultivo: string;
+  /** null en Rosario cuando no hay TC comprador de ese día para convertir los pesos */
+  precio_usd: number | null;
+  precio_ars: number | null;
+}

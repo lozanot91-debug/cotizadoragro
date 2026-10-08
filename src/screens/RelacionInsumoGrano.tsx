@@ -11,10 +11,10 @@ import { buscarProductos, costoDeLista } from '@/lib/consulta';
 import { precioConMargen, resolverMargen } from '@/lib/calculations';
 import { serieDeCostos } from '@/lib/costos';
 import { CULTIVOS_CANJE, netoPorTn } from '@/lib/canje';
-import { precioDelDia, relacion, resumirRelacion, seriePrecioGrano, serieRelacion, ultimosPrecios, type PuntoRelacion } from '@/lib/relacion';
-import { hoyAR } from '@/lib/fechas';
+import { PLAZAS_PIZARRA, PLAZA_DEFECTO, precioDelDia, relacion, resumirRelacion, seriePizarra, seriePrecioGrano, serieRelacion, ultimaPizarra, unirSeries, type PuntoRelacion } from '@/lib/relacion';
+import { diasEntre, hoyAR } from '@/lib/fechas';
 import { formatDate, formatInputNumber, formatUSD } from '@/lib/format';
-import type { Configuracion, PrecioGrano, ProductoConCosto, TipoCambioBNA } from '@/types';
+import type { Configuracion, PizarraGrano, PrecioGrano, ProductoConCosto, TipoCambioBNA } from '@/types';
 
 const fmt = (n: number, d = 2) => formatUSD(n, d);
 const inputCls = 'w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500';
@@ -88,6 +88,10 @@ export default function RelacionInsumoGrano() {
   const { usuario } = useAuth();
   const [loading, setLoading] = useState(true);
   const [precios, setPrecios] = useState<PrecioGrano[]>([]);
+  // Pizarras automáticas: las recientes (todas las plazas) y la historia de la plaza y grano elegidos
+  const [plaza, setPlaza] = useState<string>(PLAZA_DEFECTO);
+  const [pizarras, setPizarras] = useState<PizarraGrano[]>([]);
+  const [seriePz, setSeriePz] = useState<PizarraGrano[] | null>(null);
   const [productos, setProductos] = useState<ProductoConCosto[]>([]);
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [tcBna, setTcBna] = useState<TipoCambioBNA | null>(null);
@@ -113,6 +117,8 @@ export default function RelacionInsumoGrano() {
     setConfig(cfg);
     if (listas[0]) setProductos(await data.fetchProductosConCosto(listas[0].id));
     void data.fetchTipoCambioBNA().then(setTcBna);
+    setPizarras(await data.fetchPizarrasRecientes());
+    void data.actualizarPizarras().then((nuevas) => { if (nuevas) data.fetchPizarrasRecientes().then(setPizarras).catch(() => {}); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
@@ -128,8 +134,20 @@ export default function RelacionInsumoGrano() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel?.id]);
 
+  // Historia de la pizarra de la plaza y grano elegidos
+  useEffect(() => {
+    let vivo = true;
+    setSeriePz(null);
+    data.fetchSeriePizarra(plaza, cultivo).then((r) => { if (vivo) setSeriePz(r); }).catch(() => { if (vivo) setSeriePz([]); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plaza, cultivo]);
+
   const resultados = useMemo(() => (sel ? [] : buscarProductos(productos, busqueda, 10)), [productos, busqueda, sel]);
-  const ultimos = useMemo(() => [...ultimosPrecios(precios).values()].sort((a, b) => a.cultivo.localeCompare(b.cultivo, 'es')), [precios]);
+  const tcCompra = tcBna?.compra || config?.tipo_cambio_default || null;
+  // Precios cargados a mano para esta plaza (los viejos sin destino valen para todas)
+  const manuales = useMemo(() => precios.filter((p) => !p.destino || p.destino === plaza), [precios, plaza]);
+  const tablero = useMemo(() => CULTIVOS_CANJE.map((c) => ({ cultivo: c, pz: ultimaPizarra(pizarras, plaza, c, tcCompra) })), [pizarras, plaza, tcCompra]);
   const tcVenta = tcBna?.venta || config?.tipo_cambio_default || 0;
   const margen = sel && config ? resolverMargen(sel, config.margen_general, []) : 0;
 
@@ -142,7 +160,12 @@ export default function RelacionInsumoGrano() {
   /** Precio del grano que se compara (lleno o neto de la liquidación por defecto). */
   const precioGrano = useCallback((p: number) => (baseGrano === 'neto' && config ? netoPorTn(p, config.canje_parametros) : p), [baseGrano, config]);
 
-  const granoHoy = precioDelDia(precios, cultivo);
+  // Grano de hoy: la última pizarra de la plaza; si hay uno cargado a mano más nuevo, ese
+  const pzHoy = ultimaPizarra(seriePz ?? pizarras, plaza, cultivo, tcCompra);
+  const manualHoy = precioDelDia(manuales, cultivo);
+  const granoHoy = manualHoy && (!pzHoy || manualHoy.fecha > pzHoy.fecha)
+    ? { fecha: manualHoy.fecha, precio_usd: manualHoy.precio_usd, origen: 'cargado a mano' }
+    : pzHoy ? { fecha: pzHoy.fecha, precio_usd: pzHoy.usd, origen: `pizarra ${plaza}${pzHoy.convertido ? ', pesos al TC comprador' : ''}` } : null;
   const costoHoy = sel ? costoDeLista(sel) : null;
   const insumoHoy = costoHoy ? precioInsumo(costoHoy.valor) : 0;
   const relHoy = sel && granoHoy ? relacion(insumoHoy, precioGrano(granoHoy.precio_usd), sel.es_fertilizante) : 0;
@@ -151,9 +174,9 @@ export default function RelacionInsumoGrano() {
   const serie = useMemo(() => {
     if (!sel || !historiaInsumo) return [];
     const ins = serieDeCostos(historiaInsumo, sel.es_fertilizante).map((p) => ({ fecha: p.fecha, valor: precioInsumo(p.costo) }));
-    const gra = seriePrecioGrano(precios, cultivo).map((p) => ({ fecha: p.fecha, valor: precioGrano(p.valor) }));
+    const gra = unirSeries(seriePizarra(seriePz ?? [], plaza, cultivo), seriePrecioGrano(manuales, cultivo)).map((p) => ({ fecha: p.fecha, valor: precioGrano(p.valor) }));
     return serieRelacion(ins, gra, sel.es_fertilizante);
-  }, [sel, historiaInsumo, precios, cultivo, precioInsumo, precioGrano]);
+  }, [sel, historiaInsumo, seriePz, manuales, plaza, cultivo, precioInsumo, precioGrano]);
   const resumen = resumirRelacion(serie);
 
   async function guardarPrecio() {
@@ -161,7 +184,7 @@ export default function RelacionInsumoGrano() {
     if (fFecha > hoyAR()) { toast.aviso('La fecha no puede ser futura.'); return; }
     setGuardando(true);
     try {
-      const r = await data.cargarPrecioGrano(fFecha, fCultivo, fPrecio, fDestino.trim() || null);
+      const r = await data.cargarPrecioGrano(fFecha, fCultivo, fPrecio, fDestino || plaza);
       setPrecios((ps) => [r, ...ps.filter((p) => p.id !== r.id)]);
       toast.exito(`Precio de ${fCultivo} del ${formatDate(fFecha)} guardado`);
       setFPrecio(0);
@@ -180,64 +203,73 @@ export default function RelacionInsumoGrano() {
     <div className="space-y-5">
       <div>
         <h1 className="titulo text-3xl text-emerald-900 flex items-center gap-2"><Scale className="w-7 h-7" /> Relación insumo/grano</h1>
-        <p className="text-sm text-gray-500 mt-1">Cuánto grano hace falta para pagar un insumo, hoy y en el tiempo. Se arma con el precio del grano que cargan ustedes y la lista de costos.</p>
+        <p className="text-sm text-gray-500 mt-1">Cuánto grano hace falta para pagar un insumo, hoy y en el tiempo. Se arma con la pizarra de la plaza que elijas (Quequén por defecto) y la lista de costos.</p>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-5 items-start">
-        {/* ===== Precio del grano del día ===== */}
+        {/* ===== Pizarras ===== */}
         <section className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="font-semibold text-gray-800">Precio del grano</h2>
-          {ultimos.length > 0 && (
-            <div className="grid grid-cols-2 gap-2">
-              {ultimos.map((p) => (
-                <div key={p.id} className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-xs text-gray-500">{p.cultivo}</p>
-                  <p className="font-semibold text-gray-800 tabular-nums">USD {fmt(p.precio_usd)}</p>
-                  <p className={`text-[11px] ${p.fecha === hoyAR() ? 'text-emerald-700' : 'text-gray-400'}`}>{p.fecha === hoyAR() ? 'hoy' : formatDate(p.fecha)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="rounded-lg border border-gray-200 p-3 space-y-3">
-            <p className="text-xs font-medium text-gray-600">Cargar precio</p>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1">Cultivo</span>
-                <select value={fCultivo} onChange={(e) => setFCultivo(e.target.value)} className={inputCls}>
-                  {CULTIVOS_CANJE.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-              <CampoNumero label="Precio" sufijo="USD/tn" value={fPrecio} onChange={setFPrecio} />
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1">Fecha</span>
-                <input type="date" value={fFecha} max={hoyAR()} onChange={(e) => setFFecha(e.target.value)} className={inputCls} />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1">Destino <span className="font-normal text-gray-400">(opcional)</span></span>
-                <input value={fDestino} onChange={(e) => setFDestino(e.target.value)} placeholder="Necochea" maxLength={120} className={inputCls} />
-              </label>
-            </div>
-            <button onClick={() => void guardarPrecio()} disabled={guardando} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-60 flex items-center gap-1.5">
-              {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
-            </button>
-            <p className="text-[11px] text-gray-400">Uno por cultivo y día: si ya hay uno ese día, se corrige.</p>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-gray-800">Pizarra</h2>
+            <select value={plaza} onChange={(e) => setPlaza(e.target.value)} aria-label="Plaza" className="px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500">
+              {PLAZAS_PIZARRA.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
           </div>
-          {precios.length > 0 && (
-            <details>
-              <summary className="text-sm text-emerald-700 cursor-pointer">Últimos cargados</summary>
-              <ul className="mt-2 divide-y divide-gray-100 text-sm">
-                {precios.slice(0, 20).map((p) => (
-                  <li key={p.id} className="py-1.5 flex items-center justify-between gap-2">
-                    <span className="text-gray-600">{formatDate(p.fecha)} · {p.cultivo}{p.destino ? ` · ${p.destino}` : ''}</span>
-                    <span className="flex items-center gap-1">
-                      <span className="tabular-nums text-gray-800">{fmt(p.precio_usd)}</span>
-                      {usuario.rol === 'admin' && <button onClick={() => void borrarPrecio(p)} className="p-1 text-gray-300 hover:text-red-600" aria-label="Borrar precio"><Trash2 className="w-3.5 h-3.5" /></button>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          <div className="grid grid-cols-2 gap-2">
+            {tablero.map(({ cultivo: c, pz }) => (
+              <button key={c} type="button" onClick={() => setCultivo(c)}
+                className={`text-left rounded-lg px-3 py-2 border ${c === cultivo ? 'border-emerald-400 bg-emerald-50/60' : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}>
+                <p className="text-xs text-gray-500">{c}</p>
+                {pz ? <>
+                  <p className="font-semibold text-gray-800 tabular-nums">USD {fmt(pz.usd)}</p>
+                  <p className={`text-[11px] ${diasEntre(pz.fecha, hoyAR()) > 7 ? 'text-amber-700' : 'text-gray-400'}`}>{formatDate(pz.fecha)}{pz.convertido ? ' · de $' : ''}</p>
+                </> : <p className="text-[11px] text-gray-400 mt-1">Sin cotización reciente</p>}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-400">Precios de Cámara de la Bolsa de Cereales y Productos de Bahía Blanca, en USD/tn. Se actualizan solos los días hábiles. Si un día sale sin cotización, queda la última con su fecha.{plaza === 'Rosario' ? ' Rosario cotiza en pesos: se pasa a USD con el comprador del BNA.' : ''}</p>
+
+          <details className="rounded-lg border border-gray-200">
+            <summary className="px-3 py-2 text-sm text-gray-700 cursor-pointer">Cargar un precio a mano <span className="text-xs text-gray-400">(si el acopio pasa otro)</span></summary>
+            <div className="px-3 pb-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="block text-xs font-medium text-gray-600 mb-1">Cultivo</span>
+                  <select value={fCultivo} onChange={(e) => setFCultivo(e.target.value)} className={inputCls}>
+                    {CULTIVOS_CANJE.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                <CampoNumero label="Precio" sufijo="USD/tn" value={fPrecio} onChange={setFPrecio} />
+                <label className="block">
+                  <span className="block text-xs font-medium text-gray-600 mb-1">Fecha</span>
+                  <input type="date" value={fFecha} max={hoyAR()} onChange={(e) => setFFecha(e.target.value)} className={inputCls} />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium text-gray-600 mb-1">Plaza</span>
+                  <select value={fDestino || plaza} onChange={(e) => setFDestino(e.target.value)} className={inputCls}>
+                    {PLAZAS_PIZARRA.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button onClick={() => void guardarPrecio()} disabled={guardando} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-60 flex items-center gap-1.5">
+                {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+              </button>
+              <p className="text-[11px] text-gray-400">Pisa a la pizarra de esa plaza mientras sea el precio más nuevo. Uno por cultivo y día.</p>
+              {precios.length > 0 && (
+                <ul className="divide-y divide-gray-100 text-sm">
+                  {precios.slice(0, 15).map((p) => (
+                    <li key={p.id} className="py-1.5 flex items-center justify-between gap-2">
+                      <span className="text-gray-600">{formatDate(p.fecha)} · {p.cultivo}{p.destino ? ` · ${p.destino}` : ''}</span>
+                      <span className="flex items-center gap-1">
+                        <span className="tabular-nums text-gray-800">{fmt(p.precio_usd)}</span>
+                        {usuario.rol === 'admin' && <button onClick={() => void borrarPrecio(p)} className="p-1 text-gray-300 hover:text-red-600" aria-label="Borrar precio"><Trash2 className="w-3.5 h-3.5" /></button>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
         </section>
 
         {/* ===== Relación ===== */}
@@ -291,11 +323,11 @@ export default function RelacionInsumoGrano() {
           {!sel ? (
             <p className="text-sm text-gray-500 py-6 text-center">Elegí un insumo para ver cuánto {cultivo.toLowerCase()} hace falta para pagarlo.</p>
           ) : !granoHoy ? (
-            <p className="text-sm text-amber-700 py-6 text-center">No hay precio de {cultivo.toLowerCase()} cargado. Cargalo a la izquierda.</p>
+            <p className="text-sm text-amber-700 py-6 text-center">No hay pizarra de {cultivo.toLowerCase()} en {plaza}. Elegí otra plaza o cargalo a mano.</p>
           ) : (
             <>
               <div className="rounded-xl bg-emerald-900 text-white px-5 py-4">
-                <p className="text-emerald-300 text-xs">Hoy, con {cultivo.toLowerCase()} a USD {fmt(precioGrano(granoHoy.precio_usd))}/tn{baseGrano === 'neto' ? ' neto' : ''} ({granoHoy.fecha === hoyAR() ? 'precio de hoy' : `precio del ${formatDate(granoHoy.fecha)}`})</p>
+                <p className="text-emerald-300 text-xs">Hoy, con {cultivo.toLowerCase()} a USD {fmt(precioGrano(granoHoy.precio_usd))}/tn{baseGrano === 'neto' ? ' neto' : ''} ({granoHoy.origen} {granoHoy.fecha === hoyAR() ? 'de hoy' : `del ${formatDate(granoHoy.fecha)}`})</p>
                 <p className="cifra text-5xl mt-1">{fmt(relHoy)} <span className="text-lg font-semibold text-amber-300">{unidad}</span></p>
                 <p className="text-sm text-emerald-100 mt-1">
                   {sel.es_fertilizante
