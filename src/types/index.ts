@@ -307,3 +307,18 @@ export interface TipoCambioBNA {
   /** true si el BNA no respondió y es la última lectura guardada */
   desactualizado: boolean;
 }
+
+/** Campo de un cliente. */
+export interface Campo {
+  id: string;
+  cliente_id: string;
+  nombre: string;
+  superficie_ha: number | null;
+  localidad: string | null;
+  km_puerto: number | null;
+  /** Planta asignada */
+  planta: string | null;
+  km_planta: number | null;
+  created_at: string;
+  updated_at: string;
+}

@@ -1,0 +1,53 @@
+/** Cálculos de la pantalla de consulta rápida (costo de un insumo y flete por km). */
+import type { ProductoConCosto, TarifaFlete } from '@/types';
+import { buscarTarifa, calcularFleteUSD } from '@/lib/calculations';
+
+export interface FleteConsulta {
+  /** Km que se usan para buscar la tarifa (redondeado hacia arriba) */
+  km: number;
+  /** Pesos por tonelada */
+  pesosTn: number;
+  /** USD por tonelada al TC indicado */
+  usdTn: number;
+}
+
+/**
+ * Flete por tonelada para una distancia. Usa la misma tarifa y fórmula que la cotización
+ * (la tabla guarda el valor por 100 kg: × 10 = por tonelada). Null si no hay tarifa para esos km.
+ */
+export function fleteConsulta(km: number, tarifas: TarifaFlete[], tc: number): FleteConsulta | null {
+  if (!(km > 0)) return null;
+  const tarifa = buscarTarifa(km, tarifas);
+  if (tarifa === null) return null;
+  return { km: Math.ceil(km), pesosTn: tarifa * 10, usdTn: calcularFleteUSD(tarifa, tc) };
+}
+
+/** Costo de lista para mostrar: fertilizantes por tonelada, el resto por unidad, en la moneda de la lista. */
+export function costoDeLista(p: Pick<ProductoConCosto, 'costo' | 'es_fertilizante' | 'unid' | 'moneda'>) {
+  return {
+    valor: p.es_fertilizante ? p.costo * 1000 : p.costo,
+    unidad: p.es_fertilizante ? 'tn' : (p.unid || 'unidad').toLowerCase(),
+    moneda: p.moneda,
+  };
+}
+
+/** Busca por código, nombre, proveedor o familia; todas las palabras tienen que aparecer. */
+export function buscarProductos<T extends Pick<ProductoConCosto, 'cod' | 'producto' | 'proveedor' | 'familia'>>(
+  productos: T[], texto: string, max = 12
+): T[] {
+  const palabras = normalizar(texto).split(/\s+/).filter(Boolean);
+  if (!palabras.length) return [];
+  const out: T[] = [];
+  for (const p of productos) {
+    const h = normalizar(`${p.cod} ${p.producto} ${p.proveedor || ''} ${p.familia || ''}`);
+    if (palabras.every((w) => h.includes(w))) {
+      out.push(p);
+      if (out.length >= max) break;
+    }
+  }
+  return out;
+}
+
+function normalizar(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}

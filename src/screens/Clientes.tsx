@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import CamposCliente from '@/components/CamposCliente';
 import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
@@ -28,7 +29,7 @@ export default function Clientes() {
   const [tareasCliente, setTareasCliente] = useState<Tarea[]>([]);
   const [visitasCliente, setVisitasCliente] = useState<Visita[]>([]);
   const [configCli, setConfigCli] = useState<Configuracion | null>(null);
-  const [tabCli, setTabCli] = useState<'cotizaciones' | 'productos' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
+  const [tabCli, setTabCli] = useState<'cotizaciones' | 'campos' | 'productos' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
 
   const [modalEliminar, setModalEliminar] = useState<Cliente | null>(null);
 
@@ -215,13 +216,16 @@ export default function Clientes() {
         })()}
 
         {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit max-w-full overflow-x-auto [&>button]:whitespace-nowrap">
           <button onClick={() => setTabCli('cotizaciones')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'cotizaciones' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Cotizaciones</button>
+          <button onClick={() => setTabCli('campos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'campos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Campos</button>
           <button onClick={() => setTabCli('productos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'productos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Productos</button>
           <button onClick={() => setTabCli('tareas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'tareas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Tareas</button>
           <button onClick={() => setTabCli('visitas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'visitas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Visitas</button>
           <button onClick={() => setTabCli('timeline')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'timeline' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Línea de tiempo</button>
         </div>
+
+        {tabCli === 'campos' && <CamposCliente cliente={detalle} />}
 
         {/* Tab: Cotizaciones (includes márgenes) */}
         {tabCli === 'cotizaciones' && (

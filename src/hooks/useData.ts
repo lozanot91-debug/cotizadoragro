@@ -19,6 +19,7 @@ import type {
   Visita,
   VisitaFoto,
   TipoCambioBNA,
+  Campo,
 } from '@/types';
 import { hoyAR } from '@/lib/fechas';
 import { usuarioActual } from '@/lib/usuarioActual';
@@ -92,6 +93,30 @@ export function useData() {
     } catch {
       return null;
     }
+  }
+
+  // ---- Campos de clientes ----
+  async function fetchCampos(clienteId: string): Promise<Campo[]> {
+    const data = await ok(supabase.from('campos').select('*').eq('cliente_id', clienteId).order('nombre'));
+    return (data || []) as Campo[];
+  }
+
+  /** Plantas ya usadas en algún campo (para sugerirlas al cargar). */
+  async function fetchPlantas(): Promise<string[]> {
+    const data = await ok(supabase.from('campos').select('planta').not('planta', 'is', null).limit(1000));
+    return [...new Set((data || []).map((r: { planta: string | null }) => (r.planta || '').trim()).filter(Boolean))].sort();
+  }
+
+  async function guardarCampo(campo: Omit<Campo, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Promise<Campo> {
+    const { id, ...resto } = campo;
+    const q = id
+      ? supabase.from('campos').update({ ...resto, updated_at: new Date().toISOString() }).eq('id', id).select('*').single()
+      : supabase.from('campos').insert(resto).select('*').single();
+    return (await ok(q)) as Campo;
+  }
+
+  async function eliminarCampo(id: string) {
+    await ok(supabase.from('campos').delete().eq('id', id));
   }
 
   async function updateConfig(clave: string, valor: string) {
@@ -711,6 +736,10 @@ export function useData() {
   return {
     fetchConfig,
     fetchTipoCambioBNA,
+    fetchCampos,
+    fetchPlantas,
+    guardarCampo,
+    eliminarCampo,
     updateConfig,
     fetchFamiliasConfig,
     upsertFamiliaConfig,

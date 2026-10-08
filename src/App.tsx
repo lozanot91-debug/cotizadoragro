@@ -18,6 +18,7 @@ import Recotizar from '@/screens/Recotizar';
 import Rentabilidad from '@/screens/Rentabilidad';
 import Vencimientos from '@/screens/Vencimientos';
 import Cobranzas from '@/screens/Cobranzas';
+import ConsultaCostos from '@/screens/ConsultaCostos';
 import EvolucionCostos from '@/screens/EvolucionCostos';
 import PedidosMesa from '@/screens/PedidosMesa';
 import PublicoMesa from '@/screens/PublicoMesa';
@@ -131,6 +132,7 @@ function AppContent() {
       {screen === 'cobranzas' && <Cobranzas onEdit={handleEditCotiz} />}
       {screen === 'pedidos' && <PedidosMesa onEdit={handleEditCotiz} />}
       {screen === 'costos' && <EvolucionCostos />}
+      {screen === 'consulta' && <ConsultaCostos />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}

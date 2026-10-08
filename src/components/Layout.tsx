@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import SinConexion from '@/components/SinConexion';
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta';
 
 interface Props {
   current: Screen;
@@ -33,6 +33,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
     { id: 'vencimientos', label: 'Vencimientos', icon: CalendarClock, badge: vencBadge },
     { id: 'pedidos', label: 'Pedidos a mesa', icon: ClipboardList, badge: pedidoBadge },
     { id: 'recotizar', label: 'Recotizar', icon: RefreshCw },
+    { id: 'consulta', label: 'Consulta de costos', icon: SearchCheck },
     { id: 'cobranzas', label: 'Cobranzas', icon: Wallet, badge: cobroBadge },
     { id: 'tareas', label: 'Tareas', icon: CheckSquare, badge: taskBadge },
     { id: 'visitas', label: 'Visitas', icon: MapPin },
