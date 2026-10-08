@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { elegirConvenio, elegirConvenioVigente, conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
+import { elegirConvenio, elegirConvenioVigente } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
@@ -7,8 +7,10 @@ import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, t
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
-import type { ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
+import type { Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
+import FleteCotizacion from '@/components/FleteCotizacion';
+import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizacion } from '@/lib/fleteTramos';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
 import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2, ClipboardList } from 'lucide-react';
@@ -60,6 +62,16 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [convenioId, setConvenioId] = useState<string | null>(null);
   const convenio = useMemo(() => elegirConvenio(convenios, convenioId), [convenios, convenioId]);
   const tarifas = useMemo<TarifaFlete[]>(() => convenio?.tarifas ?? [], [convenio]);
+  // Flete por tramos: directo, largo o largo + corto (el corto con su propio convenio y km)
+  const [modalidad, setModalidad] = useState<ModalidadFlete>('directo');
+  const [convenioCortoId, setConvenioCortoId] = useState<string | null>(null);
+  const convenioCorto = useMemo(() => elegirConvenio(convenios, convenioCortoId), [convenios, convenioCortoId]);
+  const tarifasCorto = useMemo<TarifaFlete[]>(() => convenioCorto?.tarifas ?? [], [convenioCorto]);
+  const [kmCorto, setKmCorto] = useState('');
+  const [plantas, setPlantas] = useState<Planta[]>([]);
+  const [camposCliente, setCamposCliente] = useState<Campo[]>([]);
+  const [campoId, setCampoId] = useState<string | null>(null);
+  const campoSel = useMemo(() => camposCliente.find((c) => c.id === campoId) ?? null, [camposCliente, campoId]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -91,7 +103,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [busqueda, setBusqueda] = useState('');
   const [editData, setEditData] = useState<Cotizacion | null>(null);
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [kmWarning, setKmWarning] = useState(false);
   const listaIdRef = useRef<string | null>(null);
   const [origenId, setOrigenId] = useState<string | null>(null);
   const [origenNumero, setOrigenNumero] = useState<number | null>(null);
@@ -131,6 +142,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       data.fetchClientes(),
     ]);
     setConvenios(convs);
+    data.fetchPlantasFlete().then(setPlantas).catch((e) => console.error('No se pudieron cargar las plantas:', e));
     // Nueva: el predeterminado. Editar / Recotizar: el de la cotización (si se borró, el predeterminado)
     // Una cotización guardada conserva su convenio aunque ya no esté vigente; nueva o Recotizar usan uno vigente
     let convSel = elegirConvenioVigente(convs, null)?.id ?? null;
@@ -139,6 +151,19 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       convSel = (editId ? elegirConvenio(convs, conConvenio.convenio_flete_id) : elegirConvenioVigente(convs, conConvenio.convenio_flete_id))?.id ?? convSel;
     }
     setConvenioId(convSel);
+    const modal: ModalidadFlete = esModalidad(conConvenio?.flete_modalidad) ? conConvenio!.flete_modalidad! : 'directo';
+    let cortoSel = elegirConvenioVigente(convs, null)?.id ?? null;
+    if (modal === 'largo_corto' && conConvenio?.convenio_corto_id) {
+      cortoSel = (editId ? elegirConvenio(convs, conConvenio.convenio_corto_id) : elegirConvenioVigente(convs, conConvenio.convenio_corto_id))?.id ?? cortoSel;
+    }
+    setModalidad(modal);
+    setConvenioCortoId(cortoSel);
+    setKmCorto(modal === 'largo_corto' && conConvenio?.km_corto ? String(conConvenio.km_corto).replace('.', ',') : '');
+    setCampoId(conConvenio?.campo_id ?? null);
+    const tramosOrigen = (km0: number) => tramosDeCotizacion({
+      modalidad: modal, km: km0, tarifas: elegirConvenio(convs, convSel)?.tarifas ?? [],
+      kmCorto: Number(conConvenio?.km_corto) || 0, tarifasCorto: elegirConvenio(convs, cortoSel)?.tarifas ?? [],
+    });
     const tars = elegirConvenio(convs, convSel)?.tarifas ?? [];
     setConfig(cfg);
     setTc(String(cfg.tipo_cambio_default));
@@ -266,7 +291,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
           const calc = calcularLinea({
             producto: prod, cantidad: l.cantidad, margen, conFlete: l.con_flete,
-            tc: parseFloat(cotiz.tc.toString()), km: cotiz.km, tarifaFlete: tars,
+            tc: parseFloat(cotiz.tc.toString()), km: cotiz.km, tarifaFlete: tars, tramos: tramosOrigen(cotiz.km),
           });
 
           compLineas.push({
@@ -298,7 +323,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           const calc = calcularLinea({
             producto: l.producto, cantidad: l.cantidad, margen: l.margen,
             conFlete: l.conFlete, tc: parseFloat(tc || '0'), km: parseInt(km || '0') || cotiz.km,
-            tarifaFlete: tars,
+            tarifaFlete: tars, tramos: tramosOrigen(parseInt(km || '0') || cotiz.km),
           });
           return sum + calc.totalUSD;
         }, 0);
@@ -310,9 +335,49 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { load(); }, [load]);
 
-  const kmNum = parseInt(km) || 0;
-  const kmMaxTarifa = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
-  useEffect(() => { setKmWarning(kmMaxTarifa > 0 && kmNum > kmMaxTarifa); }, [kmNum, kmMaxTarifa]);
+  // Km redondeados hacia arriba, igual que la tarifa (la base guarda km enteros)
+  const kmNum = Math.ceil(parseNumberInput(km) || 0);
+  const kmCortoNum = modalidad === 'largo_corto' ? Math.ceil(parseNumberInput(kmCorto) || 0) : 0;
+  // El aviso de km fuera de planilla lo muestra cada tramo en FleteCotizacion
+  const tramos = useMemo(
+    () => tramosDeCotizacion({ modalidad, km: kmNum, tarifas, kmCorto: kmCortoNum, tarifasCorto }),
+    [modalidad, kmNum, tarifas, kmCortoNum, tarifasCorto],
+  );
+
+  // Campos del cliente, para precargar los km. Si se acaba de elegir un cliente con un solo campo, se usa ese.
+  const autoCampoRef = useRef(false);
+  useEffect(() => {
+    let vivo = true;
+    if (!clienteId) { setCamposCliente([]); return; }
+    data.fetchCampos(clienteId)
+      .then((cs) => {
+        if (!vivo) return;
+        setCamposCliente(cs);
+        if (autoCampoRef.current && cs.length === 1) { setCampoId(cs[0].id); precargarKm(modalidad, cs[0]); }
+        autoCampoRef.current = false;
+      })
+      .catch((e) => console.error('No se pudieron cargar los campos del cliente:', e));
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId]);
+  const sugeridos = useMemo(() => kmSugeridos(modalidad, campoSel, plantas), [modalidad, campoSel, plantas]);
+
+  /** Al elegir campo o modalidad se precargan los km que haya; después se pueden editar. */
+  function precargarKm(m: ModalidadFlete, campo: Campo | null) {
+    const sug = kmSugeridos(m, campo, plantas);
+    if (sug.principal) setKm(String(sug.principal.km).replace('.', ','));
+    if (sug.corto) setKmCorto(String(sug.corto.km).replace('.', ','));
+  }
+  function cambiarModalidad(m: ModalidadFlete) {
+    if (esReadOnly || m === modalidad) return;
+    setModalidad(m);
+    precargarKm(m, campoSel);
+  }
+  function cambiarCampo(id: string | null) {
+    if (esReadOnly) return;
+    setCampoId(id);
+    precargarKm(modalidad, camposCliente.find((c) => c.id === id) ?? null);
+  }
 
   const clientesFiltrados = useMemo(() => {
     if (!clienteBusqueda) return [];
@@ -358,11 +423,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         : (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo);
       const calc = calcularLinea({
         producto: l.producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
-        tc: tcNum, km: kmNum, tarifaFlete: tarifas, costoOverrideUSD: l.costoOverrideUSD,
+        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, costoOverrideUSD: l.costoOverrideUSD,
       });
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
-  }, [lineas, tcNum, kmNum, tarifas]);
+  }, [lineas, tcNum, kmNum, tarifas, tramos]);
 
   useEffect(() => {
     let vivo = true;
@@ -392,7 +457,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
-  const kmFaltante = kmNum <= 0 && lineasCalc.some((l) => l.producto.es_fertilizante && l.conFlete);
+  const hayFertConFlete = lineasCalc.some((l) => l.producto.es_fertilizante && l.conFlete);
+  const faltanKm = hayFertConFlete ? kmFaltantes(modalidad, kmNum, kmCortoNum) : [];
+  const kmFaltante = faltanKm.length > 0;
   /** Hay productos sin costo (a confirmar con la mesa de insumos): se puede guardar, pero no enviar al cliente. */
   const costoPendiente = lineasCalc.some((l) => l.costoUSD <= 0);
 
@@ -483,6 +550,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   async function seleccionarCliente(cliente: Cliente) {
     if (esReadOnly) return;
+    if (cliente.id !== clienteId) { setCampoId(null); autoCampoRef.current = true; }
     setClienteId(cliente.id);
     setClienteBusqueda(cliente.nombre);
     setClienteSeleccionado(cliente);
@@ -516,7 +584,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   function buildCotizData(): Partial<Cotizacion> {
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
-      km: kmNum, convenio_flete_id: convenio?.id ?? null, con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
+      km: kmNum, convenio_flete_id: convenio?.id ?? null,
+      flete_modalidad: modalidad, km_corto: kmCortoNum,
+      convenio_corto_id: modalidad === 'largo_corto' ? convenioCorto?.id ?? null : null, campo_id: campoId,
+      con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
       lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva,
       plazo_dias: plazoMax, tasa_mensual: hayFinanciado ? tasaNum : 0,
@@ -534,7 +605,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     if (!tcNum || tcNum <= 0) { setSaveMsg({ type: 'error', text: 'El tipo de cambio es obligatorio' }); setSaving(false); return null; }
     if (lineas.length === 0) { setSaveMsg({ type: 'error', text: 'Agregá al menos una línea' }); setSaving(false); return null; }
     if (conCanje && (!canjeNombre || canjePrecioNum <= 0)) { setSaveMsg({ type: 'error', text: 'Para el canje cargá el cultivo y el precio del grano (USD/tn), o destildá el canje.' }); setSaving(false); return null; }
-    if (kmFaltante) { setSaveMsg({ type: 'error', text: 'Hay fertilizantes con flete tildado pero no cargaste los km de destino. Cargá los km o destildá el flete.' }); setSaving(false); return null; }
+    if (kmFaltante) { setSaveMsg({ type: 'error', text: `Hay fertilizantes con flete tildado y falta${faltanKm.length > 1 ? 'n' : ''} ${faltanKm.join(' y ')}. Cargalos o destildá el flete.` }); setSaving(false); return null; }
     if (tarifaFaltante) { setSaveMsg({ type: 'error', text: 'Falta tarifa de flete. No se puede guardar.' }); setSaving(false); return null; }
 
     // If editing, compare with previous lines for historial
@@ -582,6 +653,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'convenio de flete', valor_anterior: ant ? String(ant.numero) : 'predeterminado', valor_nuevo: convenio ? String(convenio.numero) : null });
       }
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
+      if ((editData.flete_modalidad ?? 'directo') !== modalidad) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'modalidad de flete', valor_anterior: nombreModalidad(editData.flete_modalidad), valor_nuevo: nombreModalidad(modalidad) });
+      if ((Number(editData.km_corto) || 0) !== kmCortoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km corto', valor_anterior: String(Number(editData.km_corto) || 0), valor_nuevo: String(kmCortoNum) });
+      if ((editData.convenio_corto_id ?? null) !== (modalidad === 'largo_corto' ? convenioCorto?.id ?? null : null)) {
+        const ant = convenios.find((c) => c.id === editData.convenio_corto_id);
+        cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'convenio del corto', valor_anterior: ant ? String(ant.numero) : null, valor_nuevo: modalidad === 'largo_corto' && convenioCorto ? String(convenioCorto.numero) : null });
+      }
       if (editData.km !== kmNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km', valor_anterior: String(editData.km), valor_nuevo: String(kmNum) });
       if (editData.cliente_nombre !== clienteBusqueda) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'cliente', valor_anterior: editData.cliente_nombre || '', valor_nuevo: clienteBusqueda });
       if (editData.vigencia_dias !== (parseInt(vigencia) || 15)) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'vigencia', valor_anterior: `${editData.vigencia_dias} días`, valor_nuevo: `${parseInt(vigencia) || 15} días` });
@@ -873,16 +950,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               </p>
             )}
           </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">KM destino</label><input type="number" value={km} disabled={esReadOnly} onChange={(e) => setKm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" />{kmWarning && <p className="text-xs text-red-500 mt-1">Fuera de la planilla del convenio (máx. {kmMaxTarifa} km)</p>}</div>
-          <div><label htmlFor="cotiz-convenio" className="block text-sm font-medium text-gray-700 mb-1">Convenio de flete</label>
-            <select id="cotiz-convenio" value={convenio?.id ?? ''} disabled={esReadOnly || convenios.length === 0} onChange={(e) => setConvenioId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50 bg-white">
-              {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
-              {conveniosParaElegir(convenios, convenio?.id).map((c) => <option key={c.id} value={c.id}>{etiquetaConvenio(c)}</option>)}
-            </select>
-            {convenio && !convenio.vigente && <p className="text-xs text-amber-700 mt-1">Este convenio ya no está vigente.{!esReadOnly && ' Si cambiás a otro, no vas a poder volver a elegirlo.'}</p>}
-          </div>
-
           
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Vigencia (días)</label><input type="number" value={vigencia} disabled={esReadOnly} onChange={(e) => setVigencia(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
           <div className="flex items-end">
@@ -947,17 +1014,24 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         </div>
       </div>
 
+      <FleteCotizacion
+        esReadOnly={esReadOnly} tc={tcNum} modalidad={modalidad} onModalidad={cambiarModalidad}
+        campos={camposCliente} campoId={campoId} onCampo={cambiarCampo} convenios={convenios} enUso={hayFertConFlete}
+        principal={{ km, onKm: setKm, convenio, onConvenio: setConvenioId, sugerido: sugeridos.principal }}
+        corto={{ km: kmCorto, onKm: setKmCorto, convenio: convenioCorto, onConvenio: setConvenioCortoId, sugerido: sugeridos.corto }}
+      />
+
       {kmFaltante && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-          <span className="text-sm text-amber-800">Hay fertilizantes con flete tildado y falta cargar los <strong>km de destino</strong>: por eso el flete no se está sumando.</span>
+          <span className="text-sm text-amber-800">Hay fertilizantes con flete tildado y falta{faltanKm.length > 1 ? 'n' : ''} cargar los <strong>{faltanKm.join(' y ')}</strong>: por eso el flete no se está sumando bien.</span>
         </div>
       )}
 
       {tarifaFaltante && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
-          <span className="text-sm text-red-700">Falta la tarifa de flete. Cargá la tarifa desde Listas o reducí los km.</span>
+          <span className="text-sm text-red-700">Falta la tarifa de flete para esos km{modalidad === 'largo_corto' ? ' (revisá el largo y el corto)' : ''}. Cargá la planilla del convenio desde Listas o revisá los km.</span>
         </div>
       )}
 
@@ -1050,7 +1124,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                     <td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
                     <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">+ flete {formatUSD(l.fleteUSD)}</span>}</td>
-                    <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmNum <= 0 && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmFaltante && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" inputMode="numeric" value={l.plazoStr} disabled={esReadOnly} aria-label={`Plazo en días de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-14 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} />{l.plazo === 0 && <span className="block text-xs text-gray-400">contado</span>}</td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}
                     <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalFinanciado)}{l.recargoPct > 0 && <span className="block text-xs font-normal text-gray-400">contado {formatUSD(l.totalUSD)} · +{formatInputNumber(l.recargoPct, 2)}%</span>}</td>

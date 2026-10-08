@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { nombreModalidad, textoFlete } from '@/lib/fleteTramos';
 import * as XLSX from 'xlsx';
 import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/types';
 import { formatUSD, formatDate } from '@/lib/format';
@@ -144,7 +145,8 @@ export function construirPDF(
   dato('Válida hasta', `${formatDate(fechaVencimiento(cotiz))}  (${cotiz.vigencia_dias} días)`, colDer, y);
   y += 11;
   dato('Tipo de cambio', `$ ${formatUSD(cotiz.tc, 2)}`, margin, y);
-  if (cotiz.km > 0) dato('Destino', `${cotiz.km} km`, colDer, y);
+  const flete = textoFlete(cotiz);
+  if (flete) dato('Flete', flete, colDer, y);
   y += 15;
 
   // Tabla de productos. Columnas: x = borde derecho de cada columna numérica
@@ -310,6 +312,8 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Cliente': cotiz.cliente_nombre,
     'Tipo de cambio': cotiz.tc,
     'KM': cotiz.km,
+    'Modalidad de flete': nombreModalidad(cotiz.flete_modalidad),
+    ...(cotiz.flete_modalidad === 'largo_corto' ? { 'KM corto': Number(cotiz.km_corto) || 0 } : {}),
     ...(t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
     ...(cotiz.con_iva
       ? {
@@ -339,7 +343,8 @@ export function generarWhatsApp(
   msg += `Fecha: ${formatDate(cotiz.fecha)}\n`;
   msg += `Cliente: ${cotiz.cliente_nombre || '-'}\n`;
   msg += `Tipo de cambio: $${cotiz.tc}\n`;
-  if (cotiz.km > 0) msg += `Destino: ${cotiz.km} km\n`;
+  const fleteTxt = textoFlete(cotiz);
+  if (fleteTxt) msg += `Flete: ${fleteTxt}\n`;
   msg += `Vigencia: ${cotiz.vigencia_dias} días\n`;
   msg += `\n`;
 

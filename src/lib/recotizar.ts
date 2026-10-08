@@ -1,4 +1,5 @@
 import { calcularLinea, calcularTotalesIva, ivaDeLinea, recargoPorcentaje, type TotalesIva } from '@/lib/calculations';
+import { tramosDeCotizacion } from '@/lib/fleteTramos';
 import type { Configuracion, Cotizacion, CotizacionLinea, ProductoConCosto, TarifaFlete } from '@/types';
 
 export interface ResultadoRecotizar {
@@ -33,9 +34,15 @@ export function recotizar(input: {
   lineas: CotizacionLinea[];
   productos: ProductoConCosto[];
   tarifas: TarifaFlete[];
+  /** Planilla del tramo corto (solo largo + corto) */
+  tarifasCorto?: TarifaFlete[];
   config: Pick<Configuracion, 'iva_fertilizantes' | 'iva_agroquimicos'>;
 }): ResultadoRecotizar {
   const { cotiz, lineas, productos, tarifas, config } = input;
+  const tramos = tramosDeCotizacion({
+    modalidad: cotiz.flete_modalidad ?? 'directo', km: cotiz.km, tarifas,
+    kmCorto: Number(cotiz.km_corto) || 0, tarifasCorto: input.tarifasCorto ?? [],
+  });
   const porId = new Map(productos.map((p) => [p.id, p]));
   const porCod = new Map(productos.map((p) => [p.cod, p]));
 
@@ -62,10 +69,14 @@ export function recotizar(input: {
 
     const calc = calcularLinea({
       producto: prod, cantidad: l.cantidad, margen: l.margen, conFlete: l.con_flete,
-      tc: cotiz.tc, km: cotiz.km, tarifaFlete: tarifas,
+      tc: cotiz.tc, km: cotiz.km, tarifaFlete: tarifas, tramos,
       costoOverrideUSD: l.costo_editado ? l.costo_usd : null,
     });
-    if (calc.tarifaFaltante && !bloqueada) bloqueada = `Falta la tarifa de flete para ${cotiz.km} km.`;
+    if (calc.tarifaFaltante && !bloqueada) {
+      bloqueada = tramos.length > 1
+        ? `Falta la tarifa de flete para ${cotiz.km} km (largo) o ${cotiz.km_corto} km (corto).`
+        : `Falta la tarifa de flete para ${cotiz.km} km.`;
+    }
     if (l.costo_editado) costoEditado++;
 
     nuevas.push({
@@ -102,7 +113,7 @@ export function recotizar(input: {
 export function cabeceraRecotizada(
   cotiz: Cotizacion,
   r: ResultadoRecotizar,
-  datos: { fecha: string; vigenciaDias: number; listaId: string; convenioFleteId?: string | null }
+  datos: { fecha: string; vigenciaDias: number; listaId: string; convenioFleteId?: string | null; convenioCortoId?: string | null }
 ): Partial<Cotizacion> {
   return {
     cliente_id: cotiz.cliente_id,
@@ -129,5 +140,9 @@ export function cabeceraRecotizada(
     cotizacion_origen_id: cotiz.id,
     // El convenio con el que se calculó el flete (si el original dejó de estar vigente, el predeterminado)
     convenio_flete_id: datos.convenioFleteId ?? null,
+    flete_modalidad: cotiz.flete_modalidad ?? 'directo',
+    km_corto: cotiz.flete_modalidad === 'largo_corto' ? Number(cotiz.km_corto) || 0 : 0,
+    convenio_corto_id: cotiz.flete_modalidad === 'largo_corto' ? datos.convenioCortoId ?? null : null,
+    campo_id: cotiz.campo_id ?? null,
   };
 }

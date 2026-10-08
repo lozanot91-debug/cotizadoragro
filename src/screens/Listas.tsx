@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ConveniosFlete from '@/components/ConveniosFlete';
+import PlantasFlete from '@/components/PlantasFlete';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { parsearListaCostos } from '@/lib/excel';
@@ -211,6 +212,7 @@ export default function Listas() {
       )}
 
       <ConveniosFlete esAdmin={esAdmin} />
+      <PlantasFlete esAdmin={esAdmin} />
 
       {/* Mensaje */}
       {mensaje && (

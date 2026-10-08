@@ -23,6 +23,7 @@ import type {
   ConvenioFlete,
   Contacto,
   Usuario,
+  Planta,
 } from '@/types';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
@@ -106,10 +107,34 @@ export function useData() {
     return (data || []) as Campo[];
   }
 
-  /** Plantas ya usadas en algún campo (para sugerirlas al cargar). */
+  /** Nombres de plantas para sugerir al cargar un campo: las de la tabla y las ya usadas en algún campo. */
   async function fetchPlantas(): Promise<string[]> {
-    const data = await ok(supabase.from('campos').select('planta').not('planta', 'is', null).limit(1000));
-    return [...new Set((data || []).map((r: { planta: string | null }) => (r.planta || '').trim()).filter(Boolean))].sort();
+    const [data, tabla] = await Promise.all([
+      ok(supabase.from('campos').select('planta').not('planta', 'is', null).limit(1000)),
+      fetchPlantasFlete(),
+    ]);
+    const nombres = [...tabla.map((p) => p.nombre), ...(data || []).map((r: { planta: string | null }) => r.planta || '')];
+    const vistos = new Map<string, string>();
+    for (const n of nombres) { const t = n.trim(); if (t && !vistos.has(t.toLowerCase())) vistos.set(t.toLowerCase(), t); }
+    return [...vistos.values()].sort((a, b) => a.localeCompare(b, 'es'));
+  }
+
+  // ---- Plantas (con km a puerto, para el tramo largo del flete) ----
+  async function fetchPlantasFlete(): Promise<Planta[]> {
+    const data = await ok(supabase.from('plantas').select('*').order('nombre'));
+    return ((data || []) as Planta[]).map((p) => ({ ...p, km_puerto: p.km_puerto === null ? null : Number(p.km_puerto) }));
+  }
+
+  async function guardarPlanta(p: { id?: string; nombre: string; km_puerto: number | null }): Promise<Planta> {
+    const datos = { nombre: p.nombre.trim(), km_puerto: p.km_puerto };
+    const q = p.id
+      ? supabase.from('plantas').update({ ...datos, updated_at: new Date().toISOString() }).eq('id', p.id).select('*').single()
+      : supabase.from('plantas').insert(datos).select('*').single();
+    return (await ok(q)) as Planta;
+  }
+
+  async function eliminarPlanta(id: string) {
+    await ok(supabase.from('plantas').delete().eq('id', id));
   }
 
   async function guardarCampo(campo: Omit<Campo, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Promise<Campo> {
@@ -820,6 +845,9 @@ export function useData() {
     fetchTipoCambioBNA,
     fetchCampos,
     fetchPlantas,
+    fetchPlantasFlete,
+    guardarPlanta,
+    eliminarPlanta,
     guardarCampo,
     eliminarCampo,
     fetchContactos,

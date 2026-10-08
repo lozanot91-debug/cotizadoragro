@@ -41,6 +41,17 @@ describe('recotizar', () => {
     expect(r.subtotalNuevo).toBeGreaterThan(r.subtotalAnterior);
   });
 
+  it('largo + corto: suma los dos tramos y se bloquea si falta la tarifa del corto', () => {
+    const corto: TarifaFlete[] = [{ id: '25', km: 25, tarifa: 700 }];
+    const c = cotiz({ flete_modalidad: 'largo_corto', km_corto: 25 });
+    const r = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, tarifasCorto: corto, config });
+    expect(r.lineas[0].flete_usd).toBeCloseTo((3457.077 + 700) * 10 / 1400, 6);
+    const sinCorto = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, tarifasCorto: [], config });
+    expect(sinCorto.bloqueada).toContain('corto');
+    const h = cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v', convenioFleteId: 'L', convenioCortoId: 'C' });
+    expect(h).toMatchObject({ flete_modalidad: 'largo_corto', km_corto: 25, convenio_flete_id: 'L', convenio_corto_id: 'C' });
+  });
+
   it('mantiene el costo editado a mano y lo avisa', () => {
     const l = linea({ costo_usd: 700, costo_editado: true });
     const r = recotizar({ cotiz: cotiz(), lineas: [l], productos: [prod({ costo: 0.9 })], tarifas, config });

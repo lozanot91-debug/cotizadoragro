@@ -141,6 +141,16 @@ export type MotivoPerdida =
   | 'no compró'
   | 'otro';
 
+export type ModalidadFlete = 'directo' | 'largo' | 'largo_corto';
+
+export interface Planta {
+  id: string;
+  nombre: string;
+  km_puerto: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Cotizacion {
   id: string;
   numero: number;
@@ -171,8 +181,15 @@ export interface Cotizacion {
   total_ars: number;
   notas: string | null;
   /** Ganada: cantidad y precio reales por id de línea; motivo de lo que no se ganó (cantidad real menor a la cotizada). */
-  /** Convenio de flete con el que se calculó (null = el predeterminado) */
+  /** Convenio de flete con el que se calculó (null = el predeterminado). En largo + corto, el del largo. */
   convenio_flete_id?: string | null;
+  /** Fertilizantes: directo (origen → campo), largo (origen → planta) o largo + corto (+ planta → campo). */
+  flete_modalidad?: ModalidadFlete;
+  /** Tramo corto (solo largo + corto) */
+  km_corto?: number;
+  convenio_corto_id?: string | null;
+  /** Campo del cliente del que se precargaron los km */
+  campo_id?: string | null;
   cantidades_reales: Record<string, { cantidad: number; precio: number; motivo?: string | null }> | null;
   /** Ganada: subtotal realmente ganado (sin IVA ni financiación). Null si no está Ganada. */
   ganado_usd?: number | null;

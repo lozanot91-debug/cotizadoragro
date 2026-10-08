@@ -22,6 +22,7 @@ interface Fila {
   fechaLista: string | null;
   /** Convenio con el que se recalcula el flete */
   convenio: ConvenioFlete | null;
+  convenioCorto: ConvenioFlete | null;
   r: ResultadoRecotizar;
 }
 
@@ -69,7 +70,12 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
           cotiz,
           fechaLista: cotiz.lista_id ? fechaDe.get(cotiz.lista_id) || null : null,
           convenio: elegirConvenioVigente(convenios, cotiz.convenio_flete_id),
-          r: recotizar({ cotiz, lineas: ls, productos, tarifas: elegirConvenioVigente(convenios, cotiz.convenio_flete_id)?.tarifas ?? [], config }),
+          convenioCorto: cotiz.flete_modalidad === 'largo_corto' ? elegirConvenioVigente(convenios, cotiz.convenio_corto_id) : null,
+          r: recotizar({
+            cotiz, lineas: ls, productos, config,
+            tarifas: elegirConvenioVigente(convenios, cotiz.convenio_flete_id)?.tarifas ?? [],
+            tarifasCorto: elegirConvenioVigente(convenios, cotiz.convenio_corto_id)?.tarifas ?? [],
+          }),
         };
       })
       .sort((a, b) => b.cotiz.numero - a.cotiz.numero);
@@ -79,7 +85,7 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
 
   async function crear(f: Fila): Promise<Cotizacion> {
     if (!vigente || !config) throw new Error('No hay lista vigente');
-    const cabecera = cabeceraRecotizada(f.cotiz, f.r, { fecha: hoyAR(), vigenciaDias: config.vigencia_default, listaId: vigente.id, convenioFleteId: f.convenio?.id ?? null });
+    const cabecera = cabeceraRecotizada(f.cotiz, f.r, { fecha: hoyAR(), vigenciaDias: config.vigencia_default, listaId: vigente.id, convenioFleteId: f.convenio?.id ?? null, convenioCortoId: f.convenioCorto?.id ?? null });
     const nueva = await data.saveCotizacion(cabecera, f.r.lineas);
     await registrarCambio({
       tipo: 'cotizacion', cotizacion_id: nueva.id, campo: 'creación', valor_nuevo: `N° ${nueva.numero}`,
