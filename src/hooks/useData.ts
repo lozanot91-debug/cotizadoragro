@@ -21,7 +21,11 @@ import type {
   TipoCambioBNA,
   Campo,
   ConvenioFlete,
+  Contacto,
+  Usuario,
 } from '@/types';
+import type { ResumenCliente } from '@/lib/clientes';
+import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
 import { hoyAR } from '@/lib/fechas';
 import { usuarioActual } from '@/lib/usuarioActual';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
@@ -118,6 +122,55 @@ export function useData() {
 
   async function eliminarCampo(id: string) {
     await ok(supabase.from('campos').delete().eq('id', id));
+  }
+
+  // ---- Contactos de clientes ----
+  async function fetchContactos(clienteId: string): Promise<Contacto[]> {
+    const data = await ok(supabase.from('contactos').select('*').eq('cliente_id', clienteId).order('nombre'));
+    return (data || []) as Contacto[];
+  }
+
+  async function guardarContacto(c: Omit<Contacto, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Promise<Contacto> {
+    const { id, ...resto } = c;
+    const q = id
+      ? supabase.from('contactos').update({ ...resto, updated_at: new Date().toISOString() }).eq('id', id).select('*').single()
+      : supabase.from('contactos').insert(resto).select('*').single();
+    return (await ok(q)) as Contacto;
+  }
+
+  async function eliminarContacto(id: string) {
+    await ok(supabase.from('contactos').delete().eq('id', id));
+  }
+
+  /** Para la lista de clientes: contacto principal, contactos para buscar y hectáreas de sus campos. */
+  async function fetchResumenClientes(): Promise<Record<string, ResumenCliente>> {
+    const [contactos, campos] = await Promise.all([
+      fetchAllPaged<Pick<Contacto, 'cliente_id' | 'nombre' | 'cargo' | 'telefono' | 'email' | 'principal'>>(() =>
+        supabase.from('contactos').select('cliente_id, nombre, cargo, telefono, email, principal').order('id') as unknown as AnyFilter),
+      fetchAllPaged<Pick<Campo, 'cliente_id' | 'superficie_ha'>>(() =>
+        supabase.from('campos').select('cliente_id, superficie_ha').order('id') as unknown as AnyFilter),
+    ]);
+    const res: Record<string, ResumenCliente> = {};
+    const de = (id: string) => (res[id] ??= { contacto: null, textoContactos: '', telefonos: [], hectareas: 0 });
+    const porCliente = new Map<string, typeof contactos>();
+    for (const c of contactos) {
+      const r = de(c.cliente_id);
+      r.textoContactos += ` ${c.nombre} ${c.cargo || ''} ${c.email || ''}`;
+      if (c.telefono) r.telefonos.push(c.telefono);
+      porCliente.set(c.cliente_id, [...(porCliente.get(c.cliente_id) || []), c]);
+    }
+    for (const [id, cs] of porCliente) {
+      const p = contactoPrincipal(ordenarContactos(cs));
+      if (p) res[id].contacto = { nombre: p.nombre, cargo: p.cargo, telefono: p.telefono };
+    }
+    for (const c of campos) de(c.cliente_id).hectareas += c.superficie_ha || 0;
+    return res;
+  }
+
+  /** Usuarios de la app (para asignar vendedor). */
+  async function fetchUsuarios(): Promise<Usuario[]> {
+    const data = await ok(supabase.from('usuarios').select('id, email, nombre, rol').order('nombre'));
+    return ((data || []) as Usuario[]).map((u) => ({ ...u, nombre: u.nombre || u.email.split('@')[0] }));
   }
 
   async function updateConfig(clave: string, valor: string) {
@@ -765,6 +818,11 @@ export function useData() {
     fetchPlantas,
     guardarCampo,
     eliminarCampo,
+    fetchContactos,
+    guardarContacto,
+    eliminarContacto,
+    fetchResumenClientes,
+    fetchUsuarios,
     updateConfig,
     fetchFamiliasConfig,
     upsertFamiliaConfig,

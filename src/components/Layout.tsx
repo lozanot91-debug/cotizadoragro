@@ -94,7 +94,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
             <button onClick={() => { void signOut(); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-emerald-200 hover:bg-emerald-800" title="Cerrar sesión">
               <LogOut className="w-4 h-4" /> <span className="hidden sm:block">Salir</span>
             </button>
-            <button onClick={() => setMenuOpen(!menuOpen)} className="lg:hidden p-2 text-emerald-100 hover:bg-emerald-800 rounded-lg">
+            <button onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'} className="lg:hidden p-2 text-emerald-100 hover:bg-emerald-800 rounded-lg">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>

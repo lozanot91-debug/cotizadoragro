@@ -14,7 +14,7 @@ function num(v: number | null, dec = 0): string {
 }
 
 /** Campos del cliente: nombre, superficie, localidad, km a puerto, planta asignada y km a planta. */
-export default function CamposCliente({ cliente }: { cliente: Cliente }) {
+export default function CamposCliente({ cliente, onCambio }: { cliente: Cliente; onCambio?: () => void }) {
   const data = useData();
   const toast = useToast();
   const [campos, setCampos] = useState<Campo[]>([]);
@@ -56,6 +56,7 @@ export default function CamposCliente({ cliente }: { cliente: Cliente }) {
       setEditando(null);
       toast.exito(esNuevo ? 'Campo agregado' : 'Campo guardado');
       await cargar();
+      onCambio?.();
     } catch (e) { toast.error(e); } finally { setGuardando(false); }
   }
 
@@ -68,6 +69,7 @@ export default function CamposCliente({ cliente }: { cliente: Cliente }) {
       setABorrar(null);
       toast.exito('Campo eliminado');
       await cargar();
+      onCambio?.();
     } catch (e) { toast.error(e); } finally { setGuardando(false); }
   }
 

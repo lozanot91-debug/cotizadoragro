@@ -84,8 +84,30 @@ export interface Cliente {
   cuit: string | null;
   zona: string | null;
   condiciones_pago: string | null;
+  razon_social: string | null;
+  domicilio: string | null;
+  localidad: string | null;
+  /** Usuario de la app dueño de la cuenta */
+  vendedor_id: string | null;
+  estado: EstadoCliente;
+  observaciones: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+export type EstadoCliente = 'Activo' | 'Prospecto' | 'Inactivo';
+
+export interface Contacto {
+  id: string;
+  cliente_id: string;
+  nombre: string;
+  cargo: string | null;
+  telefono: string | null;
+  email: string | null;
+  notas: string | null;
+  principal: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MargenProducto {

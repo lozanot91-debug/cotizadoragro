@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { elegirConvenio, nombreConvenio } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
+import { useAuth } from '@/context/AuthContext';
+import { formClienteVacio, validarCliente } from '@/lib/clientes';
 import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, toneladasCanje, ivaDeLinea } from '@/lib/calculations';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
@@ -48,6 +50,7 @@ interface LineaComparacion {
 
 export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, onAbrirGuardada }: { editId?: string; duplicateFromId?: string; onDeleted?: () => void; onAbrirGuardada?: (id: string) => void }) {
   const data = useData();
+  const { usuario } = useAuth();
   const toast = useToast();
 
   const [config, setConfig] = useState<Configuracion | null>(null);
@@ -484,7 +487,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   async function crearClienteRapido() {
     if (!nuevoClienteNombre.trim()) return;
-    const nuevo = await data.createCliente({ nombre: nuevoClienteNombre, cuit: '', zona: '', condiciones_pago: '' });
+    const v = validarCliente({ ...formClienteVacio(usuario.id), nombre: nuevoClienteNombre });
+    if (!v.ok) return;
+    const nuevo = await data.createCliente(v.datos);
     if (nuevo) {
       setClientes([...clientes, nuevo]);
       seleccionarCliente(nuevo);

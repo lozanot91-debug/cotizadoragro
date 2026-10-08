@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import CamposCliente from '@/components/CamposCliente';
+import ContactosCliente from '@/components/ContactosCliente';
+import { useAuth } from '@/context/AuthContext';
+import { ESTADOS_CLIENTE, filtrarClientes, formClienteVacio, formDeCliente, validarCliente, type FiltroEstado, type FormCliente, type ResumenCliente } from '@/lib/clientes';
+import { linkWhatsApp } from '@/lib/contactos';
 import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
-import type { Cliente, Cotizacion, MargenCliente, ProductoConCosto, Tarea, Visita, Configuracion } from '@/types';
-import { Users, Plus, Search, X, Trash2, Edit2, Loader2, MapPin, CreditCard, FileText, AlertCircle, CheckSquare, Calendar, Clock, Activity } from 'lucide-react';
+import type { Cliente, Cotizacion, MargenCliente, ProductoConCosto, Tarea, Visita, Configuracion, Usuario, EstadoCliente } from '@/types';
+import { Users, Plus, Search, X, Trash2, Edit2, Loader2, MapPin, CreditCard, FileText, AlertCircle, CheckSquare, Calendar, Activity, Building2, UserCircle, Phone, MessageCircle, Map as MapIcon, StickyNote } from 'lucide-react';
 import { registrarCambio, fmtMargen } from '@/lib/historial';
 import { diasDesde, fechaDeTimestamp } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -14,12 +18,19 @@ import { hoyAR } from '@/lib/fechas';
 
 export default function Clientes() {
   const data = useData();
+  const { usuario } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [resumen, setResumen] = useState<Record<string, ResumenCliente>>({});
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('vigentes');
+  const [filtroVendedor, setFiltroVendedor] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [guardandoCli, setGuardandoCli] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [editando, setEditando] = useState<Cliente | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [form, setForm] = useState({ nombre: '', cuit: '', zona: '', condiciones_pago: '' });
+  const [form, setForm] = useState<FormCliente>(formClienteVacio());
   const [detalle, setDetalle] = useState<Cliente | null>(null);
   const [cotizsCliente, setCotizsCliente] = useState<Cotizacion[]>([]);
   const [lineasCliente, setLineasCliente] = useState<LineaDeCliente[]>([]);
@@ -29,14 +40,31 @@ export default function Clientes() {
   const [tareasCliente, setTareasCliente] = useState<Tarea[]>([]);
   const [visitasCliente, setVisitasCliente] = useState<Visita[]>([]);
   const [configCli, setConfigCli] = useState<Configuracion | null>(null);
-  const [tabCli, setTabCli] = useState<'cotizaciones' | 'campos' | 'productos' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
+  const [tabCli, setTabCli] = useState<'cotizaciones' | 'contactos' | 'campos' | 'productos' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
 
   const [modalEliminar, setModalEliminar] = useState<Cliente | null>(null);
 
   const cargar = useCallback(async () => {
-    const cls = await data.fetchClientes();
+    const [cls, res, us] = await Promise.all([data.fetchClientes(), data.fetchResumenClientes(), data.fetchUsuarios()]);
     setClientes(cls);
+    setResumen(res);
+    setUsuarios(us);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Recarga contactos y hectáreas de la lista (después de tocar contactos o campos). */
+  async function recargarResumen() {
+    try { setResumen(await data.fetchResumenClientes()); } catch { /* se ve en la próxima carga */ }
+  }
+
+  const nombreUsuario = (id: string | null) => (id ? usuarios.find((u) => u.id === id)?.nombre || 'Usuario dado de baja' : null);
+
+  function abrirForm(c: Cliente | null) {
+    setEditando(c);
+    setForm(c ? formDeCliente(c) : formClienteVacio(usuario.id));
+    setFormError(null);
+    setMostrarForm(true);
+  }
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
@@ -63,19 +91,30 @@ export default function Clientes() {
   }
 
   async function guardarCliente() {
-    if (!form.nombre.trim()) return;
-    if (editando) {
-      const prev = editando;
-      await data.updateCliente(editando.id, form);
-      if (prev.nombre !== form.nombre) await registrarCambio({ tipo: 'margen', entidad: `Cliente ${prev.nombre}`, campo: 'nombre', valor_anterior: prev.nombre, valor_nuevo: form.nombre });
-    } else {
-      const nuevo = await data.createCliente(form);
-      if (nuevo) await registrarCambio({ tipo: 'margen', entidad: `Cliente ${form.nombre}`, campo: 'alta', valor_nuevo: form.nombre });
+    const v = validarCliente(form);
+    if (!v.ok) { setFormError(v.error); return; }
+    setGuardandoCli(true);
+    try {
+      if (editando) {
+        const prev = editando;
+        await data.updateCliente(editando.id, v.datos);
+        const ent = `Cliente ${v.datos.nombre}`;
+        if (prev.nombre !== v.datos.nombre) await registrarCambio({ tipo: 'margen', entidad: `Cliente ${prev.nombre}`, campo: 'nombre', valor_anterior: prev.nombre, valor_nuevo: v.datos.nombre });
+        if (prev.estado !== v.datos.estado) await registrarCambio({ tipo: 'cliente', entidad: ent, campo: 'estado', valor_anterior: prev.estado, valor_nuevo: v.datos.estado });
+        if ((prev.vendedor_id || null) !== v.datos.vendedor_id) await registrarCambio({ tipo: 'cliente', entidad: ent, campo: 'vendedor', valor_anterior: nombreUsuario(prev.vendedor_id), valor_nuevo: nombreUsuario(v.datos.vendedor_id) });
+        if (detalle?.id === editando.id) setDetalle({ ...detalle, ...v.datos });
+      } else {
+        const nuevo = await data.createCliente(v.datos);
+        if (nuevo) await registrarCambio({ tipo: 'margen', entidad: `Cliente ${v.datos.nombre}`, campo: 'alta', valor_nuevo: v.datos.nombre });
+      }
+      setMostrarForm(false);
+      setEditando(null);
+      load();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'No se pudo guardar el cliente.');
+    } finally {
+      setGuardandoCli(false);
     }
-    setMostrarForm(false);
-    setEditando(null);
-    setForm({ nombre: '', cuit: '', zona: '', condiciones_pago: '' });
-    load();
   }
 
   async function confirmarEliminarCliente() {
@@ -138,9 +177,8 @@ export default function Clientes() {
     return items.sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 20);
   }
 
-  const filtrados = busqueda
-    ? clientes.filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()) || (c.cuit || '').includes(busqueda))
-    : clientes;
+  const filtrados = filtrarClientes(clientes, resumen, { busqueda, estado: filtroEstado, vendedor: filtroVendedor });
+  const hayFiltros = !!busqueda || filtroEstado !== 'vigentes' || !!filtroVendedor;
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
@@ -151,6 +189,100 @@ export default function Clientes() {
       </div>
     );
   }
+
+  const modales = (
+    <>
+      {/* Modal formulario */}
+      {mostrarForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={guardandoCli ? undefined : () => setMostrarForm(false)}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800">{editando ? 'Editar cliente' : 'Nuevo cliente'}</h3>
+              <button onClick={() => setMostrarForm(false)} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Campo id="cli-nombre" label="Nombre" requerido>
+                <input id="cli-nombre" autoFocus value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} className={INPUT} placeholder="Como lo conocen" />
+              </Campo>
+              <Campo id="cli-razon" label="Razón social">
+                <input id="cli-razon" value={form.razon_social} onChange={(e) => setForm({ ...form, razon_social: e.target.value })} className={INPUT} placeholder="Ej.: El Ombú S.A." />
+              </Campo>
+              <Campo id="cli-cuit" label="CUIT">
+                <input id="cli-cuit" inputMode="numeric" value={form.cuit} onChange={(e) => setForm({ ...form, cuit: e.target.value })} className={INPUT} />
+              </Campo>
+              <Campo id="cli-estado" label="Estado">
+                <select id="cli-estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value as EstadoCliente })} className={INPUT + ' bg-white'}>
+                  {ESTADOS_CLIENTE.map((e) => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </Campo>
+              <Campo id="cli-dom" label="Domicilio fiscal">
+                <input id="cli-dom" value={form.domicilio} onChange={(e) => setForm({ ...form, domicilio: e.target.value })} className={INPUT} />
+              </Campo>
+              <Campo id="cli-loc" label="Localidad">
+                <input id="cli-loc" value={form.localidad} onChange={(e) => setForm({ ...form, localidad: e.target.value })} className={INPUT} />
+              </Campo>
+              <Campo id="cli-zona" label="Zona">
+                <input id="cli-zona" value={form.zona} onChange={(e) => setForm({ ...form, zona: e.target.value })} className={INPUT} />
+              </Campo>
+              <Campo id="cli-vend" label="Vendedor asignado">
+                <select id="cli-vend" value={form.vendedor_id} onChange={(e) => setForm({ ...form, vendedor_id: e.target.value })} className={INPUT + ' bg-white'}>
+                  <option value="">Sin asignar</option>
+                  {usuarios.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.id === usuario.id ? ' (vos)' : ''}</option>)}
+                  {form.vendedor_id && !usuarios.some((u) => u.id === form.vendedor_id) && <option value={form.vendedor_id}>Usuario dado de baja</option>}
+                </select>
+              </Campo>
+              <div className="sm:col-span-2">
+                <Campo id="cli-pago" label="Condiciones de pago">
+                  <input id="cli-pago" value={form.condiciones_pago} onChange={(e) => setForm({ ...form, condiciones_pago: e.target.value })} className={INPUT} placeholder="Ej: 30 días, contado, etc." />
+                </Campo>
+              </div>
+              <div className="sm:col-span-2">
+                <Campo id="cli-obs" label="Observaciones">
+                  <textarea id="cli-obs" rows={3} value={form.observaciones} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} className={INPUT} placeholder="Lo que conviene saber antes de llamarlo o cotizarle" />
+                </Campo>
+              </div>
+            </div>
+            {!editando && <p className="text-xs text-gray-500 mt-3">Los contactos y los campos se cargan desde la ficha, después de crear el cliente.</p>}
+            {formError && <p role="alert" className="text-sm text-red-600 mt-3">{formError}</p>}
+            <div className="flex gap-2 justify-end mt-4">
+              <button onClick={() => setMostrarForm(false)} disabled={guardandoCli} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
+              <button
+                onClick={() => void guardarCliente()}
+                disabled={!form.nombre.trim() || guardandoCli}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {guardandoCli && <Loader2 className="w-4 h-4 animate-spin" />}
+                {editando ? 'Guardar' : 'Crear'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eliminar cliente */}
+      {modalEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setModalEliminar(null)}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-800">Eliminar cliente</h3>
+                <p className="text-sm text-gray-500">¿Eliminar a {modalEliminar.nombre}?</p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setModalEliminar(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
+              <button onClick={confirmarEliminarCliente} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   if (detalle) {
     return (
@@ -168,35 +300,60 @@ export default function Clientes() {
         </div>
 
         {/* Ficha */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xl font-bold text-gray-800">{detalle.nombre}</h2>
-            {(() => {
-              const ult = ultimoContacto();
-              if (!ult) return null;
-              const dias = diasDesde(ult);
-              const alerta = configCli && dias > configCli.ultimo_contacto_dias;
-              return <span className={`text-xs px-2 py-1 rounded-full font-medium ${alerta ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>Último contacto: hace {dias}d</span>;
-            })()}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            {detalle.cuit && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <CreditCard className="w-4 h-4 text-gray-400" /> CUIT: {detalle.cuit}
+        {(() => {
+          const res = resumen[detalle.id];
+          const principal = res?.contacto;
+          const wa = linkWhatsApp(principal?.telefono);
+          const vendedor = nombreUsuario(detalle.vendedor_id);
+          const lugar = [detalle.domicilio, detalle.localidad].filter(Boolean).join(', ');
+          return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-bold text-gray-800">{detalle.nombre}</h2>
+                    <BadgeEstado estado={detalle.estado} />
+                  </div>
+                  {detalle.razon_social && detalle.razon_social !== detalle.nombre && <p className="text-sm text-gray-500">{detalle.razon_social}</p>}
+                </div>
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const ult = ultimoContacto();
+                    if (!ult) return null;
+                    const dias = diasDesde(ult);
+                    const alerta = configCli && dias > configCli.ultimo_contacto_dias;
+                    return <span className={`text-xs px-2 py-1 rounded-full font-medium ${alerta ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>Último contacto: hace {dias}d</span>;
+                  })()}
+                  <button onClick={() => abrirForm(detalle)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Edit2 className="w-3.5 h-3.5" /> Editar datos</button>
+                </div>
               </div>
-            )}
-            {detalle.zona && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <MapPin className="w-4 h-4 text-gray-400" /> Zona: {detalle.zona}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                {detalle.cuit && <Dato icon={<CreditCard className="w-4 h-4" />} label="CUIT">{detalle.cuit}</Dato>}
+                {lugar && <Dato icon={<Building2 className="w-4 h-4" />} label="Domicilio">{lugar}</Dato>}
+                {detalle.zona && <Dato icon={<MapPin className="w-4 h-4" />} label="Zona">{detalle.zona}</Dato>}
+                {detalle.condiciones_pago && <Dato icon={<FileText className="w-4 h-4" />} label="Cond. de pago">{detalle.condiciones_pago}</Dato>}
+                <Dato icon={<UserCircle className="w-4 h-4" />} label="Vendedor">{vendedor || <span className="text-gray-400">Sin asignar</span>}</Dato>
+                <Dato icon={<MapIcon className="w-4 h-4" />} label="Superficie">
+                  {res?.hectareas ? `${formatUSD(res.hectareas, 0)} ha` : <button onClick={() => setTabCli('campos')} className="text-emerald-700 hover:underline">Cargar campos</button>}
+                </Dato>
+                <Dato icon={<Phone className="w-4 h-4" />} label="Contacto">
+                  {principal ? (
+                    <span className="inline-flex flex-wrap items-center gap-x-2">
+                      {principal.nombre}{principal.cargo && <span className="text-gray-400">({principal.cargo})</span>}
+                      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-green-700 font-medium hover:underline"><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</a>}
+                    </span>
+                  ) : <button onClick={() => setTabCli('contactos')} className="text-emerald-700 hover:underline">Agregar contacto</button>}
+                </Dato>
               </div>
-            )}
-            {detalle.condiciones_pago && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <FileText className="w-4 h-4 text-gray-400" /> Cond. de pago: {detalle.condiciones_pago}
-              </div>
-            )}
-          </div>
-        </div>
+              {detalle.observaciones && (
+                <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900 flex gap-2">
+                  <StickyNote className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                  <p className="whitespace-pre-line">{detalle.observaciones}</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Resumen comercial */}
         {(() => {
@@ -218,6 +375,7 @@ export default function Clientes() {
         {/* Tabs */}
         <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit max-w-full overflow-x-auto [&>button]:whitespace-nowrap">
           <button onClick={() => setTabCli('cotizaciones')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'cotizaciones' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Cotizaciones</button>
+          <button onClick={() => setTabCli('contactos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'contactos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Contactos</button>
           <button onClick={() => setTabCli('campos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'campos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Campos</button>
           <button onClick={() => setTabCli('productos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'productos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Productos</button>
           <button onClick={() => setTabCli('tareas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'tareas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Tareas</button>
@@ -225,7 +383,8 @@ export default function Clientes() {
           <button onClick={() => setTabCli('timeline')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'timeline' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Línea de tiempo</button>
         </div>
 
-        {tabCli === 'campos' && <CamposCliente cliente={detalle} />}
+        {tabCli === 'contactos' && <ContactosCliente cliente={detalle} onCambio={() => void recargarResumen()} />}
+        {tabCli === 'campos' && <CamposCliente cliente={detalle} onCambio={() => void recargarResumen()} />}
 
         {/* Tab: Cotizaciones (includes márgenes) */}
         {tabCli === 'cotizaciones' && (
@@ -380,6 +539,7 @@ export default function Clientes() {
             </div>
           </div>
         )}
+        {modales}
       </div>
     );
   }
@@ -389,138 +549,124 @@ export default function Clientes() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-800">Clientes</h1>
         <button
-          onClick={() => { setMostrarForm(true); setEditando(null); setForm({ nombre: '', cuit: '', zona: '', condiciones_pago: '' }); }}
+          onClick={() => abrirForm(null)}
           className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> Nuevo cliente
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o CUIT..."
-          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
-        />
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, CUIT, localidad, contacto o teléfono..."
+            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+          />
+        </div>
+        <div className="flex gap-2">
+          <select aria-label="Estado" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as FiltroEstado)} className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500 flex-1 min-w-0 w-full sm:w-auto sm:flex-none">
+            <option value="vigentes">Activos y prospectos</option>
+            {ESTADOS_CLIENTE.map((e) => <option key={e} value={e}>{e === 'Activo' ? 'Solo activos' : e === 'Prospecto' ? 'Solo prospectos' : 'Inactivos'}</option>)}
+            <option value="todos">Todos</option>
+          </select>
+          <select aria-label="Vendedor" value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)} className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500 flex-1 min-w-0 w-full sm:w-auto sm:flex-none">
+            <option value="">Todos los vendedores</option>
+            <option value={usuario.id}>Mis clientes</option>
+            {usuarios.filter((u) => u.id !== usuario.id).map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            <option value="sin">Sin vendedor</option>
+          </select>
+        </div>
       </div>
+      {hayFiltros && <p className="text-xs text-gray-500 -mt-2">{filtrados.length} de {clientes.length} clientes</p>}
 
       {filtrados.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
           <Users className="w-10 h-10 mx-auto mb-2 opacity-40" />
-          {busqueda ? 'No se encontraron clientes' : 'Todavía no hay clientes cargados'}
+          {clientes.length === 0 ? 'Todavía no hay clientes cargados' : 'No se encontraron clientes con esos filtros'}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtrados.map((c) => (
-            <div
-              key={c.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => verDetalle(c)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-gray-800 truncate">{c.nombre}</h3>
-                  {c.cuit && <p className="text-xs text-gray-400">CUIT: {c.cuit}</p>}
-                  {c.zona && <p className="text-xs text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.zona}</p>}
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setEditando(c); setForm({ nombre: c.nombre, cuit: c.cuit || '', zona: c.zona || '', condiciones_pago: c.condiciones_pago || '' }); setMostrarForm(true); }}
-                  className="p-1 text-gray-300 hover:text-gray-600"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Modal formulario */}
-      {mostrarForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setMostrarForm(false)}>
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-800">{editando ? 'Editar cliente' : 'Nuevo cliente'}</h3>
-              <button onClick={() => setMostrarForm(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-                <input
-                  type="text"
-                  value={form.nombre}
-                  onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CUIT</label>
-                <input
-                  type="text"
-                  value={form.cuit}
-                  onChange={(e) => setForm({ ...form, cuit: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Zona</label>
-                <input
-                  type="text"
-                  value={form.zona}
-                  onChange={(e) => setForm({ ...form, zona: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Condiciones de pago</label>
-                <input
-                  type="text"
-                  value={form.condiciones_pago}
-                  onChange={(e) => setForm({ ...form, condiciones_pago: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                  placeholder="Ej: 30 días, contado, etc."
-                />
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end mt-4">
-              <button onClick={() => setMostrarForm(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
-              <button
-                onClick={guardarCliente}
-                disabled={!form.nombre.trim()}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50"
+          {filtrados.map((c) => {
+            const res = resumen[c.id];
+            const vendedor = nombreUsuario(c.vendedor_id);
+            const wa = linkWhatsApp(res?.contacto?.telefono);
+            return (
+              <div
+                key={c.id}
+                className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer ${c.estado === 'Inactivo' ? 'opacity-70' : ''}`}
+                onClick={() => verDetalle(c)}
               >
-                {editando ? 'Guardar' : 'Crear'}
-              </button>
-            </div>
-          </div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <h3 className="font-semibold text-gray-800 truncate">{c.nombre}</h3>
+                      <BadgeEstado estado={c.estado} />
+                    </div>
+                    <p className="text-xs text-gray-400 flex items-center gap-1 truncate">
+                      {(c.localidad || c.zona) && <><MapPin className="w-3 h-3 flex-shrink-0" /> {c.localidad || c.zona}</>}
+                      {(c.localidad || c.zona) && res?.hectareas ? ' · ' : ''}
+                      {res?.hectareas ? `${formatUSD(res.hectareas, 0)} ha` : ''}
+                      {!c.localidad && !c.zona && !res?.hectareas && c.cuit && `CUIT ${c.cuit}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); abrirForm(c); }}
+                    className="p-1 text-gray-300 hover:text-gray-600"
+                    aria-label={`Editar ${c.nombre}`}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="mt-2 flex items-end justify-between gap-2 text-xs">
+                  <div className="min-w-0 text-gray-600">
+                    {res?.contacto
+                      ? <p className="truncate"><span className="font-medium text-gray-700">{res.contacto.nombre}</span>{res.contacto.cargo && <span className="text-gray-400"> · {res.contacto.cargo}</span>}</p>
+                      : <p className="text-gray-400">Sin contacto</p>}
+                    <p className="text-gray-400 truncate">{vendedor ? `Vendedor: ${vendedor}` : 'Sin vendedor asignado'}</p>
+                  </div>
+                  {wa && (
+                    <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex-shrink-0 p-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100" aria-label={`WhatsApp a ${res?.contacto?.nombre}`} title={`WhatsApp a ${res?.contacto?.nombre}`}>
+                      <MessageCircle className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Modal eliminar cliente */}
-      {modalEliminar && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setModalEliminar(null)}>
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800">Eliminar cliente</h3>
-                <p className="text-sm text-gray-500">¿Eliminar a {modalEliminar.nombre}?</p>
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setModalEliminar(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
-              <button onClick={confirmarEliminarCliente} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {modales}
+    </div>
+  );
+}
+
+function BadgeEstado({ estado }: { estado: EstadoCliente | null | undefined }) {
+  if (!estado || estado === 'Activo') return null;
+  const cls = estado === 'Prospecto' ? 'bg-sky-100 text-sky-800' : 'bg-gray-200 text-gray-600';
+  return <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>{estado}</span>;
+}
+
+function Dato({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 text-gray-700 min-w-0">
+      <span className="text-gray-400 mt-0.5 flex-shrink-0">{icon}</span>
+      <span className="min-w-0"><span className="text-gray-500">{label}: </span>{children}</span>
+    </div>
+  );
+}
+
+const INPUT = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none';
+
+function Campo({ id, label, requerido, children }: { id: string; label: string; requerido?: boolean; children: ReactNode }) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}{requerido && <span className="text-red-500"> *</span>}</label>
+      {children}
     </div>
   );
 }
