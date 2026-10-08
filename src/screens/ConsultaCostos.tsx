@@ -3,6 +3,7 @@ import { Search, Loader2, Truck, Package, X, ArrowUp, ArrowDown } from 'lucide-r
 import { useData } from '@/hooks/useData';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { BotonFicha } from '@/components/FichaProducto';
 import { buscarProductos, costoDeLista, fleteConsultaTramos, type FleteConsulta } from '@/lib/consulta';
 import { MODALIDADES, nombreTramoPrincipal, tieneCorto } from '@/lib/fleteTramos';
 import { formatUSD, formatDate, parseNumberInput } from '@/lib/format';
@@ -102,7 +103,7 @@ export default function ConsultaCostos() {
             <div>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-gray-900">{sel.producto}</p>
+                  <p className="font-semibold text-gray-900 flex items-center gap-1">{sel.producto} <BotonFicha cod={sel.cod} producto={sel.producto} /></p>
                   <p className="text-xs text-gray-500">{sel.cod} · {sel.proveedor || 'Sin proveedor'} · {sel.familia || 'Sin familia'}</p>
                 </div>
                 <button onClick={() => { setSel(null); setBusqueda(''); }} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" aria-label="Buscar otro"><X className="w-4 h-4" /></button>

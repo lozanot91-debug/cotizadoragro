@@ -381,6 +381,30 @@ export interface Campo {
   updated_at: string;
 }
 
+/** Ficha de un producto comercial (agrupa los códigos de sus envases). */
+export interface FichaProducto {
+  id: string;
+  nombre: string;
+  marbete_path: string | null;
+  marbete_nombre: string | null;
+  marbete_bytes: number | null;
+  marbete_subido_at: string | null;
+  marbete_subido_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComentarioFicha {
+  id: string;
+  ficha_id: string;
+  autor_id: string | null;
+  autor_nombre: string | null;
+  etiqueta: 'Manejo' | 'Posicionamiento' | 'Técnico' | null;
+  texto: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Pedido de facturación (foto de lo que se manda a facturar). */
 export interface PedidoFacturacion {
   id: string;

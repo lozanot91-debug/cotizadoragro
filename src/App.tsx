@@ -24,6 +24,7 @@ import PedidosMesa from '@/screens/PedidosMesa';
 import PublicoMesa from '@/screens/PublicoMesa';
 import PublicoFacturacion from '@/screens/PublicoFacturacion';
 import Facturacion from '@/screens/Facturacion';
+import Catalogo from '@/screens/Catalogo';
 import { vencimientos } from '@/lib/vencimientos';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -146,6 +147,7 @@ function AppContent() {
       {screen === 'facturacion' && <Facturacion onEdit={handleEditCotiz} />}
       {screen === 'costos' && <EvolucionCostos />}
       {screen === 'consulta' && <ConsultaCostos />}
+      {screen === 'catalogo' && <Catalogo />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}

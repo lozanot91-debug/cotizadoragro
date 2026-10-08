@@ -11,6 +11,7 @@ import type { Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, Produ
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import FleteCotizacion from '@/components/FleteCotizacion';
 import EnviarAFacturar from '@/components/EnviarAFacturar';
+import { BotonFicha } from '@/components/FichaProducto';
 import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizacion } from '@/lib/fleteTramos';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
@@ -1126,7 +1127,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <tbody>
                 {lineasFin.map((l) => (
                   <tr key={l.key} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{(() => {
+                    <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{l.producto.id && <BotonFicha cod={l.producto.cod} producto={l.producto.producto} />}{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{(() => {
                       const u = ultimaCotizacion(historialCliente, l.producto.cod, editId);
                       if (!u) return null;
                       const dif = u.precio > 0 ? ((l.precioUSD - u.precio) / u.precio) * 100 : 0;
