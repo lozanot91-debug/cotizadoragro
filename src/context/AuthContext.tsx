@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, llegoPorRecuperacion } from '@/lib/supabase';
 import { fijarUsuarioActual } from '@/lib/usuarioActual';
 
 export interface Usuario {
@@ -8,7 +8,6 @@ export interface Usuario {
   email: string;
   nombre: string;
   rol: 'admin' | 'vendedor';
-  puede_ver_costos: boolean;
 }
 
 interface SesionCtx {
@@ -17,6 +16,10 @@ interface SesionCtx {
   usuario: Usuario | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  /** true si se entró por el link del mail de recuperación: hay que elegir contraseña nueva */
+  recuperando: boolean;
+  pedirRecuperacion: (email: string) => Promise<{ error: string | null }>;
+  cambiarPassword: (password: string) => Promise<{ error: string | null }>;
 }
 
 const Ctx = createContext<SesionCtx | undefined>(undefined);
@@ -30,11 +33,23 @@ function traducirErrorLogin(msg: string): string {
   return 'No se pudo iniciar sesión. Intentá de nuevo.';
 }
 
+function traducirErrorRecuperacion(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes('failed to fetch') || m.includes('network')) return 'No hay conexión. Revisá tu internet e intentá de nuevo.';
+  if (m.includes('rate limit') || m.includes('too many') || m.includes('security purposes')) return 'Ya se pidió un mail hace poco. Esperá unos minutos e intentá de nuevo.';
+  if (m.includes('should be different') || m.includes('same password')) return 'La contraseña nueva tiene que ser distinta de la anterior.';
+  if (m.includes('weak') || m.includes('pwned') || m.includes('leaked')) return 'Esa contraseña es muy débil o apareció en filtraciones. Elegí otra.';
+  if (m.includes('at least')) return 'La contraseña es muy corta.';
+  if (m.includes('session') || m.includes('expired') || m.includes('invalid')) return 'El link venció. Pedí uno nuevo desde "Olvidé mi contraseña".';
+  return 'No se pudo completar. Intentá de nuevo.';
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [sesion, setSesion] = useState<Session | null>(null);
   const [perfil, setPerfil] = useState<Usuario | null>(null);
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [cargandoPerfil, setCargandoPerfil] = useState(false);
+  const [recuperando, setRecuperando] = useState(llegoPorRecuperacion);
 
   useEffect(() => {
     let vivo = true;
@@ -45,9 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       if (vivo) setCargandoSesion(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_evento, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evento, s) => {
       // Solo se guarda la sesión: no se hacen pedidos a Supabase dentro de este callback
       setSesion(s);
+      if (evento === 'PASSWORD_RECOVERY') setRecuperando(true);
+      if (evento === 'SIGNED_OUT') setRecuperando(false);
     });
     return () => { vivo = false; sub.subscription.unsubscribe(); };
   }, []);
@@ -62,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, email, nombre, rol, puede_ver_costos')
+        .select('id, email, nombre, rol')
         .eq('id', userId)
         .maybeSingle();
       if (!vivo) return;
@@ -71,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPerfil(
         data
           ? { ...(data as Usuario), nombre: (data as Usuario).nombre || email.split('@')[0] }
-          : { id: userId, email, nombre: email.split('@')[0] || 'Usuario', rol: 'vendedor', puede_ver_costos: true }
+          : { id: userId, email, nombre: email.split('@')[0] || 'Usuario', rol: 'vendedor' }
       );
       setCargandoPerfil(false);
     })();
@@ -85,6 +102,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? traducirErrorLogin(error.message) : null };
   }, []);
 
+  const pedirRecuperacion = useCallback(async (mail: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(mail.trim(), {
+      redirectTo: `${window.location.origin}/`,
+    });
+    return { error: error ? traducirErrorRecuperacion(error.message) : null };
+  }, []);
+
+  const cambiarPassword = useCallback(async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (!error) setRecuperando(false);
+    return { error: error ? traducirErrorRecuperacion(error.message) : null };
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setPerfil(null);
@@ -95,7 +125,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     usuario: userId ? perfil : null,
     signIn,
     signOut,
-  }), [cargandoSesion, cargandoPerfil, userId, perfil, signIn, signOut]);
+    recuperando: recuperando && !!userId,
+    pedirRecuperacion,
+    cambiarPassword,
+  }), [cargandoSesion, cargandoPerfil, userId, perfil, signIn, signOut, recuperando, pedirRecuperacion, cambiarPassword]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

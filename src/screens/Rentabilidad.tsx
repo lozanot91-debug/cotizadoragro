@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { TrendingUp, Loader2, AlertTriangle, Lock } from 'lucide-react';
+import { TrendingUp, Loader2, AlertTriangle } from 'lucide-react';
 import { useData } from '@/hooks/useData';
-import { useAuth } from '@/context/AuthContext';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { calcularRentabilidad, type Agrupar } from '@/lib/rentabilidad';
@@ -30,7 +29,6 @@ function desdeDe(p: Periodo, hoy: string): string | undefined {
 
 export default function Rentabilidad({ onEdit }: { onEdit: (id: string) => void }) {
   const data = useData();
-  const { usuario } = useAuth();
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [cotizs, setCotizs] = useState<Cotizacion[]>([]);
@@ -45,7 +43,7 @@ export default function Rentabilidad({ onEdit }: { onEdit: (id: string) => void 
     setConfig(cfg); setCotizs(cs); setLineas(ls);
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
-  useEffect(() => { if (usuario.puede_ver_costos) void load(); else setLoading(false); }, [load, usuario.puede_ver_costos]);
+  useEffect(() => { void load(); }, [load]);
 
   const hoy = hoyAR();
   const resumen = useMemo(
@@ -58,14 +56,6 @@ export default function Rentabilidad({ onEdit }: { onEdit: (id: string) => void 
   const filas = resumen.filas[agrupar];
   const bajoUmbral = filas.filter((f) => f.venta > 0 && f.margenPct < umbral).length;
 
-  if (!usuario.puede_ver_costos) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
-        <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-        Tu usuario no tiene permiso para ver costos y rentabilidad.
-      </div>
-    );
-  }
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
 

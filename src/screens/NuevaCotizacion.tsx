@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
-import { useAuth } from '@/context/AuthContext';
 import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, toneladasCanje, ivaDeLinea } from '@/lib/calculations';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
@@ -102,8 +101,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const autoAplicadoRef = useRef<string | null>(null);
   const [insumoForm, setInsumoForm] = useState({ nombre: '', unid: 'un', costoUSD: '', familia: '' });
 
-  const { usuario } = useAuth();
-  const puedeVerCostos = usuario.puede_ver_costos;
   const esReadOnly = editData?.estado === 'Ganada' || editData?.estado === 'Perdida';
 
   function cargarCanje(cotiz: Cotizacion) {
@@ -974,7 +971,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <thead><tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-3 py-2 font-medium text-gray-600">Producto</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Cant.</th>
-                {puedeVerCostos && <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Costo {lineas.some(l => l.producto.es_fertilizante) ? 'USD/tn' : 'USD'}</th>}
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Costo {lineas.some(l => l.producto.es_fertilizante) ? 'USD/tn' : 'USD'}</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Margen %</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
                 <th className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Flete</th>
@@ -998,7 +995,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                       );
                     })()}{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}{l.costoUSD <= 0 && <span className="block text-xs font-semibold text-red-600">Costo pendiente</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
-                    {puedeVerCostos && (<td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>)}
+                    <td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
                     <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">+ flete {formatUSD(l.fleteUSD)}</span>}</td>
                     <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmNum <= 0 && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>

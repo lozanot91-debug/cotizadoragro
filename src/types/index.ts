@@ -5,7 +5,6 @@ export interface Usuario {
   email: string;
   nombre: string | null;
   rol: Rol;
-  puede_ver_costos: boolean;
 }
 
 export interface Configuracion {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LineChart, Loader2, Lock, Search, ArrowUp, ArrowDown } from 'lucide-react';
+import { LineChart, Loader2, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { useData } from '@/hooks/useData';
-import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
@@ -68,7 +67,6 @@ function Grafico({ serie, moneda }: { serie: PuntoCosto[]; moneda: string }) {
 
 export default function EvolucionCostos() {
   const data = useData();
-  const { usuario } = useAuth();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [listas, setListas] = useState<ListaCostos[]>([]);
@@ -90,7 +88,7 @@ export default function EvolucionCostos() {
     setActuales(act); setAnteriores(ant);
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
-  useEffect(() => { if (usuario.puede_ver_costos) void load(); else setLoading(false); }, [load, usuario.puede_ver_costos]);
+  useEffect(() => { void load(); }, [load]);
 
   const variaciones = useMemo(() => variacionesEntreListas(actuales, anteriores), [actuales, anteriores]);
   const suben = variaciones.filter((v) => v.pct > 0).slice(0, 8);
@@ -113,14 +111,6 @@ export default function EvolucionCostos() {
     if (p) void elegir(p);
   }
 
-  if (!usuario.puede_ver_costos) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
-        <Lock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-        Tu usuario no tiene permiso para ver costos.
-      </div>
-    );
-  }
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
 

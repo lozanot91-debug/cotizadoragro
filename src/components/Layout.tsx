@@ -45,7 +45,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
     { id: 'historial', label: 'Historial', icon: History },
   ];
   // Tocar márgenes y configuración es solo del administrador (las listas las ven todos, solo el admin las carga)
-  const navItems = todosLosItems.filter((item) => (usuario.rol === 'admin' || item.id !== 'config') && (usuario.puede_ver_costos || (item.id !== 'rentabilidad' && item.id !== 'costos')));
+  const navItems = todosLosItems.filter((item) => (usuario.rol === 'admin' || item.id !== 'config'));
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

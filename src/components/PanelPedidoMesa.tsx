@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ClipboardList, Copy, Link2, Clock, CheckCircle2, AlertTriangle, Lock, Unlock, XCircle } from 'lucide-react';
 import { useData } from '@/hooks/useData';
-import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { formatearFechaHora } from '@/lib/fechas';
@@ -23,7 +22,6 @@ interface Props {
 export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, numero, cliente, acciones }: Props) {
   const data = useData();
   const toast = useToast();
-  const { usuario } = useAuth();
   const [dias, setDias] = useState('3');
   const [ocupado, setOcupado] = useState(false);
   const estado = estadoPedido(pedido);
@@ -42,7 +40,6 @@ export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, numero, c
   const diasN = Math.min(60, Math.max(1, parseInt(dias) || 3));
 
   const color = estado === 'Respondido' ? 'border-emerald-300 bg-emerald-50' : estado === 'Abierto' ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50';
-  const verCostos = usuario.puede_ver_costos;
 
   return (
     <div className={`rounded-xl border p-4 space-y-3 ${color}`}>
@@ -71,7 +68,7 @@ export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, numero, c
           {pedido.correccion_solicitada && pedido.correccion_mensaje && (
             <p className="text-sm text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 flex gap-2"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> Piden corregir: “{pedido.correccion_mensaje}”</p>
           )}
-          {verCostos && (pedido.lineas || []).length > 0 && (
+          {(pedido.lineas || []).length > 0 && (
             <div className="bg-white/70 rounded-lg divide-y divide-emerald-100 text-sm">
               {(pedido.lineas || []).map((l) => (
                 <div key={l.id} className="px-3 py-1.5 flex justify-between gap-3">

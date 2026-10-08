@@ -123,11 +123,12 @@ function AppContent() {
 
 /** Sin sesión iniciada solo se ve la pantalla de ingreso. */
 function Puerta() {
-  const { cargando, usuario } = useSesion();
+  const { cargando, usuario, recuperando } = useSesion();
   if (cargando) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
   }
   if (!usuario) return <AuthScreen />;
+  if (recuperando) return <AuthScreen modoInicial="nueva" />;
   return <AppContent />;
 }
 
