@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
+import MiPerfil from '@/components/MiPerfil';
 import SinConexion from '@/components/SinConexion';
 
 import { SUELTOS, badgeDeGrupo, grupoDe, gruposVisibles, type Badge, type Screen } from '@/lib/menu';
@@ -44,6 +45,7 @@ interface Props {
 export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge, pedidoBadge, facturaBadge }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { usuario, signOut } = useAuth();
+  const [perfilAbierto, setPerfilAbierto] = useState(false);
 
   function handleNav(s: Screen) {
     onNavigate(s);
@@ -87,11 +89,12 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
             <span className="titulo text-xl tracking-wide">Cotizador Agro</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-emerald-100">
+            <button onClick={() => setPerfilAbierto(true)} title="Mi perfil" aria-label="Mi perfil"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-emerald-100 hover:bg-emerald-800">
               <UserCircle className="w-5 h-5 text-amber-300" />
               <span className="hidden sm:block font-medium">{usuario.nombre}</span>
               {usuario.rol === 'admin' && <span className="text-xs bg-amber-400 text-emerald-950 font-semibold px-1.5 py-0.5 rounded hidden sm:block">Admin</span>}
-            </div>
+            </button>
             <button onClick={() => { void signOut(); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-emerald-200 hover:bg-emerald-800" title="Cerrar sesión">
               <LogOut className="w-4 h-4" /> <span className="hidden sm:block">Salir</span>
             </button>
@@ -151,6 +154,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
         </main>
       </div>
 
+      {perfilAbierto && <MiPerfil onCerrar={() => setPerfilAbierto(false)} />}
     </div>
   );
 }

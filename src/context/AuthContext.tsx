@@ -20,6 +20,8 @@ interface SesionCtx {
   recuperando: boolean;
   pedirRecuperacion: (email: string) => Promise<{ error: string | null }>;
   cambiarPassword: (password: string) => Promise<{ error: string | null }>;
+  /** Cambia el nombre del usuario logueado (solo el propio). */
+  actualizarNombre: (nombre: string) => Promise<{ error: string | null }>;
 }
 
 const Ctx = createContext<SesionCtx | undefined>(undefined);
@@ -115,6 +117,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? traducirErrorRecuperacion(error.message) : null };
   }, []);
 
+  const actualizarNombre = useCallback(async (nombre: string) => {
+    const { data, error } = await supabase.rpc('actualizar_mi_nombre', { p_nombre: nombre });
+    if (error) return { error: error.code === 'P0001' && error.message ? error.message : 'No se pudo guardar el nombre. Probá de nuevo.' };
+    setPerfil((p) => (p ? { ...p, nombre: String(data) } : p));
+    return { error: null };
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setPerfil(null);
@@ -128,7 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     recuperando: recuperando && !!userId,
     pedirRecuperacion,
     cambiarPassword,
-  }), [cargandoSesion, cargandoPerfil, userId, perfil, signIn, signOut, recuperando, pedirRecuperacion, cambiarPassword]);
+    actualizarNombre,
+  }), [cargandoSesion, cargandoPerfil, userId, perfil, signIn, signOut, recuperando, pedirRecuperacion, cambiarPassword, actualizarNombre]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -141,8 +151,8 @@ export function useSesion(): SesionCtx {
 }
 
 /** Usuario logueado. Solo se usa en pantallas que se muestran después del ingreso. */
-export function useAuth(): { usuario: Usuario; signOut: () => Promise<void> } {
+export function useAuth(): Pick<SesionCtx, 'signOut' | 'cambiarPassword' | 'actualizarNombre'> & { usuario: Usuario } {
   const c = useSesion();
   if (!c.usuario) throw new Error('useAuth se usó sin una sesión iniciada');
-  return { usuario: c.usuario, signOut: c.signOut };
+  return { usuario: c.usuario, signOut: c.signOut, cambiarPassword: c.cambiarPassword, actualizarNombre: c.actualizarNombre };
 }
