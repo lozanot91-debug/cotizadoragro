@@ -2,14 +2,16 @@ import { Truck, MapPin } from 'lucide-react';
 import { fleteDeTramos } from '@/lib/calculations';
 import { conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 import { MODALIDADES, nombreTramoPrincipal, tieneCorto, type KmSugerido } from '@/lib/fleteTramos';
-import { formatUSD, parseNumberInput } from '@/lib/format';
-import type { Campo, ConvenioFlete, ModalidadFlete } from '@/types';
+import { formatDate, formatUSD, parseNumberInput } from '@/lib/format';
+import type { Campo, ConvenioFlete, ModalidadFlete, TipoCambioBNA } from '@/types';
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50';
 
 export interface PropsFlete {
   esReadOnly: boolean;
+  /** TC con el que se pasa el flete a dólares (comprador) */
   tc: number;
+  tcFlete: { valor: string; onChange: (v: string) => void; bna: TipoCambioBNA | null; usarBna: () => void };
   modalidad: ModalidadFlete;
   onModalidad: (m: ModalidadFlete) => void;
   campos: Campo[];
@@ -78,7 +80,7 @@ export default function FleteCotizacion(p: PropsFlete) {
         )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_9.5rem]">
         <div className="min-w-0">
           <label htmlFor="flete-campo" className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" /> Campo del cliente</label>
           <select id="flete-campo" value={p.campoId ?? ''} disabled={p.esReadOnly || p.campos.length === 0} onChange={(e) => p.onCampo(e.target.value || null)} className={inputCls + ' bg-white'}>
@@ -98,13 +100,25 @@ export default function FleteCotizacion(p: PropsFlete) {
             ))}
           </div>
         </div>
+        <div>
+          <label htmlFor="flete-tc" className="block text-xs text-gray-500 mb-1">TC flete (comprador)</label>
+          <input id="flete-tc" inputMode="decimal" value={p.tcFlete.valor} disabled={p.esReadOnly} onChange={(e) => p.tcFlete.onChange(e.target.value)} className={inputCls} />
+          {p.tcFlete.bna && (
+            <p title="Dólar divisa BNA, comprador" className={`text-xs mt-1 ${p.tcFlete.bna.desactualizado ? 'text-amber-700' : 'text-gray-500'}`}>
+              BNA {formatDate(p.tcFlete.bna.fecha).slice(0, 5)}: $ {formatUSD(p.tcFlete.bna.compra, 2)}
+              {!p.esReadOnly && Math.abs(p.tc - p.tcFlete.bna.compra) > 0.004 && (
+                <button type="button" onClick={p.tcFlete.usarBna} className="ml-1 font-medium text-emerald-700 hover:text-emerald-800 underline">Usar</button>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className={`grid gap-3 mt-3 ${conCorto ? 'md:grid-cols-2' : ''}`}>
         <Tramo id="flete-principal" titulo={nombreTramoPrincipal(p.modalidad)} esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.principal} />
         {conCorto && <Tramo id="flete-corto" titulo="Corto (planta → campo)" esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.corto} />}
       </div>
-      <p className="text-xs text-gray-400 mt-2">Se aplica a los fertilizantes con flete tildado. Los km se precargan del campo y la planta, pero siempre los podés cambiar.</p>
+      <p className="text-xs text-gray-400 mt-2">Se aplica a los fertilizantes con flete tildado. La planilla está en pesos y se pasa a dólares con el TC comprador. Los km se precargan del campo y la planta, pero siempre los podés cambiar.</p>
     </div>
   );
 }

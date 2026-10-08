@@ -22,6 +22,23 @@ export function fleteConsulta(km: number, tarifas: TarifaFlete[], tc: number): F
   return { km: Math.ceil(km), pesosTn: tarifa * 10, usdTn: calcularFleteUSD(tarifa, tc) };
 }
 
+export interface FleteConsultaTramos {
+  /** Un resultado por tramo (null si ese tramo no tiene km o no está en su planilla) */
+  tramos: (FleteConsulta | null)[];
+  /** Suma de los tramos; null si algún tramo falta */
+  total: { pesosTn: number; usdTn: number } | null;
+}
+
+/** Flete por tonelada sumando tramos (largo + corto), cada uno con su planilla. */
+export function fleteConsultaTramos(tramos: { km: number; tarifas: TarifaFlete[] }[], tc: number): FleteConsultaTramos {
+  const res = tramos.map((t) => fleteConsulta(t.km, t.tarifas, tc));
+  const completos = res.every((r) => r !== null);
+  return {
+    tramos: res,
+    total: completos ? { pesosTn: res.reduce((a, r) => a + r!.pesosTn, 0), usdTn: res.reduce((a, r) => a + r!.usdTn, 0) } : null,
+  };
+}
+
 /** Costo de lista para mostrar: fertilizantes por tonelada, el resto por unidad, en la moneda de la lista. */
 export function costoDeLista(p: Pick<ProductoConCosto, 'costo' | 'es_fertilizante' | 'unid' | 'moneda'>) {
   return {

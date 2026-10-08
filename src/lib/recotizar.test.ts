@@ -52,6 +52,15 @@ describe('recotizar', () => {
     expect(h).toMatchObject({ flete_modalidad: 'largo_corto', km_corto: 25, convenio_flete_id: 'L', convenio_corto_id: 'C' });
   });
 
+  it('usa el TC de flete guardado y lo copia; las viejas (sin TC de flete) siguen con tc', () => {
+    const c = cotiz({ tc_flete: 1350 });
+    const r = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, config });
+    expect(r.lineas[0].flete_usd).toBeCloseTo(3457.077 * 10 / 1350, 6);
+    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v' }).tc_flete).toBe(1350);
+    const vieja = recotizar({ cotiz: cotiz(), lineas: [linea({})], productos: [prod({})], tarifas, config });
+    expect(vieja.lineas[0].flete_usd).toBeCloseTo(3457.077 * 10 / 1400, 6);
+  });
+
   it('mantiene el costo editado a mano y lo avisa', () => {
     const l = linea({ costo_usd: 700, costo_editado: true });
     const r = recotizar({ cotiz: cotiz(), lineas: [l], productos: [prod({ costo: 0.9 })], tarifas, config });

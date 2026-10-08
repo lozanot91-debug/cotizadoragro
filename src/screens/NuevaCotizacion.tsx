@@ -86,6 +86,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   // TC sugerido: dólar divisa BNA vendedor. Si el vendedor lo cambia a mano, no se pisa.
   const [tcBna, setTcBna] = useState<TipoCambioBNA | null>(null);
   const tcTocadoRef = useRef(false);
+  // TC del flete: la planilla está en pesos y se pasa a dólares con el comprador divisa BNA
+  const [tcFlete, setTcFlete] = useState('');
+  const tcFleteTocadoRef = useRef(false);
   const [km, setKm] = useState('');
   const [vigencia, setVigencia] = useState('');
   const [conIva, setConIva] = useState(false);
@@ -167,11 +170,14 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     const tars = elegirConvenio(convs, convSel)?.tarifas ?? [];
     setConfig(cfg);
     setTc(String(cfg.tipo_cambio_default));
+    setTcFlete(String(cfg.tipo_cambio_default));
     tcTocadoRef.current = false;
+    tcFleteTocadoRef.current = false;
     // Cotización nueva o Recotizar: se usa el TC del BNA de hoy (sin frenar la carga de la pantalla)
     void data.fetchTipoCambioBNA().then((bna) => {
       setTcBna(bna);
       if (bna && !editId && !tcTocadoRef.current) setTc(String(bna.venta));
+      if (bna?.compra && !editId && !tcFleteTocadoRef.current) setTcFlete(String(bna.compra));
     });
     setVigencia(String(cfg.vigencia_default));
     setClientes(cls);
@@ -191,6 +197,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         setClienteBusqueda(cotiz.cliente_nombre || '');
         setFecha(cotiz.fecha);
         setTc(String(cotiz.tc));
+        // Las cotizaciones de antes del TC de flete se calcularon con tc: se respeta
+        setTcFlete(String(cotiz.tc_flete || cotiz.tc));
         setKm(String(cotiz.km));
         setVigencia(String(cotiz.vigencia_dias));
         setConIva(!!cotiz.con_iva);
@@ -267,6 +275,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         setNotas(cotiz.notas || '');
         // Recotizar: se mantiene el TC viejo solo hasta que llegue el del BNA de hoy
         if (!tcTocadoRef.current) setTc((actual) => (actual && actual !== String(cfg.tipo_cambio_default) ? actual : String(cotiz.tc)));
+        if (!tcFleteTocadoRef.current) setTcFlete((actual) => (actual && actual !== String(cfg.tipo_cambio_default) ? actual : String(cotiz.tc_flete || cotiz.tc)));
         setVigencia(String(cfg.vigencia_default));
 
         const origLineas = await data.fetchLineas(duplicateFromId);
@@ -291,7 +300,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
           const calc = calcularLinea({
             producto: prod, cantidad: l.cantidad, margen, conFlete: l.con_flete,
-            tc: parseFloat(cotiz.tc.toString()), km: cotiz.km, tarifaFlete: tars, tramos: tramosOrigen(cotiz.km),
+            tc: parseFloat(cotiz.tc.toString()), km: cotiz.km, tarifaFlete: tars, tramos: tramosOrigen(cotiz.km), tcFlete: cotiz.tc_flete,
           });
 
           compLineas.push({
@@ -323,7 +332,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           const calc = calcularLinea({
             producto: l.producto, cantidad: l.cantidad, margen: l.margen,
             conFlete: l.conFlete, tc: parseFloat(tc || '0'), km: parseInt(km || '0') || cotiz.km,
-            tarifaFlete: tars, tramos: tramosOrigen(parseInt(km || '0') || cotiz.km),
+            tarifaFlete: tars, tramos: tramosOrigen(parseInt(km || '0') || cotiz.km), tcFlete: cotiz.tc_flete,
           });
           return sum + calc.totalUSD;
         }, 0);
@@ -413,6 +422,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   }, [clienteId]);
 
   const tcNum = parseNumberInput(tc);
+  const tcFleteNum = parseNumberInput(tcFlete) || tcNum;
   /** Plazo por defecto (botones rápidos): se aplica a las líneas nuevas y a todas al tocarlo. */
   const plazoNum = Math.max(0, parseInt(plazo) || 0);
 
@@ -423,11 +433,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         : (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo);
       const calc = calcularLinea({
         producto: l.producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
-        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, costoOverrideUSD: l.costoOverrideUSD,
+        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD,
       });
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
-  }, [lineas, tcNum, kmNum, tarifas, tramos]);
+  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum]);
 
   useEffect(() => {
     let vivo = true;
@@ -585,7 +595,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
       km: kmNum, convenio_flete_id: convenio?.id ?? null,
-      flete_modalidad: modalidad, km_corto: kmCortoNum,
+      flete_modalidad: modalidad, km_corto: kmCortoNum, tc_flete: tcFleteNum || null,
       convenio_corto_id: modalidad === 'largo_corto' ? convenioCorto?.id ?? null : null, campo_id: campoId,
       con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
@@ -652,6 +662,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         const ant = convenios.find((c) => c.id === editData.convenio_flete_id);
         cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'convenio de flete', valor_anterior: ant ? String(ant.numero) : 'predeterminado', valor_nuevo: convenio ? String(convenio.numero) : null });
       }
+      if ((editData.tc_flete || editData.tc) !== tcFleteNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'TC flete', valor_anterior: String(editData.tc_flete || editData.tc), valor_nuevo: String(tcFleteNum) });
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if ((editData.flete_modalidad ?? 'directo') !== modalidad) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'modalidad de flete', valor_anterior: nombreModalidad(editData.flete_modalidad), valor_nuevo: nombreModalidad(modalidad) });
       if ((Number(editData.km_corto) || 0) !== kmCortoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km corto', valor_anterior: String(Number(editData.km_corto) || 0), valor_nuevo: String(kmCortoNum) });
@@ -1015,7 +1026,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       </div>
 
       <FleteCotizacion
-        esReadOnly={esReadOnly} tc={tcNum} modalidad={modalidad} onModalidad={cambiarModalidad}
+        esReadOnly={esReadOnly} tc={tcFleteNum}
+        tcFlete={{ valor: tcFlete, onChange: (v) => { tcFleteTocadoRef.current = true; setTcFlete(v); }, bna: tcBna, usarBna: () => { tcFleteTocadoRef.current = false; if (tcBna) setTcFlete(String(tcBna.compra)); } }}
+        modalidad={modalidad} onModalidad={cambiarModalidad}
         campos={camposCliente} campoId={campoId} onCampo={cambiarCampo} convenios={convenios} enUso={hayFertConFlete}
         principal={{ km, onKm: setKm, convenio, onConvenio: setConvenioId, sugerido: sugeridos.principal }}
         corto={{ km: kmCorto, onKm: setKmCorto, convenio: convenioCorto, onConvenio: setConvenioCortoId, sugerido: sugeridos.corto }}

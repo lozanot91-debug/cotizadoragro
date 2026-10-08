@@ -69,7 +69,7 @@ export function recotizar(input: {
 
     const calc = calcularLinea({
       producto: prod, cantidad: l.cantidad, margen: l.margen, conFlete: l.con_flete,
-      tc: cotiz.tc, km: cotiz.km, tarifaFlete: tarifas, tramos,
+      tc: cotiz.tc, km: cotiz.km, tarifaFlete: tarifas, tramos, tcFlete: cotiz.tc_flete,
       costoOverrideUSD: l.costo_editado ? l.costo_usd : null,
     });
     if (calc.tarifaFaltante && !bloqueada) {
@@ -144,5 +144,6 @@ export function cabeceraRecotizada(
     km_corto: cotiz.flete_modalidad === 'largo_corto' ? Number(cotiz.km_corto) || 0 : 0,
     convenio_corto_id: cotiz.flete_modalidad === 'largo_corto' ? datos.convenioCortoId ?? null : null,
     campo_id: cotiz.campo_id ?? null,
+    tc_flete: cotiz.tc_flete ?? null,
   };
 }

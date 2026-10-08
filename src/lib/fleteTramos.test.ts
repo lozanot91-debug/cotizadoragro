@@ -35,6 +35,14 @@ describe('calcularLinea con tramos', () => {
     const r = calcularLinea({ producto: urea, cantidad: 1, margen: 0, conFlete: true, tc: 1000, km: 100, tarifaFlete: tarifaA });
     expect(r.fleteUSD).toBeCloseTo(20, 6);
   });
+  it('el flete se pasa a dólares con el TC de flete (comprador), el precio con el TC de la cotización', () => {
+    const ars = { ...urea, costo: 700, moneda: 'ARS' } as unknown as ProductoConCosto;
+    const r = calcularLinea({ producto: ars, cantidad: 1, margen: 0, conFlete: true, tc: 1400, tcFlete: 1350, km: 100, tarifaFlete: tarifaA });
+    expect(r.precioUSD).toBeCloseTo(700 / 1400 * 1000, 6);
+    expect(r.fleteUSD).toBeCloseTo(2000 * 10 / 1350, 6);
+    const sinTcFlete = calcularLinea({ producto: ars, cantidad: 1, margen: 0, conFlete: true, tc: 1400, tcFlete: null, km: 100, tarifaFlete: tarifaA });
+    expect(sinTcFlete.fleteUSD).toBeCloseTo(2000 * 10 / 1400, 6);
+  });
   it('sin flete tildado no suma nada', () => {
     const r = calcularLinea({ producto: urea, cantidad: 1, margen: 0, conFlete: false, tc: 1000, km: 0, tarifaFlete: [], tramos: [{ km: 150, tarifas: tarifaA }] });
     expect(r.fleteUSD).toBe(0);

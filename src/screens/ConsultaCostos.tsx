@@ -3,9 +3,10 @@ import { Search, Loader2, Truck, Package, X, ArrowUp, ArrowDown } from 'lucide-r
 import { useData } from '@/hooks/useData';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
-import { buscarProductos, costoDeLista, fleteConsulta } from '@/lib/consulta';
+import { buscarProductos, costoDeLista, fleteConsultaTramos, type FleteConsulta } from '@/lib/consulta';
+import { MODALIDADES, nombreTramoPrincipal, tieneCorto } from '@/lib/fleteTramos';
 import { formatUSD, formatDate, parseNumberInput } from '@/lib/format';
-import type { ConvenioFlete, ListaCostos, ProductoConCosto, TarifaFlete, TipoCambioBNA } from '@/types';
+import type { ConvenioFlete, ListaCostos, ModalidadFlete, Planta, ProductoConCosto, TipoCambioBNA } from '@/types';
 import { elegirConvenioVigente, conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 
 /** Consulta rápida: costo de lista de un insumo y flete por km (en $/tn y USD/tn al TC comprador divisa BNA). */
@@ -23,6 +24,12 @@ export default function ConsultaCostos() {
   const [busqueda, setBusqueda] = useState('');
   const [sel, setSel] = useState<ProductoConCosto | null>(null);
   const [kmTxt, setKmTxt] = useState('');
+  // Flete por tramos, como en la cotización
+  const [modalidad, setModalidad] = useState<ModalidadFlete>('directo');
+  const [kmCortoTxt, setKmCortoTxt] = useState('');
+  const [convenioCortoId, setConvenioCortoId] = useState<string | null>(null);
+  const [plantas, setPlantas] = useState<Planta[]>([]);
+  const [plantaId, setPlantaId] = useState('');
 
   const cargar = useCallback(async () => {
     const [listas, convs, cfg] = await Promise.all([data.fetchListas(), data.fetchConvenios(), data.fetchConfig()]);
@@ -38,6 +45,7 @@ export default function ConsultaCostos() {
       setAnteriores(new Map(ant.map((p) => [p.cod, p.costo])));
     }
     void data.fetchTipoCambioBNA().then(setTcBna);
+    data.fetchPlantasFlete().then(setPlantas).catch((e) => console.error('No se pudieron cargar las plantas:', e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
@@ -47,11 +55,24 @@ export default function ConsultaCostos() {
 
   // Para el flete se usa el TC comprador divisa BNA; si no responde, el TC de respaldo de la configuración
   const tc = tcBna?.compra || tcRespaldo;
+  const conCorto = tieneCorto(modalidad);
   const km = parseNumberInput(kmTxt);
+  const kmCorto = parseNumberInput(kmCortoTxt);
   const convenio = useMemo(() => elegirConvenioVigente(convenios, convenioId), [convenios, convenioId]);
-  const tarifas = useMemo<TarifaFlete[]>(() => convenio?.tarifas ?? [], [convenio]);
-  const flete = useMemo(() => fleteConsulta(km, tarifas, tc), [km, tarifas, tc]);
-  const kmMax = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
+  const convenioCorto = useMemo(() => elegirConvenioVigente(convenios, convenioCortoId), [convenios, convenioCortoId]);
+  const flete = useMemo(() => fleteConsultaTramos(
+    conCorto
+      ? [{ km, tarifas: convenio?.tarifas ?? [] }, { km: kmCorto, tarifas: convenioCorto?.tarifas ?? [] }]
+      : [{ km, tarifas: convenio?.tarifas ?? [] }],
+    tc,
+  ), [conCorto, km, kmCorto, convenio, convenioCorto, tc]);
+
+  /** Elegir planta (largo) precarga sus km a puerto; se pueden cambiar. */
+  function elegirPlanta(id: string) {
+    setPlantaId(id);
+    const p = plantas.find((x) => x.id === id);
+    if (p?.km_puerto) setKmTxt(String(p.km_puerto).replace('.', ','));
+  }
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
@@ -139,28 +160,64 @@ export default function ConsultaCostos() {
         {/* ===== Flete ===== */}
         <section className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-800 flex items-center gap-2 mb-3"><Truck className="w-5 h-5 text-emerald-700" /> Flete</h2>
-          <label htmlFor="consulta-convenio" className="block text-sm font-medium text-gray-700 mb-1">Convenio</label>
-          <select id="consulta-convenio" value={convenio?.id ?? ''} onChange={(e) => setConvenioId(e.target.value)} disabled={convenios.length === 0}
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white mb-3">
-            {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
-            {conveniosParaElegir(convenios).map((c) => <option key={c.id} value={c.id}>{etiquetaConvenio(c)}</option>)}
-          </select>
-          <label htmlFor="consulta-km" className="block text-sm font-medium text-gray-700 mb-1">Distancia (km)</label>
-          <input id="consulta-km" type="text" inputMode="decimal" value={kmTxt} onChange={(e) => setKmTxt(e.target.value)} placeholder="Ej.: 120"
-            className="w-full sm:w-40 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+          <p className="block text-sm font-medium text-gray-700 mb-1">Modalidad</p>
+          <div role="radiogroup" aria-label="Modalidad de flete" className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit max-w-full mb-3">
+            {MODALIDADES.map((m) => (
+              <button key={m.valor} type="button" role="radio" aria-checked={modalidad === m.valor} title={m.detalle} onClick={() => setModalidad(m.valor)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap ${modalidad === m.valor ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {m.nombre}
+              </button>
+            ))}
+          </div>
 
-          {km > 0 && !flete && (
-            <p className="mt-3 text-sm text-amber-700">No hay tarifa para {Math.ceil(km)} km en este convenio{kmMax ? ` (la planilla llega hasta ${kmMax} km)` : ''}.</p>
-          )}
-          {flete && (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-gray-200 px-4 py-3">
-                <p className="text-xs text-gray-500">Pesos por tonelada</p>
-                <p className="cifra text-3xl text-gray-900 mt-1">$ {formatUSD(flete.pesosTn, 0)}</p>
+          <div className="grid gap-3">
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="text-sm font-semibold text-gray-700 mb-2">{nombreTramoPrincipal(modalidad)}</p>
+              {modalidad !== 'directo' && plantas.length > 0 && (
+                <>
+                  <label htmlFor="consulta-planta" className="block text-xs text-gray-500 mb-1">Planta</label>
+                  <select id="consulta-planta" value={plantaId} onChange={(e) => elegirPlanta(e.target.value)} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white mb-2">
+                    <option value="">Cargo los km a mano</option>
+                    {plantas.map((p) => <option key={p.id} value={p.id}>{p.nombre}{p.km_puerto ? ` · ${formatUSD(p.km_puerto, p.km_puerto % 1 ? 1 : 0)} km a puerto` : ' · sin km a puerto'}</option>)}
+                  </select>
+                </>
+              )}
+              <label htmlFor="consulta-convenio" className="block text-xs text-gray-500 mb-1">Convenio</label>
+              <select id="consulta-convenio" value={convenio?.id ?? ''} onChange={(e) => setConvenioId(e.target.value)} disabled={convenios.length === 0} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white mb-2">
+                {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
+                {conveniosParaElegir(convenios).map((c) => <option key={c.id} value={c.id}>{etiquetaConvenio(c)}</option>)}
+              </select>
+              <label htmlFor="consulta-km" className="block text-xs text-gray-500 mb-1">Distancia (km)</label>
+              <input id="consulta-km" type="text" inputMode="decimal" value={kmTxt} onChange={(e) => setKmTxt(e.target.value)} placeholder="Ej.: 120" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+              <ResultadoTramo km={km} r={flete.tramos[0]} convenio={convenio} />
+            </div>
+            {conCorto && (
+              <div className="rounded-lg border border-gray-200 p-3">
+                <p className="text-sm font-semibold text-gray-700 mb-2">Corto (planta → campo)</p>
+                <label htmlFor="consulta-convenio-corto" className="block text-xs text-gray-500 mb-1">Convenio</label>
+                <select id="consulta-convenio-corto" value={convenioCorto?.id ?? ''} onChange={(e) => setConvenioCortoId(e.target.value)} disabled={convenios.length === 0} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white mb-2">
+                  {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
+                  {conveniosParaElegir(convenios).map((c) => <option key={c.id} value={c.id}>{etiquetaConvenio(c)}</option>)}
+                </select>
+                <label htmlFor="consulta-km-corto" className="block text-xs text-gray-500 mb-1">Distancia (km)</label>
+                <input id="consulta-km-corto" type="text" inputMode="decimal" value={kmCortoTxt} onChange={(e) => setKmCortoTxt(e.target.value)} placeholder="Ej.: 25" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                <ResultadoTramo km={kmCorto} r={flete.tramos[1]} convenio={convenioCorto} />
               </div>
-              <div className="rounded-lg bg-emerald-900 text-white px-4 py-3">
-                <p className="text-xs text-emerald-300">USD por tonelada</p>
-                <p className="cifra text-3xl mt-1">{formatUSD(flete.usdTn, 2)}</p>
+            )}
+          </div>
+
+          {flete.total && (
+            <div className="mt-4">
+              {conCorto && <p className="text-sm font-medium text-gray-700 mb-2">Total largo + corto</p>}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-gray-200 px-4 py-3">
+                  <p className="text-xs text-gray-500">Pesos por tonelada</p>
+                  <p className="cifra text-3xl text-gray-900 mt-1">$ {formatUSD(flete.total.pesosTn, 0)}</p>
+                </div>
+                <div className="rounded-lg bg-emerald-900 text-white px-4 py-3">
+                  <p className="text-xs text-emerald-300">USD por tonelada</p>
+                  <p className="cifra text-3xl mt-1">{formatUSD(flete.total.usdTn, 2)}</p>
+                </div>
               </div>
             </div>
           )}
@@ -170,10 +227,23 @@ export default function ConsultaCostos() {
               {tcBna ? `· BNA divisa comprador ${formatDate(tcBna.fecha)}` : '· TC de respaldo (no respondió el BNA)'}
               {tcBna?.desactualizado && <span className="text-amber-700"> (no se pudo actualizar)</span>}
             </p>
-            {flete && flete.km !== km && <p>Se toma la tarifa de {flete.km} km (se redondea hacia arriba).</p>}
+            <p>Los km se redondean hacia arriba para buscar la tarifa.</p>
           </div>
         </section>
       </div>
     </div>
+  );
+}
+
+function ResultadoTramo({ km, r, convenio }: { km: number; r: FleteConsulta | null; convenio: ConvenioFlete | null }) {
+  const tarifas = convenio?.tarifas ?? [];
+  const max = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
+  if (!(km > 0)) return null;
+  if (!r) return <p className="mt-2 text-xs text-amber-700">No hay tarifa para {Math.ceil(km)} km en este convenio{max ? ` (la planilla llega hasta ${max} km)` : ''}.</p>;
+  return (
+    <p className="mt-2 text-xs text-gray-600">
+      {r.km !== km && <span className="text-gray-400">Tarifa de {r.km} km · </span>}
+      $ {formatUSD(r.pesosTn, 0)}/tn · <span className="font-medium">USD {formatUSD(r.usdTn, 2)}/tn</span>
+    </p>
   );
 }

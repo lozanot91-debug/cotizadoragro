@@ -190,6 +190,8 @@ export interface Cotizacion {
   convenio_corto_id?: string | null;
   /** Campo del cliente del que se precargaron los km */
   campo_id?: string | null;
+  /** TC con el que se pasó el flete a dólares (comprador divisa BNA). null = cotización vieja: se usó tc. */
+  tc_flete?: number | null;
   cantidades_reales: Record<string, { cantidad: number; precio: number; motivo?: string | null }> | null;
   /** Ganada: subtotal realmente ganado (sin IVA ni financiación). Null si no está Ganada. */
   ganado_usd?: number | null;

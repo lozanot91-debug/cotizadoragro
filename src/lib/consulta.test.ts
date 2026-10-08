@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buscarProductos, costoDeLista, fleteConsulta } from './consulta';
+import { buscarProductos, costoDeLista, fleteConsulta, fleteConsultaTramos } from './consulta';
 
 const tarifas = [{ km: 100, tarifa: 2766.984 }, { km: 101, tarifa: 2780 }] as never;
 
@@ -34,5 +34,21 @@ describe('buscarProductos', () => {
     expect(buscarProductos(ps, 'herbicidas').length).toBe(2);
     expect(buscarProductos(ps, 'syngenta 90').map((p) => p.cod)).toEqual(['ATZ-90']);
     expect(buscarProductos(ps, '  ')).toEqual([]);
+  });
+});
+
+describe('fleteConsultaTramos', () => {
+  const largo = [{ km: 165, tarifa: 2650 }];
+  const corto = [{ km: 26, tarifa: 1260 }];
+  it('suma largo + corto en pesos y en dólares', () => {
+    const f = fleteConsultaTramos([{ km: 165, tarifas: largo }, { km: 25.4, tarifas: corto }], 1400);
+    expect(f.tramos[1]?.km).toBe(26);
+    expect(f.total?.pesosTn).toBe(26500 + 12600);
+    expect(f.total?.usdTn).toBeCloseTo(39100 / 1400, 6);
+  });
+  it('sin total si falta un tramo', () => {
+    const f = fleteConsultaTramos([{ km: 165, tarifas: largo }, { km: 0, tarifas: corto }], 1400);
+    expect(f.tramos[0]).not.toBeNull();
+    expect(f.total).toBeNull();
   });
 });

@@ -311,6 +311,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
     'Fecha': cotiz.fecha,
     'Cliente': cotiz.cliente_nombre,
     'Tipo de cambio': cotiz.tc,
+    'TC flete': cotiz.tc_flete || cotiz.tc,
     'KM': cotiz.km,
     'Modalidad de flete': nombreModalidad(cotiz.flete_modalidad),
     ...(cotiz.flete_modalidad === 'largo_corto' ? { 'KM corto': Number(cotiz.km_corto) || 0 } : {}),

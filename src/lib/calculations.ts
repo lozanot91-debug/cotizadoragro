@@ -10,6 +10,8 @@ export interface CalcLineaInput {
   tarifaFlete: TarifaFlete[];
   /** Tramos de flete (largo + corto). Si no viene, un solo tramo con km y tarifaFlete. */
   tramos?: TramoFlete[];
+  /** TC para pasar el flete (en pesos) a dólares: el comprador. Si no viene, tc. */
+  tcFlete?: number | null;
   costoOverrideUSD?: number | null;
 }
 
@@ -85,7 +87,7 @@ export function esFertilizante(producto: ProductoConCosto): boolean {
 }
 
 export function calcularLinea(input: CalcLineaInput): CalcLineaResult {
-  const { producto, cantidad, margen, conFlete, tc, km, tarifaFlete, tramos, costoOverrideUSD } = input;
+  const { producto, cantidad, margen, conFlete, tc, km, tarifaFlete, tramos, tcFlete, costoOverrideUSD } = input;
   const m = clampMargen(margen);
 
   if (producto.es_fertilizante) {
@@ -110,7 +112,7 @@ export function calcularLinea(input: CalcLineaInput): CalcLineaResult {
     let fleteUsdTn = 0;
     let tarifaFaltante = false;
     if (conFlete) {
-      const f = fleteDeTramos(tramos ?? [{ km, tarifas: tarifaFlete }], tc);
+      const f = fleteDeTramos(tramos ?? [{ km, tarifas: tarifaFlete }], tcFlete && tcFlete > 0 ? tcFlete : tc);
       fleteUsdTn = f.usdTn;
       tarifaFaltante = f.tarifaFaltante;
     }
