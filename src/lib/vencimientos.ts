@@ -4,6 +4,7 @@
  */
 import type { Cotizacion, Tarea } from '@/types';
 import { diasEntre, sumarDias } from '@/lib/fechas';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 export const ESTADOS_ABIERTOS = ['Borrador', 'Enviada', 'En negociación'];
 
@@ -58,11 +59,9 @@ export function tieneTareaPendiente(cotizId: string, tareas: Pick<Tarea, 'cotiza
 
 /** Tarea de seguimiento para una cotización por vencer. */
 export function tareaDeVencimiento(v: Vencimiento, hoy: string): Partial<Tarea> {
-  const n = v.cotiz.numero;
-  const cliente = v.cotiz.cliente_nombre || 'cliente';
   const cuando = v.dias < 0 ? `venció el ${v.vence.split('-').reverse().join('/')}` : v.dias === 0 ? 'vence hoy' : `vence el ${v.vence.split('-').reverse().join('/')}`;
   return {
-    titulo: `Seguimiento cotización N° ${n} — ${cliente}`,
+    titulo: `Seguimiento ${nombreCotizacion(v.cotiz)}`,
     descripcion: `La cotización ${cuando}. Consultar si la confirman, reajustar o extender la vigencia.`,
     tipo: 'Seguimiento',
     prioridad: v.dias <= 1 ? 'Alta' : 'Normal',
@@ -78,5 +77,5 @@ export function mensajeRecordatorio(v: Vencimiento): string {
   const c = v.cotiz;
   const fecha = v.vence.split('-').reverse().join('/');
   const estado = v.dias < 0 ? `venció el ${fecha}` : v.dias === 0 ? 'vence hoy' : `vence el ${fecha}`;
-  return `Hola${c.cliente_nombre ? ` ${c.cliente_nombre}` : ''}, te escribo por la cotización N° ${c.numero}, que ${estado}. ¿La pudiste revisar? Si querés la actualizo o ajusto lo que necesites.`;
+  return `Hola${c.cliente_nombre ? ` ${c.cliente_nombre}` : ''}, te escribo por la cotización ${nombreCotizacion(c)}, que ${estado}. ¿La pudiste revisar? Si querés la actualizo o ajusto lo que necesites.`;
 }

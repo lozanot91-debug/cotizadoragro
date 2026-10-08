@@ -10,6 +10,7 @@ import { vencimientos, vigenciaExtendida, tieneTareaPendiente, tareaDeVencimient
 import { formatUSD, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
 import type { Cotizacion, Tarea } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const SITUACION: Record<string, { txt: (d: number) => string; cls: string }> = {
   vencida: { txt: (d) => `Venció hace ${-d} ${d === -1 ? 'día' : 'días'}`, cls: 'bg-red-100 text-red-700' },
@@ -63,7 +64,7 @@ export default function Vencimientos({ onEdit }: { onEdit: (id: string) => void 
       await data.actualizarVigencia(v.cotiz.id, nueva);
       await registrarCambio({ tipo: 'cotizacion', cotizacion_id: v.cotiz.id, campo: 'vigencia', valor_anterior: `${v.cotiz.vigencia_dias} días`, valor_nuevo: `${nueva} días`, detalle: `Extendida ${dias} días` });
       setCotizs((prev) => prev.map((c) => (c.id === v.cotiz.id ? { ...c, vigencia_dias: nueva } : c)));
-      toast.exito(`Cotización N° ${v.cotiz.numero} extendida ${dias} días.`);
+      toast.exito(`${nombreCotizacion(v.cotiz)} extendida ${dias} días.`);
     } catch (e) {
       toast.error(e);
     } finally {
@@ -114,8 +115,7 @@ export default function Vencimientos({ onEdit }: { onEdit: (id: string) => void 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="bg-gray-50 border-b border-gray-200 text-gray-600">
-              <th className="text-left px-3 py-2 font-medium">N°</th>
-              <th className="text-left px-3 py-2 font-medium">Cliente</th>
+              <th className="text-left px-3 py-2 font-medium">Cotización</th>
               <th className="text-left px-3 py-2 font-medium">Estado</th>
               <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Monto (USD)</th>
               <th className="text-left px-3 py-2 font-medium">Vigencia</th>
@@ -129,8 +129,7 @@ export default function Vencimientos({ onEdit }: { onEdit: (id: string) => void 
                 const ocupado = trabajando === `ext-${v.cotiz.id}`;
                 return (
                   <tr key={v.cotiz.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium text-gray-800">{v.cotiz.numero}</td>
-                    <td className="px-3 py-2 text-gray-700">{v.cotiz.cliente_nombre || 'Sin cliente'}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800">{nombreCotizacion(v.cotiz)}</td>
                     <td className="px-3 py-2 text-gray-500">{v.cotiz.estado}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{formatUSD(v.cotiz.subtotal_usd || 0, 0)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">

@@ -8,6 +8,7 @@ import { CheckSquare, Plus, X, Check, Clock, Calendar, Trash2, Edit2, AlertCircl
 import { diasDesde, hoyAR, sumarDias } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const TIPOS = ['Llamar', 'Visitar', 'Enviar información', 'Cobrar', 'Seguimiento', 'Otro'];
 const PRIORIDADES = ['Alta', 'Normal', 'Baja'];
@@ -36,7 +37,7 @@ function generarICS(tarea: Tarea): string {
   }
   const desc = [
     tarea.descripcion || '',
-    tarea.cotizacion ? `Cotización N° ${tarea.cotizacion.numero}` : '',
+    tarea.cotizacion ? `Cotización ${nombreCotizacion(tarea.cotizacion, tarea.cliente?.nombre)}` : '',
     tarea.cliente ? `Cliente: ${tarea.cliente.nombre}` : '',
   ].filter(Boolean).join('\\n');
   return `BEGIN:VCALENDAR
@@ -211,8 +212,8 @@ export default function Tareas() {
             <div className="flex items-center gap-2 flex-wrap mt-1">
               <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${prioridadColor(t.prioridad)}`}>{t.prioridad}</span>
               <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{t.tipo}</span>
-              {t.cotizacion?.numero && <span className="text-xs text-emerald-600 font-medium">Cot. N° {t.cotizacion.numero}</span>}
-              {t.cliente?.nombre && <span className="text-xs text-gray-400">{t.cliente.nombre}</span>}
+              {t.cotizacion && <span className="text-xs text-emerald-600 font-medium">{nombreCotizacion(t.cotizacion, t.cliente?.nombre)}</span>}
+              {t.cliente?.nombre && !t.cotizacion && <span className="text-xs text-gray-400">{t.cliente.nombre}</span>}
               <span className="text-xs text-gray-400 flex items-center gap-0.5"><Calendar className="w-3 h-3" /> {formatDate(t.fecha_vencimiento)}</span>
               {t.hora && <span className="text-xs text-gray-400 flex items-center gap-0.5"><Clock className="w-3 h-3" /> {t.hora}</span>}
               {t.asignado_a && <span className="text-xs text-gray-400">· {t.asignado_a}</span>}
@@ -305,7 +306,7 @@ export default function Tareas() {
                 <button onClick={() => setForm({ ...form, fecha_vencimiento: addDays(7) })} className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50">+7 días</button>
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Asignado a</label><input type="text" value={form.asignado_a} onChange={(e) => setForm({ ...form, asignado_a: e.target.value })} placeholder={usuario.nombre} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Cotización</label><select value={form.cotizacion_id} onChange={(e) => setForm({ ...form, cotizacion_id: e.target.value, cliente_id: e.target.value ? cotizaciones.find((c) => c.id === e.target.value)?.cliente_id || '' : form.cliente_id })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"><option value="">Sin cotización</option>{cotizaciones.slice(0, 50).map((c) => <option key={c.id} value={c.id}>N° {c.numero} · {c.cliente_nombre}</option>)}</select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Cotización</label><select value={form.cotizacion_id} onChange={(e) => setForm({ ...form, cotizacion_id: e.target.value, cliente_id: e.target.value ? cotizaciones.find((c) => c.id === e.target.value)?.cliente_id || '' : form.cliente_id })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"><option value="">Sin cotización</option>{cotizaciones.slice(0, 50).map((c) => <option key={c.id} value={c.id}>{nombreCotizacion(c)}</option>)}</select></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label><select value={form.cliente_id} onChange={(e) => setForm({ ...form, cliente_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"><option value="">Sin cliente</option>{clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
             </div>
             <div className="flex gap-2 justify-end mt-4"><button onClick={() => setModalNueva(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button><button onClick={crearTarea} disabled={!form.titulo.trim()} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">Crear</button></div>

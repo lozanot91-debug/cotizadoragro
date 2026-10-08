@@ -7,10 +7,11 @@ import { hoyAR } from '@/lib/fechas';
 import { describirCondicion, precioFinal, totalLinea, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
 import { facturacionExcel, facturacionPDF, type DocFacturacion } from '@/lib/facturacionExport';
 import type { ClienteFacturacion, ExtraFacturacion } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 interface PedidoPublico {
   estado: 'NoExiste' | 'Cancelado' | 'Vencido' | 'Pendiente' | 'Facturado' | 'Observado';
-  numero?: number; vence_el?: string; nota_venta?: string | null; observaciones?: string | null;
+  numero?: number; numero_cliente?: number | null; cliente_nombre?: string | null; vence_el?: string; nota_venta?: string | null; observaciones?: string | null;
   cliente?: ClienteFacturacion; condiciones?: CondicionPago[]; lineas?: LineaFacturacion[]; totales?: TotalesFacturacion;
   extra?: ExtraFacturacion; creado_por?: string | null; enviado_at?: string;
   factura_numero?: string | null; factura_fecha?: string | null; facturado_por?: string | null; facturado_at?: string | null;
@@ -99,8 +100,9 @@ export default function PublicoFacturacion({ token }: { token: string }) {
   const lineas = p.lineas || [];
   const totales = p.totales!;
   const cli = p.cliente!;
+  const nombreCotiz = nombreCotizacion({ numero: p.numero, numero_cliente: p.numero_cliente, cliente_nombre: p.cliente_nombre }, cli.nombre);
   const doc: DocFacturacion = {
-    numero: p.numero || 0, estado: p.estado, nota_venta: p.nota_venta ?? null, observaciones: p.observaciones ?? null,
+    numero: p.numero || 0, nombre: nombreCotiz, estado: p.estado, nota_venta: p.nota_venta ?? null, observaciones: p.observaciones ?? null,
     cliente: cli, condiciones: p.condiciones || [], lineas, totales, extra: p.extra || {},
     enviado_por: p.creado_por ?? null, enviado_at: p.enviado_at || new Date().toISOString(),
     factura_numero: p.factura_numero, factura_fecha: p.factura_fecha,
@@ -110,7 +112,7 @@ export default function PublicoFacturacion({ token }: { token: string }) {
     <Marco>
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <p className="text-xs uppercase tracking-wide text-gray-400">Pedido de facturación</p>
-        <h1 className="titulo text-2xl text-emerald-900 mt-0.5">Cotización N° {p.numero}{p.nota_venta && <span className="text-gray-500 text-lg"> · Nota de venta {p.nota_venta}</span>}</h1>
+        <h1 className="titulo text-2xl text-emerald-900 mt-0.5">{nombreCotiz}{p.nota_venta && <span className="text-gray-500 text-lg"> · Nota de venta {p.nota_venta}</span>}</h1>
         <dl className="mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
           <Dato k="Cliente" v={cli.nombre} />
           <Dato k="Razón social" v={cli.razon_social} alerta={!cli.razon_social} />

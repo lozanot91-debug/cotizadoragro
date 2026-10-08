@@ -5,6 +5,7 @@ import { traducirError } from '@/lib/errores';
 import { parseNumberInput, formatUSD, formatNumber } from '@/lib/format';
 import { unidadCosto } from '@/lib/pedidosPrecio';
 import { comprobanteExcel, comprobantePDF, type ComprobanteMesa } from '@/lib/mesaExport';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 interface LineaPublica {
   id: string; cod: string; producto: string; unidad: string | null; es_fertilizante: boolean;
@@ -12,7 +13,7 @@ interface LineaPublica {
 }
 interface PedidoPublico {
   estado: 'NoExiste' | 'Cancelado' | 'Vencido' | 'Abierto' | 'Respondido';
-  numero?: number; cliente?: string; vence_el?: string; nota?: string | null;
+  numero?: number; numero_cliente?: number | null; cliente?: string; vence_el?: string; nota?: string | null;
   respondido_por?: string | null; respondido_at?: string | null; nota_respuesta?: string | null;
   correccion_solicitada?: boolean; lineas?: LineaPublica[];
 }
@@ -109,18 +110,18 @@ export default function PublicoMesa({ token }: { token: string }) {
   }
 
   const lineas = pedido.lineas || [];
+  const nombreCotiz = nombreCotizacion({ numero: pedido.numero, numero_cliente: pedido.numero_cliente, cliente_nombre: pedido.cliente });
   const cabecera = (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <p className="text-xs uppercase tracking-wide text-gray-400">Pedido de costos</p>
-      <h1 className="titulo text-2xl text-emerald-900 mt-0.5">Cotización N° {pedido.numero}</h1>
-      <p className="text-gray-700 font-medium">{pedido.cliente}</p>
+      <h1 className="titulo text-2xl text-emerald-900 mt-0.5">{nombreCotiz}</h1>
       {pedido.nota && <p className="mt-2 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">{pedido.nota}</p>}
     </div>
   );
 
   if (pedido.estado === 'Respondido') {
     const comprobante: ComprobanteMesa = {
-      numero: pedido.numero || 0, cliente: pedido.cliente || '', respondidoPor: pedido.respondido_por || '',
+      numero: pedido.numero || 0, nombre: nombreCotiz, cliente: pedido.cliente || '', respondidoPor: pedido.respondido_por || '',
       respondidoAt: pedido.respondido_at || new Date().toISOString(), nota: pedido.nota_respuesta || null, lineas,
     };
     return (

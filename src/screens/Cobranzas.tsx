@@ -10,6 +10,7 @@ import { generarCobranzas, resumenCobranzas, situacionCobro, diasParaCobrar, cob
 import { formatUSD, formatDate, parseNumberInput, formatInputNumber } from '@/lib/format';
 import { hoyAR, fechaDeTimestamp } from '@/lib/fechas';
 import type { Cobranza, Cotizacion } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const GRUPOS: { id: SituacionCobro; titulo: string; cls: string }[] = [
   { id: 'vencida', titulo: 'Vencidos', cls: 'text-red-700' },
@@ -54,7 +55,7 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
     setTrabajando(c.id);
     try {
       await data.actualizarCobranza(c.id, { estado: 'Cobrada', cobrada_el: hoy });
-      await registrarCambio({ tipo: 'cobranza', cotizacion_id: c.cotizacion_id, entidad: `Cobro de la cotización N° ${c.cotizacion?.numero ?? ''}`, campo: 'estado', valor_anterior: 'Pendiente', valor_nuevo: 'Cobrada', detalle: `USD ${formatUSD(c.monto_usd)}` });
+      await registrarCambio({ tipo: 'cobranza', cotizacion_id: c.cotizacion_id, entidad: `Cobro de la cotización ${nombreCotizacion(c.cotizacion)}`, campo: 'estado', valor_anterior: 'Pendiente', valor_nuevo: 'Cobrada', detalle: `USD ${formatUSD(c.monto_usd)}` });
       setCobros((prev) => prev.map((x) => (x.id === c.id ? { ...x, estado: 'Cobrada', cobrada_el: hoy } : x)));
       toast.exito('Cobro registrado.');
     } catch (e) { toast.error(e); } finally { setTrabajando(null); }
@@ -64,7 +65,7 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
     setTrabajando(c.id);
     try {
       await data.actualizarCobranza(c.id, { estado: 'Pendiente', cobrada_el: null });
-      await registrarCambio({ tipo: 'cobranza', cotizacion_id: c.cotizacion_id, entidad: `Cobro de la cotización N° ${c.cotizacion?.numero ?? ''}`, campo: 'estado', valor_anterior: 'Cobrada', valor_nuevo: 'Pendiente' });
+      await registrarCambio({ tipo: 'cobranza', cotizacion_id: c.cotizacion_id, entidad: `Cobro de la cotización ${nombreCotizacion(c.cotizacion)}`, campo: 'estado', valor_anterior: 'Cobrada', valor_nuevo: 'Pendiente' });
       setCobros((prev) => prev.map((x) => (x.id === c.id ? { ...x, estado: 'Pendiente', cobrada_el: null } : x)));
     } catch (e) { toast.error(e); } finally { setTrabajando(null); }
   }
@@ -85,7 +86,7 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
       const cambios: string[] = [];
       if (form.fecha !== editando.vencimiento) cambios.push(`fecha ${formatDate(editando.vencimiento)} → ${formatDate(form.fecha)}`);
       if (monto !== editando.monto_usd) cambios.push(`monto USD ${formatUSD(editando.monto_usd)} → ${formatUSD(monto)}`);
-      if (cambios.length) await registrarCambio({ tipo: 'cobranza', cotizacion_id: editando.cotizacion_id, entidad: `Cobro de la cotización N° ${editando.cotizacion?.numero ?? ''}`, campo: 'cobro', detalle: cambios.join(', ') });
+      if (cambios.length) await registrarCambio({ tipo: 'cobranza', cotizacion_id: editando.cotizacion_id, entidad: `Cobro de la cotización ${nombreCotizacion(editando.cotizacion)}`, campo: 'cobro', detalle: cambios.join(', ') });
       setCobros((prev) => prev.map((x) => (x.id === editando.id ? { ...x, vencimiento: form.fecha, monto_usd: monto, nota: form.nota.trim() || null } : x)));
       setEditando(null);
       toast.exito('Cobro actualizado.');
@@ -119,9 +120,9 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
     return (
       <div key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-b border-gray-100 last:border-0">
         <div className="flex-1 min-w-[12rem]">
-          <p className="font-medium text-gray-800">{c.cotizacion?.cliente_nombre || 'Sin cliente'}</p>
+          <p className="font-medium text-gray-800">{nombreCotizacion(c.cotizacion)}</p>
           <p className="text-xs text-gray-500">
-            Cotización N° {c.cotizacion?.numero}{c.plazo_dias > 0 ? `, a ${c.plazo_dias} días` : ', contado'}
+            {c.plazo_dias > 0 ? `A ${c.plazo_dias} días` : 'Contado'}
             {c.nota ? `. ${c.nota}` : ''}
           </p>
         </div>
@@ -206,7 +207,7 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditando(null)}>
           <div className="bg-white rounded-xl shadow-2xl p-5 max-w-sm w-full space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="titulo text-lg text-gray-800">Cobro de la cotización N° {editando.cotizacion?.numero}</h3>
+              <h3 className="titulo text-lg text-gray-800">Cobro de la cotización {nombreCotizacion(editando.cotizacion)}</h3>
               <button onClick={() => setEditando(null)} aria-label="Cerrar" className="text-gray-400"><X className="w-5 h-5" /></button>
             </div>
             <label className="block text-sm text-gray-700">Fecha de cobro

@@ -9,6 +9,7 @@ import { diasDesde } from '@/lib/fechas';
 import { useCambioEstado } from '@/hooks/useCambioEstado';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida', 'Vencida'];
 
@@ -90,7 +91,7 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
     if (!modalEliminar) return;
     const c = modalEliminar;
     await data.deleteCotizacion(c.id);
-    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización N° ${c.numero}`, campo: 'eliminación', valor_anterior: `N° ${c.numero}`, valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.subtotal_usd)} USD)` });
+    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(c)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(c), valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.subtotal_usd)} USD)` });
     setModalEliminar(null);
     load();
   }
@@ -144,8 +145,8 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
                 onClick={() => onEdit(c.id)}>
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-gray-800">N° {c.numero}</span>
+                    <div className="flex items-center gap-x-2 gap-y-1 mb-1 flex-wrap [&>span]:whitespace-nowrap">
+                      <span className="font-bold text-gray-800 !whitespace-normal break-words">{nombreCotizacion(c)}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estadoColors[c.estado]}`}>{c.estado}</span>
                       {vencida && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium flex items-center gap-1">
@@ -168,7 +169,6 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 truncate">{c.cliente_nombre || 'Sin cliente'}</p>
                     <p className="text-xs text-gray-400">
                       {formatDate(c.fecha)} · TC ${c.tc} · {c.km > 0 ? `${c.km} km` : 'Sin flete'}
                       {esSinRespuesta(c) && (
@@ -239,7 +239,7 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">Eliminar cotización</h3>
-                <p className="text-sm text-gray-500">N° {modalEliminar.numero} · {modalEliminar.cliente_nombre || 'Sin cliente'} · {formatUSD(modalEliminar.subtotal_usd)} USD</p>
+                <p className="text-sm text-gray-500">{nombreCotizacion(modalEliminar)} · {formatUSD(modalEliminar.subtotal_usd)} USD</p>
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">

@@ -15,6 +15,7 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { productosDelCliente, type LineaDeCliente } from '@/lib/historialCliente';
 import { hoyAR } from '@/lib/fechas';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 export default function Clientes() {
   const data = useData();
@@ -171,7 +172,7 @@ export default function Clientes() {
 
   function timelineItems(): { fecha: string; titulo: string; tipo: string; icon: 'cotizacion' | 'tarea' | 'visita' }[] {
     const items: { fecha: string; titulo: string; tipo: string; icon: 'cotizacion' | 'tarea' | 'visita' }[] = [];
-    for (const c of cotizsCliente) items.push({ fecha: c.fecha, titulo: `Cotización N° ${c.numero} · ${c.estado}`, tipo: 'Cotización', icon: 'cotizacion' });
+    for (const c of cotizsCliente) items.push({ fecha: c.fecha, titulo: `Cotización ${nombreCotizacion(c)} · ${c.estado}`, tipo: 'Cotización', icon: 'cotizacion' });
     for (const t of tareasCliente) if (t.estado === 'Hecha') items.push({ fecha: t.completada_at || t.fecha_vencimiento, titulo: t.titulo, tipo: 'Tarea completada', icon: 'tarea' });
     for (const v of visitasCliente) items.push({ fecha: v.fecha, titulo: `${v.tipo} · ${v.estado}`, tipo: 'Visita', icon: 'visita' });
     return items.sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 20);
@@ -435,7 +436,7 @@ export default function Clientes() {
                 <div className="space-y-2">
                   {cotizsCliente.map((c) => (
                     <div key={c.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                      <div><span className="text-sm font-medium text-gray-700">N° {c.numero}</span><span className="text-xs text-gray-400 ml-2">{formatDate(c.fecha)} · {c.estado}</span></div>
+                      <div><span className="text-sm font-medium text-gray-700">{nombreCotizacion(c)}</span><span className="text-xs text-gray-400 ml-2">{formatDate(c.fecha)} · {c.estado}</span></div>
                       <span className="text-sm font-medium text-gray-700">{formatUSD(c.subtotal_usd)} USD</span>
                     </div>
                   ))}

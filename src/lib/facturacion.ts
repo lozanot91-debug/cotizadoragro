@@ -202,10 +202,10 @@ export function urlFacturacion(origen: string, token: string): string {
   return `${origen.replace(/\/+$/, '')}/?facturar=${token}`;
 }
 
-export function textoWhatsAppFacturacion(p: { url: string; numero: number; cliente: string; notaVenta?: string | null }): string {
+/** `nombre`: "Cliente - 001". */
+export function textoWhatsAppFacturacion(p: { url: string; nombre: string; notaVenta?: string | null }): string {
   return [
-    `Pedido de facturación · Cotización N° ${p.numero}`,
-    `Cliente: ${p.cliente}`,
+    `Pedido de facturación · ${p.nombre}`,
     p.notaVenta ? `Nota de venta: ${p.notaVenta}` : null,
     '',
     'Detalle completo, Excel y PDF, y para marcarlo facturado:',

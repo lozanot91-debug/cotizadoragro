@@ -9,6 +9,7 @@ import { ErrorApp, ok, traducirError } from '@/lib/errores';
 import { useToast } from '@/components/Toast';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { interpretarBusqueda } from '@/lib/nombreCotizacion';
 
 const PAGE_SIZE = 50;
 
@@ -37,23 +38,25 @@ export default function Historial() {
   const [exportando, setExportando] = useState(false);
   const toast = useToast();
 
-  /** id de la cotización filtrada: undefined = sin filtro por número, null = ese número no existe. */
-  async function resolverCotizacion(): Promise<string | null | undefined> {
-    if (!filtroCotizNum) return undefined;
-    const numero = parseInt(filtroCotizNum);
-    if (!numero) return null;
-    const cotiz = await ok(supabase.from('cotizaciones').select('id').eq('numero', numero).maybeSingle());
-    return cotiz?.id ?? null;
+  /** ids de las cotizaciones buscadas ("Juan Perez - 001", "Juan Perez" o "001"): undefined = sin filtro, null = no hay ninguna. */
+  async function resolverCotizacion(): Promise<string[] | null | undefined> {
+    const b = interpretarBusqueda(filtroCotizNum);
+    if (!b) return undefined;
+    let q = supabase.from('cotizaciones').select('id');
+    if (b.cliente) q = q.ilike('cliente_nombre', `%${b.cliente.replace(/[%_\\]/g, (x) => `\\${x}`)}%`);
+    if (b.numero) q = q.eq('numero_cliente', b.numero);
+    const filas = (await ok(q.limit(200))) as { id: string }[] | null;
+    return filas && filas.length ? filas.map((f) => f.id) : null;
   }
 
   /** Consulta con todos los filtros. Orden estable (fecha + id) para que la paginación no repita ni saltee filas. */
-  function consulta(cotizId: string | undefined) {
+  function consulta(cotizIds: string[] | undefined) {
     let q = supabase.from('historial_cambios').select('*', { count: 'exact' });
     if (filtroFechaDesde) q = q.gte('created_at', `${filtroFechaDesde}T00:00:00-03:00`);
     if (filtroFechaHasta) q = q.lte('created_at', `${filtroFechaHasta}T23:59:59.999-03:00`);
     if (filtroUsuario) q = q.ilike('usuario_nombre', `%${filtroUsuario}%`);
     if (filtroTipo) q = q.eq('tipo', filtroTipo);
-    if (cotizId) q = q.eq('cotizacion_id', cotizId);
+    if (cotizIds) q = q.in('cotizacion_id', cotizIds);
     return q.order('created_at', { ascending: false }).order('id', { ascending: false });
   }
 
@@ -61,7 +64,7 @@ export default function Historial() {
     setLoading(true);
     const cotizId = await resolverCotizacion();
     if (cotizId === null) {
-      // El número de cotización pedido no existe: no hay nada que mostrar
+      // La cotización buscada no existe: no hay nada que mostrar
       setRegistros([]);
       setTotal(0);
       return;
@@ -167,9 +170,9 @@ export default function Historial() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">N° Cotización</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Cotización</label>
             <input type="text" value={filtroCotizNum} onChange={(e) => setFiltroCotizNum(e.target.value)}
-              placeholder="Ej. 15" className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none" />
+              placeholder="Ej. Juan Perez - 001" className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none" />
           </div>
         </div>
         <div className="flex gap-2 mt-3">

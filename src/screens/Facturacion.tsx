@@ -9,6 +9,7 @@ import { formatearFechaHora } from '@/lib/fechas';
 import { describirCondicion, estadoFacturacionInfo, textoWhatsAppFacturacion, urlFacturacion } from '@/lib/facturacion';
 import { docDePedido, facturacionPDF } from '@/lib/facturacionExport';
 import type { PedidoFacturacion } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 type Filtro = 'abiertos' | 'Pendiente' | 'Observado' | 'Facturado' | 'todos';
 
@@ -70,7 +71,8 @@ export default function Facturacion({ onEdit }: { onEdit: (cotizacionId: string)
         <div className="space-y-3">
           {visibles.map((p) => {
             const info = estadoFacturacionInfo(p.estado);
-            const num = p.cotizacion?.numero ?? p.extra?.numero ?? 0;
+            const ref = p.cotizacion ?? { numero: p.extra?.numero, numero_cliente: p.extra?.numero_cliente, cliente_nombre: p.cliente.nombre };
+            const nombre = nombreCotizacion(ref, p.cliente.nombre);
             const link = urlFacturacion(window.location.origin, p.token);
             const vencido = (p.estado === 'Pendiente' || p.estado === 'Observado') && new Date(p.vence_el).getTime() < Date.now();
             const conds = p.condiciones.map((c) => describirCondicion(c, (n, d) => formatUSD(n, d ?? 2)));
@@ -79,7 +81,7 @@ export default function Facturacion({ onEdit }: { onEdit: (cotizacionId: string)
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800">
-                      N° {num} · {p.cliente.nombre}
+                      {nombre}
                       <span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded align-middle ${info.clase}`}>{info.texto}</span>
                       {vencido && <span className="ml-1 text-xs font-medium px-2 py-0.5 rounded align-middle bg-gray-200 text-gray-600">Link vencido</span>}
                     </p>
@@ -101,10 +103,10 @@ export default function Facturacion({ onEdit }: { onEdit: (cotizacionId: string)
                     <ExternalLink className="w-4 h-4" /> {p.estado === 'Observado' ? 'Abrir para corregir' : 'Abrir cotización'}
                   </button>
                   {(p.estado === 'Pendiente' || p.estado === 'Observado') && (
-                    <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, numero: num, cliente: p.cliente.nombre, notaVenta: p.nota_venta }), 'Texto para WhatsApp copiado')}
+                    <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre, notaVenta: p.nota_venta }), 'Texto para WhatsApp copiado')}
                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
                   )}
-                  <button onClick={() => facturacionPDF(docDePedido(p, num))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
+                  <button onClick={() => facturacionPDF(docDePedido(p, ref))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
                 </div>
               </div>
             );

@@ -29,7 +29,8 @@ describe('vencimientos', () => {
   it('tarea de seguimiento y detección de tarea existente', () => {
     const [v] = vencimientos([c({ fecha: '2026-09-23' })], '2026-10-07', 3);
     const t = tareaDeVencimiento(v, '2026-10-07');
-    expect(t.titulo).toContain('N° 7');
+    expect(t.titulo).toBe('Seguimiento ALTOSENA - N° 7');
+    expect(tareaDeVencimiento({ ...v, cotiz: { ...v.cotiz, numero_cliente: 3 } } as typeof v, '2026-10-07').titulo).toBe('Seguimiento ALTOSENA - 003');
     expect(t.prioridad).toBe('Alta');
     expect(t.fecha_vencimiento).toBe('2026-10-07');
     expect(t.cotizacion_id).toBe('c1');
@@ -38,7 +39,7 @@ describe('vencimientos', () => {
   });
   it('mensaje al cliente', () => {
     const [v] = vencimientos([c({ fecha: '2026-09-23' })], '2026-10-07', 3);
-    expect(mensajeRecordatorio(v)).toContain('N° 7');
+    expect(mensajeRecordatorio(v)).toContain('ALTOSENA - N° 7');
     expect(mensajeRecordatorio(v)).toContain('08/10/2026');
   });
 });

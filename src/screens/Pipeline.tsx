@@ -9,6 +9,7 @@ import { estaCerrada } from '@/lib/estados';
 import { useCambioEstado } from '@/hooks/useCambioEstado';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida'];
 
@@ -253,8 +254,7 @@ export default function Pipeline({ onEdit }: Props) {
                           className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer active:cursor-grabbing">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
-                              <p className="font-bold text-gray-800 text-sm">N° {c.numero}</p>
-                              <p className="text-xs text-gray-600 truncate">{c.cliente_nombre || 'Sin cliente'}</p>
+                              <p className="font-bold text-gray-800 text-sm break-words">{nombreCotizacion(c)}</p>
                             </div>
                             <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0" />
                           </div>
@@ -292,8 +292,7 @@ export default function Pipeline({ onEdit }: Props) {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-3 py-2 font-medium text-gray-600">N°</th>
-              <th className="text-left px-3 py-2 font-medium text-gray-600">Cliente</th>
+              <th className="text-left px-3 py-2 font-medium text-gray-600">Cotización</th>
               <th className="text-left px-3 py-2 font-medium text-gray-600">Estado</th>
               <th className="text-right px-3 py-2 font-medium text-gray-600">Total USD</th>
               <th className="text-right px-3 py-2 font-medium text-gray-600">Prob.</th>
@@ -307,8 +306,7 @@ export default function Pipeline({ onEdit }: Props) {
                 const prob = probabilidad(c);
                 return (
                   <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => onEdit(c.id)}>
-                    <td className="px-3 py-2 font-medium text-gray-800">{c.numero}</td>
-                    <td className="px-3 py-2 text-gray-600">{c.cliente_nombre || 'Sin cliente'}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800">{nombreCotizacion(c)}</td>
                     <td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estadoColors[c.estado]}`}>{c.estado}</span></td>
                     <td className="px-3 py-2 text-right font-semibold">{formatUSD(c.subtotal_usd, 0)}</td>
                     <td className="px-3 py-2 text-right text-gray-500">{prob}%</td>

@@ -151,9 +151,19 @@ export interface Planta {
   updated_at: string;
 }
 
+/** Lo mínimo para mostrar el nombre de una cotización en tareas, visitas, cobros, etc. */
+export interface RefCotizacion {
+  numero: number;
+  numero_cliente?: number | null;
+  cliente_nombre?: string | null;
+}
+
 export interface Cotizacion {
   id: string;
+  /** Número global interno (no se muestra). */
   numero: number;
+  /** Correlativo del cliente: el nombre visible es "Cliente - 001" (ver nombreCotizacion). Lo asigna la base. */
+  numero_cliente?: number | null;
   cliente_id: string | null;
   cliente_nombre: string | null;
   fecha: string;
@@ -221,7 +231,7 @@ export interface Tarea {
   cliente_id: string | null;
   completada_at: string | null;
   resultado: string | null;
-  cotizacion?: { numero: number } | null;
+  cotizacion?: RefCotizacion | null;
   cliente?: { nombre: string } | null;
 }
 
@@ -249,7 +259,7 @@ export interface Visita {
   responsable: string | null;
   creada_por: string | null;
   cliente?: { nombre: string } | null;
-  cotizacion?: { numero: number } | null;
+  cotizacion?: RefCotizacion | null;
 }
 
 export interface VisitaFoto {
@@ -320,7 +330,7 @@ export interface Cobranza {
   nota: string | null;
   created_at: string;
   updated_at: string;
-  cotizacion?: Pick<Cotizacion, 'numero' | 'cliente_nombre' | 'canje_cultivo' | 'canje_precio_usd' | 'con_iva'> | null;
+  cotizacion?: Pick<Cotizacion, 'numero' | 'numero_cliente' | 'cliente_nombre' | 'canje_cultivo' | 'canje_precio_usd' | 'con_iva'> | null;
 }
 
 export interface PedidoPrecioLinea {
@@ -353,7 +363,7 @@ export interface PedidoPrecio {
   correccion_mensaje: string | null;
   aplicado_at: string | null;
   created_at: string;
-  cotizacion?: Pick<Cotizacion, 'numero' | 'cliente_nombre'> | null;
+  cotizacion?: Pick<Cotizacion, 'numero' | 'numero_cliente' | 'cliente_nombre'> | null;
   lineas?: PedidoPrecioLinea[];
 }
 
@@ -429,7 +439,7 @@ export interface PedidoFacturacion {
   observado_por: string | null;
   observado_at: string | null;
   created_at: string;
-  cotizacion?: { numero: number; cliente_nombre: string | null; estado: string } | null;
+  cotizacion?: { numero: number; numero_cliente?: number | null; cliente_nombre: string | null; estado: string } | null;
 }
 
 export interface ClienteFacturacion {
@@ -442,6 +452,7 @@ export interface ClienteFacturacion {
 
 export interface ExtraFacturacion {
   numero?: number;
+  numero_cliente?: number | null;
   fecha_cotizacion?: string;
   tc?: number;
   tc_flete?: number | null;

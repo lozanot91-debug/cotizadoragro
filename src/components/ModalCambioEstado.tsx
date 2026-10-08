@@ -4,6 +4,7 @@ import type { Cotizacion, CotizacionLinea, EstadoCotizacion } from '@/types';
 import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import { MOTIVOS_PERDIDA, esReapertura, motivoFinal } from '@/lib/estados';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 export interface DatosConfirmacion {
   motivo: string;
@@ -82,13 +83,13 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
           <div>
             <h3 className="font-bold text-gray-800">{reabre ? 'Reabrir cotización' : `Cambiar a ${hacia}`}</h3>
             <p className="text-sm text-gray-500">
-              Cotización N° {cotiz.numero} · {cotiz.cliente_nombre || 'Sin cliente'} · {formatUSD(cotiz.subtotal_usd)} USD
+              {nombreCotizacion(cotiz)} · {formatUSD(cotiz.subtotal_usd)} USD
             </p>
           </div>
         </div>
 
         <p className="text-sm text-gray-600 mb-4">
-          ¿Cambiar la cotización N° {cotiz.numero} de <strong>{cotiz.estado}</strong> a <strong>{hacia}</strong>?
+          ¿Cambiar la cotización {nombreCotizacion(cotiz)} de <strong>{cotiz.estado}</strong> a <strong>{hacia}</strong>?
         </p>
 
         {hacia === 'Perdida' && (
@@ -198,7 +199,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
 }
 
 interface PropsSeguimiento {
-  numero: number;
+  nombre: string;
   dias: number;
   crear: boolean;
   guardando: boolean;
@@ -208,7 +209,7 @@ interface PropsSeguimiento {
 }
 
 /** Modal que se ofrece después de pasar una cotización a Enviada. */
-export function ModalSeguimiento({ numero, dias, crear, guardando, onCambiar, onCancelar, onConfirmar }: PropsSeguimiento) {
+export function ModalSeguimiento({ nombre, dias, crear, guardando, onCambiar, onCancelar, onConfirmar }: PropsSeguimiento) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={guardando ? undefined : onCancelar}>
       <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
@@ -216,7 +217,7 @@ export function ModalSeguimiento({ numero, dias, crear, guardando, onCambiar, on
           <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center"><Check className="w-5 h-5 text-blue-600" /></div>
           <div>
             <h3 className="font-bold text-gray-800">¿Agendar seguimiento?</h3>
-            <p className="text-sm text-gray-500">Cotización N° {numero} enviada</p>
+            <p className="text-sm text-gray-500">{nombre} enviada</p>
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700 mb-3">

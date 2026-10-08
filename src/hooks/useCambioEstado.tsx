@@ -10,6 +10,7 @@ import { generarCobranzas } from '@/lib/cobranzas';
 import { parseNumberInput } from '@/lib/format';
 import { detalleGanada, lineasGanadas, noGanados, subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import type { Cotizacion, CotizacionLinea, EstadoCotizacion } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 interface Pedido {
   cotiz: Cotizacion;
@@ -121,7 +122,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       });
 
       setPedido(null);
-      toast.exito(`Cotización N° ${cotiz.numero}: ${hacia}`);
+      toast.exito(`${nombreCotizacion(cotiz)}: ${hacia}`);
 
       // Cobranzas: al ganar se cargan los cobros por plazo; al reabrir se borran los que faltan cobrar
       try {
@@ -159,7 +160,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
     try {
       const nombre = usuario?.nombre || 'Admin';
       await data.createTarea({
-        titulo: `Seguimiento cotización N° ${cotiz.numero}`,
+        titulo: `Seguimiento ${nombreCotizacion(cotiz)}`,
         tipo: 'Seguimiento',
         fecha_vencimiento: sumarDias(hoyAR(), dias),
         asignado_a: nombre,
@@ -193,7 +194,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       )}
       {seguimiento && (
         <ModalSeguimiento
-          numero={seguimiento.cotiz.numero}
+          nombre={nombreCotizacion(seguimiento.cotiz)}
           dias={seguimiento.dias}
           crear={seguimiento.crear}
           guardando={guardando}

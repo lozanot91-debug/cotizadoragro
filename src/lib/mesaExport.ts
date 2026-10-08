@@ -2,10 +2,13 @@ import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { formatUSD, formatNumber } from '@/lib/format';
 import { unidadCosto } from '@/lib/pedidosPrecio';
+import { limpiarParaArchivo } from '@/lib/nombreCotizacion';
 
 /** Lo que ve y descarga la mesa de insumos: sin márgenes ni precios de venta. */
 export interface ComprobanteMesa {
   numero: number;
+  /** "Cliente - 001" */
+  nombre: string;
   cliente: string;
   respondidoPor: string;
   respondidoAt: string;
@@ -18,14 +21,13 @@ function fechaHora(iso: string): string {
 }
 
 function nombreArchivo(c: ComprobanteMesa, ext: string): string {
-  const cli = c.cliente.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'cliente';
-  return `Costos_cotizacion_${c.numero}_${cli}.${ext}`;
+  return `Costos_${limpiarParaArchivo(c.nombre)}.${ext}`;
 }
 
 export function comprobanteExcel(c: ComprobanteMesa) {
   const filas: (string | number)[][] = [
     ['Costos cargados por la mesa de insumos'],
-    ['Cotización N°', c.numero],
+    ['Cotización', c.nombre],
     ['Cliente', c.cliente],
     ['Cargado por', c.respondidoPor],
     ['Fecha', fechaHora(c.respondidoAt)],
@@ -51,7 +53,7 @@ export function comprobantePDF(c: ComprobanteMesa) {
   y += 8;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  const cab = [`Cotización N° ${c.numero}`, `Cliente: ${c.cliente}`, `Cargado por: ${c.respondidoPor}`, `Fecha: ${fechaHora(c.respondidoAt)}`];
+  const cab = [`Cotización: ${c.nombre}`, `Cliente: ${c.cliente}`, `Cargado por: ${c.respondidoPor}`, `Fecha: ${fechaHora(c.respondidoAt)}`];
   for (const t of cab) { doc.text(t, 14, y); y += 5.5; }
   if (c.nota) { doc.text(doc.splitTextToSize(`Nota: ${c.nota}`, ancho - 28), 14, y); y += 5.5 * Math.max(1, doc.splitTextToSize(`Nota: ${c.nota}`, ancho - 28).length); }
   y += 3;

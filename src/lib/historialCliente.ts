@@ -7,6 +7,8 @@ export interface LineaDeCliente {
   linea: CotizacionLinea;
   cotizacionId: string;
   numero: number;
+  /** Nombre visible ("Cliente - 001"). */
+  nombre?: string;
   fecha: string;
   estado: string;
 }
@@ -16,6 +18,7 @@ export interface UltimaCotizacion {
   cantidad: number;
   fecha: string;
   numero: number;
+  nombre?: string;
   estado: string;
 }
 
@@ -31,7 +34,7 @@ export function ultimaCotizacion(lineas: LineaDeCliente[], cod: string, excluirC
     .sort(masReciente)[0]
     ?? lineas.filter((x) => x.linea.cod === cod && x.cotizacionId !== excluirCotizacionId).sort(masReciente)[0];
   if (!l) return null;
-  return { precio: l.linea.precio_usd, cantidad: l.linea.cantidad, fecha: l.fecha, numero: l.numero, estado: l.estado };
+  return { precio: l.linea.precio_usd, cantidad: l.linea.cantidad, fecha: l.fecha, numero: l.numero, nombre: l.nombre, estado: l.estado };
 }
 
 export interface ProductoDeCliente {
@@ -55,7 +58,7 @@ export function productosDelCliente(lineas: LineaDeCliente[], hoy: string): Prod
   const out: ProductoDeCliente[] = [];
   for (const [cod, ls] of porCod) {
     const orden = [...ls].sort(masReciente);
-    const toU = (l: LineaDeCliente): UltimaCotizacion => ({ precio: l.linea.precio_usd, cantidad: l.linea.cantidad, fecha: l.fecha, numero: l.numero, estado: l.estado });
+    const toU = (l: LineaDeCliente): UltimaCotizacion => ({ precio: l.linea.precio_usd, cantidad: l.linea.cantidad, fecha: l.fecha, numero: l.numero, nombre: l.nombre, estado: l.estado });
     const compra = orden.find((l) => l.estado === 'Ganada');
     out.push({
       cod,

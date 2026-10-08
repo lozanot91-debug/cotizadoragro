@@ -12,6 +12,7 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { resumenCobranzas } from '@/lib/cobranzas';
 import type { Cobranza } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 interface Props {
   onNavigate: (s: Screen) => void;
@@ -295,15 +296,15 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-gray-800">{t.titulo}</p>
                       <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                        {t.cotizacion?.numero && cotizId && (
+                        {t.cotizacion && cotizId && (
                           <button
                             onClick={() => onEditCotiz(cotizId)}
                             className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline font-medium"
                           >
-                            Cotización N° {t.cotizacion.numero}
+                            {nombreCotizacion(t.cotizacion, t.cliente?.nombre)}
                           </button>
                         )}
-                        {t.cliente?.nombre && (
+                        {t.cliente?.nombre && !(t.cotizacion && cotizId) && (
                           <span className="text-xs text-gray-400">
                             · {t.cliente.nombre}
                           </span>
@@ -416,8 +417,8 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-800">
-                      N° {c.numero}
+                    <span className="text-sm font-semibold text-gray-800 truncate min-w-0">
+                      {nombreCotizacion(c)}
                     </span>
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -431,9 +432,6 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
                       {c.estado}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">
-                    {c.cliente_nombre || 'Sin cliente'}
-                  </p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm font-semibold text-gray-800">
@@ -496,8 +494,8 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-800">
-                        N° {c.numero}
+                      <span className="text-sm font-semibold text-gray-800 truncate min-w-0">
+                        {nombreCotizacion(c)}
                       </span>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -509,9 +507,6 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
                         {c.estado}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">
-                      {c.cliente_nombre || 'Sin cliente'}
-                    </p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold text-gray-800">

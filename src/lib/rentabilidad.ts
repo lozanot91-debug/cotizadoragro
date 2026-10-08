@@ -9,6 +9,7 @@
  */
 import type { Cotizacion, CotizacionLinea } from '@/types';
 import { realDeLinea } from '@/lib/ganadaParcial';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 export interface GananciaLinea {
   venta: number;
@@ -111,7 +112,7 @@ export function calcularRentabilidad(
     acumular(maps.proveedor, l.proveedor || 'Sin proveedor', g, c.id);
     acumular(maps.familia, l.familia || 'Sin familia', g, c.id);
     acumular(maps.cliente, c.cliente_nombre || 'Sin cliente', g, c.id);
-    acumular(maps.cotizacion, `N° ${c.numero}`, g, c.id, c.cliente_nombre || 'Sin cliente');
+    acumular(maps.cotizacion, nombreCotizacion(c), g, c.id);
   }
 
   const filas = {
@@ -119,7 +120,7 @@ export function calcularRentabilidad(
     cliente: cerrar(maps.cliente), cotizacion: cerrar(maps.cotizacion),
   };
   // El id de la cotización viaja en la fila para poder abrirla
-  const idPorClave = new Map([...incluidas.values()].map((c) => [`N° ${c.numero}`, c.id]));
+  const idPorClave = new Map([...incluidas.values()].map((c) => [nombreCotizacion(c), c.id]));
   filas.cotizacion = filas.cotizacion.map((f) => ({ ...f, cotizacionId: idPorClave.get(f.clave) }));
 
   const ganancia = venta - costo;

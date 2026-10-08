@@ -21,6 +21,7 @@ import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { ultimaCotizacion, type LineaDeCliente } from '@/lib/historialCliente';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 interface LineaEditable {
   key: string;
@@ -110,7 +111,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const listaIdRef = useRef<string | null>(null);
   const [origenId, setOrigenId] = useState<string | null>(null);
-  const [origenNumero, setOrigenNumero] = useState<number | null>(null);
+  const [origenNombre, setOrigenNombre] = useState<string | null>(null);
   const [comparacion, setComparacion] = useState<{ lineas: LineaComparacion[]; totalAnt: number; totalNuevo: number } | null>(null);
   const [productosFaltantes, setProductosFaltantes] = useState<string[]>([]);
   const [historial, setHistorial] = useState<HistorialCambio[]>([]);
@@ -213,7 +214,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         if (cotiz.cotizacion_origen_id) {
           setOrigenId(cotiz.cotizacion_origen_id);
           const origen = await data.fetchCotizacion(cotiz.cotizacion_origen_id);
-          setOrigenNumero(origen?.numero || null);
+          setOrigenNombre(origen ? nombreCotizacion(origen) : null);
         }
 
         // Load historial for this cotización
@@ -266,7 +267,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       const cotiz = await data.fetchCotizacion(duplicateFromId);
       if (cotiz) {
         setOrigenId(cotiz.id);
-        setOrigenNumero(cotiz.numero);
+        setOrigenNombre(nombreCotizacion(cotiz));
         setClienteId(cotiz.cliente_id || '');
         setClienteBusqueda(cotiz.cliente_nombre || '');
         setKm(String(cotiz.km));
@@ -679,7 +680,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
     try {
       const saved = await data.saveCotizacion(buildCotizData(), buildLineasData(), editId);
-      setSaveMsg({ type: 'success', text: `Cotización N° ${saved.numero} guardada` });
+      setSaveMsg({ type: 'success', text: `Cotización ${nombreCotizacion(saved)} guardada` });
       setEditData(saved);
       if (pedidoPorMarcar) {
         try { await data.marcarPedidoAplicado(pedidoPorMarcar); setPedidoPorMarcar(null); setPedido(await data.fetchPedidoDeCotizacion(saved.id)); }
@@ -688,9 +689,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
       if (!editId) {
         // New cotización or duplicate
-        await registrarCambio({ tipo: 'cotizacion', cotizacion_id: saved.id, campo: 'creación', valor_nuevo: `N° ${saved.numero}`, detalle: origenId ? `Duplicada de N° ${origenNumero}` : null });
+        await registrarCambio({ tipo: 'cotizacion', cotizacion_id: saved.id, campo: 'creación', valor_nuevo: nombreCotizacion(saved), detalle: origenId ? `Duplicada de ${origenNombre}` : null });
         if (origenId) {
-          await registrarCambio({ tipo: 'cotizacion', cotizacion_id: origenId, detalle: `Duplicada como N° ${saved.numero}` });
+          await registrarCambio({ tipo: 'cotizacion', cotizacion_id: origenId, detalle: `Duplicada como ${nombreCotizacion(saved)}` });
         }
       } else {
         // Register changes for existing
@@ -704,7 +705,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       if (!editId && !opts?.mantener) {
         setTimeout(() => {
           setLineas([]); setClienteId(''); setClienteBusqueda(''); setClienteSeleccionado(null);
-          setNotas(''); setSaveMsg(null); setOrigenId(null); setOrigenNumero(null);
+          setNotas(''); setSaveMsg(null); setOrigenId(null); setOrigenNombre(null);
           setComparacion(null); setProductosFaltantes([]);
           setPlazo('0'); setTasaMensual(''); setConCanje(false); setCanjePrecio('');
         }, 2000);
@@ -768,7 +769,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       const lins = lineasParaPedido(lineasCalc.map((l) => ({ cod: l.producto.cod, producto: l.producto.producto || l.producto.cod, unid: l.producto.unid || '', es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad })));
       const token = await data.crearPedidoPrecio({ cotizacion_id: saved.id, dias, auto_aplicar: pedidoForm.auto, nota: pedidoForm.nota.trim(), lineas: lins });
       const url = urlPedido(window.location.origin, token);
-      setPedidoLink({ url, texto: textoWhatsAppPedido({ url, numero: saved.numero, cliente: clienteBusqueda, venceEl: new Date(Date.now() + dias * 86400000).toISOString(), nota: pedidoForm.nota }) });
+      setPedidoLink({ url, texto: textoWhatsAppPedido({ url, nombre: nombreCotizacion(saved), venceEl: new Date(Date.now() + dias * 86400000).toISOString(), nota: pedidoForm.nota }) });
       await registrarCambio({ tipo: 'cotizacion', cotizacion_id: saved.id, detalle: `Pidió precios a la mesa de insumos (link por ${dias} día${dias === 1 ? '' : 's'})` });
       await recargarPedido(saved.id);
     } catch (e) {
@@ -800,7 +801,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   }
 
   function cotizParaExport(): Cotizacion {
-    return { id: editData?.id || '', numero: editData?.numero || 0, ...buildCotizData(), motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
+    const cab = buildCotizData();
+    // El correlativo vale solo si el cliente no cambió (si cambió, la base le da otro al guardar)
+    const mismoCliente = !!editData && (editData.cliente_id || null) === (cab.cliente_id || null) && (editData.cliente_id || (editData.cliente_nombre || '').trim().toLowerCase() === (cab.cliente_nombre || '').trim().toLowerCase());
+    return { id: editData?.id || '', numero: editData?.numero || 0, numero_cliente: mismoCliente ? editData?.numero_cliente ?? null : null, ...cab, motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
   }
   function avisarExport(type: 'success' | 'error', text: string, ms = 3000) {
     setSaveMsg({ type, text });
@@ -856,16 +860,16 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold text-gray-800">
-          {editId ? `Editar cotización N° ${editData?.numero}` : duplicateFromId ? `Duplicar cotización N° ${origenNumero}` : 'Nueva cotización'}
+          {editId ? `Editar ${editData ? nombreCotizacion(editData) : 'cotización'}` : duplicateFromId ? `Duplicar ${origenNombre || 'cotización'}` : 'Nueva cotización'}
         </h1>
         {esReadOnly && (
           <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-medium flex items-center gap-1">
             <Lock className="w-3 h-3" /> Solo lectura — {editData?.estado}
           </span>
         )}
-        {origenNumero && (
+        {origenNombre && (
           <span className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-600 font-medium flex items-center gap-1">
-            <Link2 className="w-3 h-3" /> Duplicada de N° {origenNumero}
+            <Link2 className="w-3 h-3" /> Duplicada de {origenNombre}
           </span>
         )}
       </div>
@@ -1133,7 +1137,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                       const dif = u.precio > 0 ? ((l.precioUSD - u.precio) / u.precio) * 100 : 0;
                       return (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Última vez: USD {formatUSD(u.precio)} (N° {u.numero}, {formatDate(u.fecha)}, {u.estado.toLowerCase()})
+                          Última vez: USD {formatUSD(u.precio)} ({u.nombre || `N° ${u.numero}`}, {formatDate(u.fecha)}, {u.estado.toLowerCase()})
                           {Math.abs(dif) >= 0.5 && <span className={dif > 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif > 0 ? 'Ahora +' : 'Ahora '}{formatUSD(dif, 1)}%</span>}
                         </p>
                       );
@@ -1195,7 +1199,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-sm text-amber-900">Aplicaste los costos de la mesa: <strong>guardá la cotización</strong> para confirmarlos.</div>
       )}
       {pedido && pedido.estado !== 'Cancelado' && (
-        <PanelPedidoMesa pedido={pedido} onAplicar={esReadOnly ? undefined : () => aplicarCostosMesa()} onCambio={() => void recargarPedido()} numero={editData?.numero} cliente={clienteBusqueda} />
+        <PanelPedidoMesa pedido={pedido} onAplicar={esReadOnly ? undefined : () => aplicarCostosMesa()} onCambio={() => void recargarPedido()} cotizacion={editData} />
       )}
 
       {/* Botones */}
@@ -1259,7 +1263,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">Eliminar cotización</h3>
-                <p className="text-sm text-gray-500">N° {editData.numero} · {editData.cliente_nombre || 'Sin cliente'} · {formatUSD(editData.total_usd)} USD</p>
+                <p className="text-sm text-gray-500">{nombreCotizacion(editData)} · {formatUSD(editData.total_usd)} USD</p>
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">
@@ -1270,7 +1274,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <button onClick={() => setModalEliminar(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
               <button onClick={async () => {
                 await data.deleteCotizacion(editId);
-                await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización N° ${editData.numero}`, campo: 'eliminación', valor_anterior: `N° ${editData.numero}`, valor_nuevo: null, detalle: `Cotización eliminada (${editData.cliente_nombre || 'Sin cliente'} · ${formatUSD(editData.total_usd)} USD)` });
+                await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(editData)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(editData), valor_nuevo: null, detalle: `Cotización eliminada (${editData.cliente_nombre || 'Sin cliente'} · ${formatUSD(editData.total_usd)} USD)` });
                 setModalEliminar(false);
                 if (onDeleted) onDeleted();
               }} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Eliminar</button>

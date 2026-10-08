@@ -46,9 +46,8 @@ describe('textos y links', () => {
     expect(urlPedido('https://app.netlify.app/', 'abc')).toBe('https://app.netlify.app/?mesa=abc');
   });
   it('el texto de WhatsApp lleva cliente, número y link', () => {
-    const t = textoWhatsAppPedido({ url: 'https://x/?mesa=t', numero: 12, cliente: 'Perez', venceEl: '2026-10-10T15:00:00Z' });
-    expect(t).toContain('N° 12');
-    expect(t).toContain('Perez');
+    const t = textoWhatsAppPedido({ url: 'https://x/?mesa=t', nombre: 'Perez - 012', venceEl: '2026-10-10T15:00:00Z' });
+    expect(t).toContain('cotización Perez - 012.');
     expect(t).toContain('https://x/?mesa=t');
   });
   it('días restantes y unidad', () => {

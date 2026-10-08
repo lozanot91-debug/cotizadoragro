@@ -6,6 +6,7 @@ import { formatUSD, formatDate } from '@/lib/format';
 import { calcularTotalesIva, recargoPorcentaje, toneladasCanje, type TotalesIva } from '@/lib/calculations';
 import { fechaVencimiento } from '@/lib/vencimientos';
 import { LOGO_CERES_TOLVAS } from '@/assets/logoCeresTolvas';
+import { nombreCotizacion, archivoCotizacion } from '@/lib/nombreCotizacion';
 
 function tasaTxt(t: number): string {
   return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(t || 0);
@@ -111,8 +112,13 @@ export function construirPDF(
   }
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8); color(PDF.suave);
   doc.text('COTIZACIÓN', derecha, 14.5, { align: 'right', charSpace: 0.6 });
-  doc.setFontSize(20); color(PDF.cultivo700);
-  doc.text(`N° ${cotiz.numero}`, derecha, 22, { align: 'right' });
+  // "Cliente - 001": se achica si el nombre del cliente es largo, para no pisar el logo
+  const titulo = nombreCotizacion(cotiz);
+  let tam = 20;
+  doc.setFontSize(tam);
+  while (tam > 11 && doc.getTextWidth(titulo) > 105) { tam -= 1; doc.setFontSize(tam); }
+  color(PDF.cultivo700);
+  doc.text(doc.getTextWidth(titulo) > 105 ? (doc.splitTextToSize(titulo, 105) as string[])[0] : titulo, derecha, 22, { align: 'right' });
 
   // Razón social y datos fiscales bajo el logo
   let y = 12 + logoAlto + 5;
@@ -281,7 +287,7 @@ export function generarPDF(
   cliente: Cliente | null,
   config: Configuracion
 ) {
-  construirPDF(cotiz, lineas, cliente, config, LOGO_CERES_TOLVAS).save(`Cotizacion_${cotiz.numero}.pdf`);
+  construirPDF(cotiz, lineas, cliente, config, LOGO_CERES_TOLVAS).save(`Cotizacion_${archivoCotizacion(cotiz)}.pdf`);
 }
 
 export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
@@ -307,7 +313,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
 
   // Hoja de resumen
   const resumen = [{
-    'Número': cotiz.numero,
+    'Cotización': nombreCotizacion(cotiz),
     'Fecha': cotiz.fecha,
     'Cliente': cotiz.cliente_nombre,
     'Tipo de cambio': cotiz.tc,
@@ -331,7 +337,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
   const wsResumen = XLSX.utils.json_to_sheet(resumen);
   XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
 
-  XLSX.writeFile(wb, `Cotizacion_${cotiz.numero}.xlsx`);
+  XLSX.writeFile(wb, `Cotizacion_${archivoCotizacion(cotiz)}.xlsx`);
 }
 
 export function generarWhatsApp(
@@ -340,7 +346,7 @@ export function generarWhatsApp(
   config: Configuracion
 ): string {
   let msg = `*${config.empresa_nombre}*\n`;
-  msg += `Cotización N° ${cotiz.numero}\n`;
+  msg += `Cotización ${nombreCotizacion(cotiz)}\n`;
   msg += `Fecha: ${formatDate(cotiz.fecha)}\n`;
   msg += `Cliente: ${cotiz.cliente_nombre || '-'}\n`;
   msg += `Tipo de cambio: $${cotiz.tc}\n`;

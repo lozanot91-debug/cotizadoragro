@@ -63,6 +63,6 @@ describe('calcularRentabilidad', () => {
     expect(r.filas.proveedor.find((f) => f.clave === 'P2')!.margenPct).toBe(0);
     expect(r.filas.cliente.map((f) => f.clave).sort()).toEqual(['ALTOSENA', 'OTRO']);
     expect(r.conCostoEditado).toBe(1);
-    expect(r.filas.cotizacion.find((f) => f.clave === 'N° 2')!.cotizacionId).toBe('c2');
+    expect(r.filas.cotizacion.find((f) => f.clave.endsWith('N° 2'))!.cotizacionId).toBe('c2');
   });
 });

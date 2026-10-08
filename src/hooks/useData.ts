@@ -1,3 +1,4 @@
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { supabase } from '@/lib/supabase';
 import { esFertilizante } from '@/lib/calculations';
 import type {
@@ -283,7 +284,7 @@ export function useData() {
   // ---- Pedidos de facturación ----
   async function fetchPedidosFacturacion(): Promise<PedidoFacturacion[]> {
     const data = await ok(supabase.from('pedidos_facturacion')
-      .select('*, cotizacion:cotizaciones(numero, cliente_nombre, estado)')
+      .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre, estado)')
       .order('enviado_at', { ascending: false }).limit(500));
     return (data || []) as PedidoFacturacion[];
   }
@@ -677,17 +678,17 @@ export function useData() {
   /** Carga la tarifa de flete completa en una transacción (reemplaza la anterior). */
 
   /** Líneas de todas las cotizaciones abiertas, en un solo pedido paginado (para saber cuáles usan un producto). */
-  async function fetchLineasCotizacionesAbiertas(): Promise<{ cod: string; numero: number; cliente: string }[]> {
-    const filas = await fetchAllPaged<{ cod: string; cotizaciones: { numero: number; cliente_nombre: string | null; estado: string } | null }>(() =>
+  async function fetchLineasCotizacionesAbiertas(): Promise<{ cod: string; numero: number; nombre: string; cliente: string }[]> {
+    const filas = await fetchAllPaged<{ cod: string; cotizaciones: { numero: number; numero_cliente: number | null; cliente_nombre: string | null; estado: string } | null }>(() =>
       supabase
         .from('cotizacion_lineas')
-        .select('id, cod, cotizaciones!inner(numero, cliente_nombre, estado)')
+        .select('id, cod, cotizaciones!inner(numero, numero_cliente, cliente_nombre, estado)')
         .in('cotizaciones.estado', ['Borrador', 'Enviada', 'En negociación'])
         .order('id') as unknown as AnyFilter
     );
     return filas
       .filter((f) => f.cotizaciones)
-      .map((f) => ({ cod: f.cod, numero: f.cotizaciones!.numero, cliente: f.cotizaciones!.cliente_nombre || 'Sin cliente' }));
+      .map((f) => ({ cod: f.cod, numero: f.cotizaciones!.numero, nombre: nombreCotizacion(f.cotizaciones), cliente: f.cotizaciones!.cliente_nombre || 'Sin cliente' }));
   }
 
   /** Todas las líneas de las cotizaciones abiertas (una sola consulta paginada, con el estado por join). */
@@ -708,16 +709,16 @@ export function useData() {
 
   /** Todas las líneas que se le cotizaron a un cliente, con los datos de su cotización. */
   async function fetchLineasDeCliente(clienteId: string): Promise<LineaDeCliente[]> {
-    const filas = await fetchAllPaged<CotizacionLinea & { cotizaciones: { id: string; numero: number; fecha: string; estado: string } }>(() =>
+    const filas = await fetchAllPaged<CotizacionLinea & { cotizaciones: { id: string; numero: number; numero_cliente: number | null; cliente_nombre: string | null; fecha: string; estado: string } }>(() =>
       supabase
         .from('cotizacion_lineas')
-        .select('*, cotizaciones!inner(id, numero, fecha, estado, cliente_id)')
+        .select('*, cotizaciones!inner(id, numero, numero_cliente, cliente_nombre, fecha, estado, cliente_id)')
         .eq('cotizaciones.cliente_id', clienteId)
         .order('id') as unknown as AnyFilter
     );
     return filas.map((f) => {
       const { cotizaciones: c, ...linea } = f;
-      return { linea: linea as CotizacionLinea, cotizacionId: c.id, numero: c.numero, fecha: c.fecha, estado: c.estado };
+      return { linea: linea as CotizacionLinea, cotizacionId: c.id, numero: c.numero, nombre: nombreCotizacion(c), fecha: c.fecha, estado: c.estado };
     });
   }
 
@@ -774,7 +775,7 @@ export function useData() {
     return fetchAllPaged<PedidoPrecio>(() =>
       supabase
         .from('pedidos_precio')
-        .select('*, cotizacion:cotizaciones(numero, cliente_nombre), lineas:pedidos_precio_lineas(*)')
+        .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre), lineas:pedidos_precio_lineas(*)')
         .order('created_at', { ascending: false })
         .order('id') as unknown as AnyFilter
     );
@@ -819,7 +820,7 @@ export function useData() {
     return fetchAllPaged<Cobranza>(() =>
       supabase
         .from('cobranzas')
-        .select('*, cotizacion:cotizaciones(numero, cliente_nombre, canje_cultivo, canje_precio_usd, con_iva)')
+        .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre, canje_cultivo, canje_precio_usd, con_iva)')
         .order('vencimiento')
         .order('id') as unknown as AnyFilter
     );
@@ -848,7 +849,7 @@ export function useData() {
   async function fetchTareas(): Promise<Tarea[]> {
     const data = await ok(supabase
       .from('tareas')
-      .select('*, cotizacion:cotizaciones(numero), cliente:clientes(nombre)')
+      .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre), cliente:clientes(nombre)')
       .order('fecha_vencimiento', { ascending: true }));
     return (data || []) as Tarea[];
   }
@@ -857,7 +858,7 @@ export function useData() {
     const hoy = hoyAR();
     const data = await ok(supabase
       .from('tareas')
-      .select('*, cotizacion:cotizaciones(numero), cliente:clientes(nombre)')
+      .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre), cliente:clientes(nombre)')
       .eq('estado', 'Pendiente')
       .lte('fecha_vencimiento', hoy)
       .order('fecha_vencimiento', { ascending: true }));
@@ -899,7 +900,7 @@ export function useData() {
   async function fetchVisitas(): Promise<Visita[]> {
     const data = await ok(supabase
       .from('visitas')
-      .select('*, cliente:clientes(nombre), cotizacion:cotizaciones(numero)')
+      .select('*, cliente:clientes(nombre), cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre)')
       .order('fecha', { ascending: true }));
     return (data || []) as Visita[];
   }

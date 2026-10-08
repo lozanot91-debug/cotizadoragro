@@ -23,7 +23,7 @@ export default function Listas() {
   const [uploading, setUploading] = useState(false);
   const [mensaje, setMensaje] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [cambiosCosto, setCambiosCosto] = useState<{ cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] | null>(null);
-  const [cotizAfectadas, setCotizAfectadas] = useState<{ numero: number; cliente: string }[]>([]);
+  const [cotizAfectadas, setCotizAfectadas] = useState<{ numero: number; nombre: string }[]>([]);
   const [modalConfirmar, setModalConfirmar] = useState<{ fecha: string; file: File; filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[]; afectadas: { total: number; abiertas: number } } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,7 +120,7 @@ export default function Listas() {
         : '';
 
       // Cotizaciones abiertas que usan algún producto cuyo costo cambió (una sola consulta)
-      let afectadas: { numero: number; cliente: string }[] = [];
+      let afectadas: { numero: number; nombre: string }[] = [];
       let avisoAfectadas = '';
       if (cambios.length > 0) {
         try {
@@ -128,9 +128,9 @@ export default function Listas() {
           const lineasAbiertas = await data.fetchLineasCotizacionesAbiertas();
           const porNumero = new Map<number, string>();
           for (const l of lineasAbiertas) {
-            if (codsCambiados.has(l.cod)) porNumero.set(l.numero, l.cliente);
+            if (codsCambiados.has(l.cod)) porNumero.set(l.numero, l.nombre);
           }
-          afectadas = [...porNumero].sort((x, y) => x[0] - y[0]).map(([numero, cliente]) => ({ numero, cliente }));
+          afectadas = [...porNumero].sort((x, y) => x[0] - y[0]).map(([numero, nombre]) => ({ numero, nombre }));
         } catch {
           avisoAfectadas = ' No se pudo calcular qué cotizaciones abiertas se ven afectadas.';
         }
@@ -269,7 +269,7 @@ export default function Listas() {
               <div className="flex flex-wrap gap-2">
                 {cotizAfectadas.map((c) => (
                   <span key={c.numero} className="text-xs px-3 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">
-                    N° {c.numero} · {c.cliente}
+                    {c.nombre}
                   </span>
                 ))}
               </div>

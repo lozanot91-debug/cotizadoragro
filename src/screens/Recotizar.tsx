@@ -10,6 +10,7 @@ import { recotizar, cabeceraRecotizada, type ResultadoRecotizar } from '@/lib/re
 import { formatUSD, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
 import type { Configuracion, Cotizacion, CotizacionLinea, ListaCostos, ProductoConCosto, ConvenioFlete, EstadoCotizacion } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const estadoColors: Record<string, string> = {
   'Borrador': 'bg-gray-100 text-gray-600',
@@ -88,10 +89,10 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
     const cabecera = cabeceraRecotizada(f.cotiz, f.r, { fecha: hoyAR(), vigenciaDias: config.vigencia_default, listaId: vigente.id, convenioFleteId: f.convenio?.id ?? null, convenioCortoId: f.convenioCorto?.id ?? null });
     const nueva = await data.saveCotizacion(cabecera, f.r.lineas);
     await registrarCambio({
-      tipo: 'cotizacion', cotizacion_id: nueva.id, campo: 'creación', valor_nuevo: `N° ${nueva.numero}`,
-      detalle: `Recotizada de N° ${f.cotiz.numero} con la lista del ${formatDate(vigente.fecha)}`,
+      tipo: 'cotizacion', cotizacion_id: nueva.id, campo: 'creación', valor_nuevo: nombreCotizacion(nueva),
+      detalle: `Recotizada de ${nombreCotizacion(f.cotiz)} con la lista del ${formatDate(vigente.fecha)}`,
     });
-    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: f.cotiz.id, detalle: `Recotizada como N° ${nueva.numero}` });
+    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: f.cotiz.id, detalle: `Recotizada como ${nombreCotizacion(nueva)}` });
     return nueva;
   }
 
@@ -100,7 +101,7 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
     setTrabajando(f.cotiz.id);
     try {
       const nueva = await crear(f);
-      toast.exito(`Cotización N° ${nueva.numero} creada como Borrador`);
+      toast.exito(`${nombreCotizacion(nueva)} creada como Borrador`);
       onEdit(nueva.id);
     } catch (e) {
       toast.error(e);
@@ -114,13 +115,13 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
     if (elegidas.length === 0 || trabajando) return;
     setTrabajando('lote');
     let creadas = 0;
-    const fallidas: number[] = [];
+    const fallidas: string[] = [];
     for (const f of elegidas) {
-      try { await crear(f); creadas++; } catch (e) { console.error('Error al recotizar', f.cotiz.numero, e); fallidas.push(f.cotiz.numero); }
+      try { await crear(f); creadas++; } catch (e) { console.error('Error al recotizar', f.cotiz.numero, e); fallidas.push(nombreCotizacion(f.cotiz)); }
     }
     setTrabajando(null);
     if (creadas > 0) toast.exito(`${creadas} cotizaciones creadas como Borrador`);
-    if (fallidas.length > 0) toast.aviso(`No se pudieron recotizar: N° ${fallidas.join(', ')}`);
+    if (fallidas.length > 0) toast.aviso(`No se pudieron recotizar: ${fallidas.join(', ')}`);
     setLoading(true);
     void load();
   }
@@ -172,8 +173,7 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
                     <input type="checkbox" aria-label="Marcar todas" checked={todasMarcadas}
                       onChange={() => setSeleccion(todasMarcadas ? new Set() : new Set(recotizables.map((f) => f.cotiz.id)))} className="w-4 h-4 accent-emerald-600" />
                   </th>
-                  <th className="text-left px-3 py-2 font-medium">N°</th>
-                  <th className="text-left px-3 py-2 font-medium">Cliente</th>
+                  <th className="text-left px-3 py-2 font-medium">Cotización</th>
                   <th className="text-left px-3 py-2 font-medium">Estado</th>
                   <th className="text-left px-3 py-2 font-medium whitespace-nowrap">Lista usada</th>
                   <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Antes (USD)</th>
@@ -192,11 +192,10 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
                   return (
                     <tr key={cotiz.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2">
-                        <input type="checkbox" aria-label={`Marcar cotización ${cotiz.numero}`} disabled={!!bloqueada} checked={seleccion.has(cotiz.id)}
+                        <input type="checkbox" aria-label={`Marcar cotización ${nombreCotizacion(cotiz)}`} disabled={!!bloqueada} checked={seleccion.has(cotiz.id)}
                           onChange={() => alternar(cotiz.id)} className="w-4 h-4 accent-emerald-600 disabled:opacity-40" />
                       </td>
-                      <td className="px-3 py-2 font-medium text-gray-800">{cotiz.numero}</td>
-                      <td className="px-3 py-2 text-gray-700">{cotiz.cliente_nombre || 'Sin cliente'}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800">{nombreCotizacion(cotiz)}</td>
                       <td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estadoColors[cotiz.estado as EstadoCotizacion] || 'bg-gray-100 text-gray-600'}`}>{cotiz.estado}</span></td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{f.fechaLista ? formatDate(f.fechaLista) : 'sin dato'}</td>
                       <td className="px-3 py-2 text-right text-gray-600">{formatUSD(r.subtotalAnterior)}</td>

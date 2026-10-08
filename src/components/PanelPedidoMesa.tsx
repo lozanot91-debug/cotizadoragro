@@ -6,6 +6,7 @@ import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { formatearFechaHora } from '@/lib/fechas';
 import { estadoPedido, urlPedido, textoWhatsAppPedido, diasRestantes, venceEnDias, unidadCosto } from '@/lib/pedidosPrecio';
 import type { PedidoPrecio } from '@/types';
+import { nombreCotizacion, type DatosNombre } from '@/lib/nombreCotizacion';
 
 interface Props {
   pedido: PedidoPrecio;
@@ -14,19 +15,18 @@ interface Props {
   /** Se llama después de cada cambio (extender, cancelar, habilitar) para recargar. */
   onCambio: () => void;
   /** Datos de la cotización cuando el panel se usa fuera de ella (lista de pedidos). */
-  numero?: number;
-  cliente?: string;
+  cotizacion?: DatosNombre | null;
   acciones?: React.ReactNode;
 }
 
-export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, numero, cliente, acciones }: Props) {
+export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, cotizacion, acciones }: Props) {
   const data = useData();
   const toast = useToast();
   const [dias, setDias] = useState('3');
   const [ocupado, setOcupado] = useState(false);
   const estado = estadoPedido(pedido);
-  const num = numero ?? pedido.cotizacion?.numero ?? 0;
-  const cli = cliente ?? pedido.cotizacion?.cliente_nombre ?? '';
+  const ref = cotizacion ?? pedido.cotizacion ?? null;
+  const nombre = nombreCotizacion(ref);
   const link = urlPedido(window.location.origin, pedido.token);
   const quedan = diasRestantes(pedido.vence_el);
 
@@ -52,7 +52,7 @@ export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, numero, c
             {estado === 'Cancelado' && 'Pedido a mesa cancelado'}
             {estado === 'Respondido' && (pedido.correccion_solicitada ? 'La mesa pidió corregir los costos' : 'La mesa de insumos cargó los costos')}
           </p>
-          {(num > 0 || cli) && <p className="text-sm text-gray-600">Cotización N° {num} · {cli}</p>}
+          {ref && <p className="text-sm text-gray-600">{nombre}</p>}
           <p className="text-xs text-gray-500">
             Pedido el {formatDate(pedido.created_at)}{pedido.creado_por ? ` por ${pedido.creado_por}` : ''}
             {estado === 'Abierto' && <> · vence {formatearFechaHora(pedido.vence_el)} ({quedan <= 0 ? 'hoy' : `en ${quedan} día${quedan === 1 ? '' : 's'}`})</>}
@@ -93,7 +93,7 @@ export default function PanelPedidoMesa({ pedido, onAplicar, onCambio, numero, c
             {estado === 'Abierto' && (
               <>
                 <button onClick={() => void copiar(link, 'Link copiado')} className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Link2 className="w-4 h-4" /> Copiar link</button>
-                <button onClick={() => void copiar(textoWhatsAppPedido({ url: link, numero: num, cliente: cli, venceEl: pedido.vence_el, nota: pedido.nota }), 'Texto para WhatsApp copiado')} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
+                <button onClick={() => void copiar(textoWhatsAppPedido({ url: link, nombre, venceEl: pedido.vence_el, nota: pedido.nota }), 'Texto para WhatsApp copiado')} className="px-3 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
               </>
             )}
             <span className="flex items-center gap-1 text-sm text-gray-600">

@@ -21,10 +21,11 @@ export function urlPedido(origen: string, token: string): string {
 }
 
 /** Texto listo para pegar en WhatsApp. */
-export function textoWhatsAppPedido(o: { url: string; numero: number | string; cliente: string; venceEl: string; nota?: string | null }): string {
+/** `nombre`: "Cliente - 001". */
+export function textoWhatsAppPedido(o: { url: string; nombre: string; venceEl: string; nota?: string | null }): string {
   const vence = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(o.venceEl));
   const nota = o.nota?.trim() ? `\nNota: ${o.nota.trim()}` : '';
-  return `Hola! Necesito costos para la cotización N° ${o.numero} (${o.cliente}).${nota}\nCargalos acá, sin usuario ni clave:\n${o.url}\nEl link vence el ${vence}.`;
+  return `Hola! Necesito costos para la cotización ${o.nombre}.${nota}\nCargalos acá, sin usuario ni clave:\n${o.url}\nEl link vence el ${vence}.`;
 }
 
 export function diasRestantes(vence: string, ahora: number = Date.now()): number {

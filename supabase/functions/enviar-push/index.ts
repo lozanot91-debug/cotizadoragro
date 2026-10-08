@@ -23,6 +23,12 @@ function iguales(a: string, b: string): boolean {
   return r === 0;
 }
 
+/** "Cliente - 001" (igual que src/lib/nombreCotizacion.ts). */
+function nombreCotizacion(c: { numero: number; numero_cliente: number | null; cliente_nombre: string | null }): string {
+  const cli = (c.cliente_nombre || '').trim().replace(/\s+/g, ' ') || 'Sin cliente';
+  return c.numero_cliente ? `${cli} - ${String(c.numero_cliente).padStart(3, '0')}` : `${cli} - N° ${c.numero}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return respuesta({ error: 'Método no permitido' }, 405);
@@ -66,13 +72,13 @@ Deno.serve(async (req) => {
   } else if (facturacionId) {
     const { data: f } = await db
       .from('pedidos_facturacion')
-      .select('id, creado_por_id, factura_numero, facturado_por, observacion, observado_por, cotizacion_id, cotizaciones(numero, cliente_nombre, vendedor)')
+      .select('id, creado_por_id, factura_numero, facturado_por, observacion, observado_por, cotizacion_id, cotizaciones(numero, numero_cliente, cliente_nombre, vendedor)')
       .eq('id', facturacionId).maybeSingle();
     if (!f) return respuesta({ error: 'No existe el pedido de facturación' }, 404);
     // deno-lint-ignore no-explicit-any
-    const c = (f as any).cotizaciones as { numero: number; cliente_nombre: string | null; vendedor: string | null } | null;
+    const c = (f as any).cotizaciones as { numero: number; numero_cliente: number | null; cliente_nombre: string | null; vendedor: string | null } | null;
     cotizacionId = f.cotizacion_id;
-    const ref = c ? `N° ${c.numero}${c.cliente_nombre ? ` · ${c.cliente_nombre}` : ''}` : 'una cotización';
+    const ref = c ? nombreCotizacion(c) : 'una cotización';
     if (tipo === 'facturado') {
       titulo = 'Pedido facturado';
       cuerpo = `${ref}${f.factura_numero ? ` — factura ${f.factura_numero}` : ''}${f.facturado_por ? ` (${f.facturado_por})` : ''}.`;
@@ -85,13 +91,13 @@ Deno.serve(async (req) => {
   } else {
     const { data: p } = await db
       .from('pedidos_precio')
-      .select('id, respondido_por, correccion_mensaje, cotizacion_id, cotizaciones(numero, cliente_nombre, vendedor)')
+      .select('id, respondido_por, correccion_mensaje, cotizacion_id, cotizaciones(numero, numero_cliente, cliente_nombre, vendedor)')
       .eq('id', pedidoId).maybeSingle();
     if (!p) return respuesta({ error: 'No existe el pedido' }, 404);
     // deno-lint-ignore no-explicit-any
-    const c = (p as any).cotizaciones as { numero: number; cliente_nombre: string | null; vendedor: string | null } | null;
+    const c = (p as any).cotizaciones as { numero: number; numero_cliente: number | null; cliente_nombre: string | null; vendedor: string | null } | null;
     cotizacionId = p.cotizacion_id;
-    const ref = c ? `N° ${c.numero}${c.cliente_nombre ? ` · ${c.cliente_nombre}` : ''}` : 'una cotización';
+    const ref = c ? nombreCotizacion(c) : 'una cotización';
     if (tipo === 'respondido') {
       titulo = 'La mesa cargó los precios';
       cuerpo = `${ref}${p.respondido_por ? ` — cargó ${p.respondido_por}` : ''}. Tocá para revisar y aplicar.`;

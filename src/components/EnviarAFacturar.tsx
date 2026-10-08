@@ -15,6 +15,7 @@ import {
 } from '@/lib/facturacion';
 import { docDePedido, facturacionExcel, facturacionPDF } from '@/lib/facturacionExport';
 import type { Cliente, Cotizacion, PedidoFacturacion } from '@/types';
+import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const inputCls = 'w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
 const fmt = (n: number, d = 2) => formatUSD(n, d);
@@ -113,7 +114,7 @@ export default function EnviarAFacturar({ cotizacion }: { cotizacion: Cotizacion
           <div className="flex flex-wrap gap-2">
             {pedido.estado !== 'Facturado' && (
               <>
-                <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, numero: cotizacion.numero, cliente: pedido.cliente.nombre, notaVenta: pedido.nota_venta }), 'Texto para WhatsApp copiado')}
+                <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre: nombreCotizacion(cotizacion), notaVenta: pedido.nota_venta }), 'Texto para WhatsApp copiado')}
                   className="px-3 py-1.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
                 <button onClick={() => void copiar(link, 'Link copiado')} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Link2 className="w-4 h-4" /> Copiar link</button>
                 <button onClick={() => setAbierto(true)} className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 ${pedido.estado === 'Observado' || vencido ? 'bg-emerald-700 text-white hover:bg-emerald-800' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
@@ -121,8 +122,8 @@ export default function EnviarAFacturar({ cotizacion }: { cotizacion: Cotizacion
                 </button>
               </>
             )}
-            <button onClick={() => facturacionPDF(docDePedido(pedido, cotizacion.numero))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
-            <button onClick={() => facturacionExcel(docDePedido(pedido, cotizacion.numero))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
+            <button onClick={() => facturacionPDF(docDePedido(pedido, cotizacion))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
+            <button onClick={() => facturacionExcel(docDePedido(pedido, cotizacion))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
             {pedido.estado !== 'Facturado' && (
               <button onClick={() => void cancelar()} disabled={ocupado} className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1.5 disabled:opacity-50"><XCircle className="w-4 h-4" /> Cancelar</button>
             )}
@@ -215,7 +216,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
     const datos = {
       cliente: { nombre: c?.nombre || cotizacion.cliente_nombre || '', razon_social: c?.razon_social ?? null, cuit: c?.cuit ?? null, domicilio: c?.domicilio ?? null, localidad: c?.localidad ?? null },
       condiciones: usadas, lineas: lineasCalc, totales: tot, nota_venta: notaVenta.trim(), observaciones: obs.trim(), creado_por: vendedor,
-      extra: { numero: cotizacion.numero, fecha_cotizacion: cotizacion.fecha, tc: cotizacion.tc, tc_flete: cotizacion.tc_flete ?? null, flete: textoFlete(cotizacion), vendedor },
+      extra: { numero: cotizacion.numero, numero_cliente: cotizacion.numero_cliente ?? null, fecha_cotizacion: cotizacion.fecha, tc: cotizacion.tc, tc_flete: cotizacion.tc_flete ?? null, flete: textoFlete(cotizacion), vendedor },
     };
     setEnviando(true);
     try {
@@ -237,7 +238,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
         <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center justify-between z-10">
           <div>
             <h3 className="font-bold text-gray-800">{previo ? 'Corregir y reenviar a facturar' : 'Enviar a facturar'}</h3>
-            <p className="text-xs text-gray-500">Cotización N° {cotizacion.numero} · {cotizacion.cliente_nombre}</p>
+            <p className="text-xs text-gray-500">{nombreCotizacion(cotizacion)}</p>
           </div>
           <button onClick={onCerrar} disabled={enviando} className="p-1 text-gray-400 hover:text-gray-600" aria-label="Cerrar"><X className="w-5 h-5" /></button>
         </div>

@@ -3,10 +3,13 @@ import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { describirCondicion, precioFinal, totalLinea, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
+import { nombreCotizacion, limpiarParaArchivo, type DatosNombre } from '@/lib/nombreCotizacion';
 import type { ClienteFacturacion, ExtraFacturacion, PedidoFacturacion } from '@/types';
 
 export interface DocFacturacion {
   numero: number;
+  /** "Cliente - 001" */
+  nombre: string;
   estado: string;
   nota_venta: string | null;
   observaciones: string | null;
@@ -21,9 +24,10 @@ export interface DocFacturacion {
   factura_fecha?: string | null;
 }
 
-export function docDePedido(p: PedidoFacturacion, numero: number): DocFacturacion {
+/** `ref`: la cotización (o lo que se guardó en el pedido) para armar el nombre "Cliente - 001". */
+export function docDePedido(p: PedidoFacturacion, ref: DatosNombre): DocFacturacion {
   return {
-    numero, estado: p.estado, nota_venta: p.nota_venta, observaciones: p.observaciones, cliente: p.cliente,
+    numero: ref.numero ?? 0, nombre: nombreCotizacion(ref, p.cliente.nombre), estado: p.estado, nota_venta: p.nota_venta, observaciones: p.observaciones, cliente: p.cliente,
     condiciones: p.condiciones, lineas: p.lineas, totales: p.totales, extra: p.extra,
     enviado_por: p.creado_por, enviado_at: p.enviado_at, factura_numero: p.factura_numero, factura_fecha: p.factura_fecha,
   };
@@ -40,14 +44,13 @@ function fechaHora(iso: string): string {
 }
 
 function nombreArchivo(d: DocFacturacion, ext: string): string {
-  const cli = d.cliente.nombre.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'cliente';
-  return `Facturar_cotizacion_${d.numero}_${cli}.${ext}`;
+  return `Facturar_${limpiarParaArchivo(d.nombre)}.${ext}`;
 }
 
 function cabecera(d: DocFacturacion): [string, string][] {
   const c = d.cliente;
   return [
-    ['Cotización N°', String(d.numero)],
+    ['Cotización', d.nombre],
     ['Nota de venta', d.nota_venta || '-'],
     ['Cliente', c.nombre],
     ['Razón social', c.razon_social || '-'],
@@ -95,7 +98,7 @@ export function facturacionPDF(d: DocFacturacion) {
   let y = 16;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text(`Pedido de facturación · Cotización N° ${d.numero}`, m, y);
+  doc.text(`Pedido de facturación · ${d.nombre}`, m, y);
   y += 7;
   doc.setFontSize(9);
   const cab = cabecera(d).slice(1);

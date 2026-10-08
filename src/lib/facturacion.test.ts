@@ -95,7 +95,8 @@ describe('textos', () => {
   it('arma link y texto de WhatsApp', () => {
     const url = urlFacturacion('https://app.test/', 'a'.repeat(64));
     expect(url).toBe(`https://app.test/?facturar=${'a'.repeat(64)}`);
-    expect(textoWhatsAppFacturacion({ url, numero: 12, cliente: 'La Peña', notaVenta: '4521' })).toContain('Nota de venta: 4521');
+    expect(textoWhatsAppFacturacion({ url, nombre: 'La Peña - 002', notaVenta: '4521' })).toContain('Nota de venta: 4521');
+    expect(textoWhatsAppFacturacion({ url, nombre: 'La Peña - 002' })).toContain('Pedido de facturación · La Peña - 002');
   });
   it('detecta condiciones sin productos', () => {
     expect(sinUsar([{ id: 'a', tipo: 'contado' }, { id: 'b', tipo: 'canje' }], [{ condicion_id: 'a' }]).map((c) => c.id)).toEqual(['b']);
