@@ -1,6 +1,6 @@
 /** Cálculos de la pantalla de consulta rápida (costo de un insumo y flete por km). */
 import type { ProductoConCosto, TarifaFlete } from '@/types';
-import { buscarTarifa, calcularFleteUSD } from '@/lib/calculations';
+import { buscarTarifa, calcularFleteUSD, clampMargen, precioConMargen } from '@/lib/calculations';
 
 export interface FleteConsulta {
   /** Km que se usan para buscar la tarifa (redondeado hacia arriba) */
@@ -67,4 +67,15 @@ export function buscarProductos<T extends Pick<ProductoConCosto, 'cod' | 'produc
 
 function normalizar(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Precio de venta para la consulta, con la misma regla que la cotización: precio = costo / (1 − margen).
+ * El margen se limita a 0–95 %. Devuelve null si el costo no es válido.
+ */
+export function precioConsulta(costo: number, margenPct: number, ivaPct = 0): { precio: number; ganancia: number; conIva: number; margen: number } | null {
+  if (!(costo > 0) || !Number.isFinite(margenPct)) return null;
+  const margen = clampMargen(margenPct);
+  const precio = precioConMargen(costo, margen);
+  return { precio, ganancia: precio - costo, conIva: precio * (1 + (ivaPct || 0) / 100), margen };
 }

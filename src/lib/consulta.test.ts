@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buscarProductos, costoDeLista, fleteConsulta, fleteConsultaTramos } from './consulta';
+import { buscarProductos, costoDeLista, fleteConsulta, fleteConsultaTramos, precioConsulta } from './consulta';
 
 const tarifas = [{ km: 100, tarifa: 2766.984 }, { km: 101, tarifa: 2780 }] as never;
 
@@ -50,5 +50,22 @@ describe('fleteConsultaTramos', () => {
     const f = fleteConsultaTramos([{ km: 165, tarifas: largo }, { km: 0, tarifas: corto }], 1400);
     expect(f.tramos[0]).not.toBeNull();
     expect(f.total).toBeNull();
+  });
+});
+
+describe('precioConsulta', () => {
+  it('precio = costo / (1 − margen), con ganancia e IVA', () => {
+    const r = precioConsulta(610, 12, 10.5)!;
+    expect(r.precio).toBeCloseTo(693.18, 2);
+    expect(r.ganancia).toBeCloseTo(83.18, 2);
+    expect(r.conIva).toBeCloseTo(693.18 * 1.105, 2);
+  });
+  it('margen 0 = costo; se limita a 95 %', () => {
+    expect(precioConsulta(100, 0)!.precio).toBe(100);
+    expect(precioConsulta(100, 99)!.margen).toBe(95);
+    expect(precioConsulta(100, -5)!.precio).toBe(100);
+  });
+  it('sin costo no hay precio', () => {
+    expect(precioConsulta(0, 10)).toBeNull();
   });
 });

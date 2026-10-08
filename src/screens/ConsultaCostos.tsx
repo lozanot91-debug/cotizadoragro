@@ -4,10 +4,11 @@ import { useData } from '@/hooks/useData';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { BotonFicha } from '@/components/FichaProducto';
-import { buscarProductos, costoDeLista, fleteConsultaTramos, type FleteConsulta } from '@/lib/consulta';
+import { buscarProductos, costoDeLista, fleteConsultaTramos, precioConsulta, type FleteConsulta } from '@/lib/consulta';
+import { ivaPorDefecto, resolverMargen } from '@/lib/calculations';
 import { MODALIDADES, nombreTramoPrincipal, tieneCorto } from '@/lib/fleteTramos';
-import { formatUSD, formatDate, parseNumberInput } from '@/lib/format';
-import type { ConvenioFlete, ListaCostos, ModalidadFlete, Planta, ProductoConCosto, TipoCambioBNA } from '@/types';
+import { formatUSD, formatDate, parseNumberInput, formatInputNumber } from '@/lib/format';
+import type { Configuracion, ConvenioFlete, ListaCostos, ModalidadFlete, Planta, ProductoConCosto, TipoCambioBNA } from '@/types';
 import { elegirConvenioVigente, conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 
 /** Consulta rápida: costo de lista de un insumo y flete por km (en $/tn y USD/tn al TC comprador divisa BNA). */
@@ -21,6 +22,9 @@ export default function ConsultaCostos() {
   const [convenioId, setConvenioId] = useState<string | null>(null);
   const [tcBna, setTcBna] = useState<TipoCambioBNA | null>(null);
   const [tcRespaldo, setTcRespaldo] = useState(0);
+  const [config, setConfig] = useState<Configuracion | null>(null);
+  // Margen para calcular el precio de venta del insumo elegido (arranca en el sugerido del producto)
+  const [margenTxt, setMargenTxt] = useState('');
 
   const [busqueda, setBusqueda] = useState('');
   const [sel, setSel] = useState<ProductoConCosto | null>(null);
@@ -36,6 +40,7 @@ export default function ConsultaCostos() {
     const [listas, convs, cfg] = await Promise.all([data.fetchListas(), data.fetchConvenios(), data.fetchConfig()]);
     setConvenios(convs);
     setTcRespaldo(cfg.tipo_cambio_default);
+    setConfig(cfg);
     setLista(listas[0] ?? null);
     if (listas[0]) {
       const [act, ant] = await Promise.all([
@@ -79,6 +84,13 @@ export default function ConsultaCostos() {
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
 
   const costo = sel ? costoDeLista(sel) : null;
+  const margenSugerido = sel && config ? resolverMargen(sel, config.margen_general, []) : null;
+  const margenNum = margenTxt.trim() === '' ? NaN : parseNumberInput(margenTxt);
+  const ivaPct = sel && config ? ivaPorDefecto(sel.es_fertilizante, config) : 0;
+  const venta = costo ? precioConsulta(costo.valor, margenNum, ivaPct) : null;
+  const pre = costo?.moneda === 'ARS' ? '$ ' : 'USD ';
+  // Fertilizantes en USD: precio puesto sumando el flete calculado en la sección de al lado
+  const fletePuesto = venta && sel?.es_fertilizante && costo?.moneda === 'USD' && flete.total ? flete.total.usdTn : null;
   const costoAnt = sel ? anteriores.get(sel.cod) : undefined;
   const variacion = sel && costoAnt && costoAnt > 0 ? ((sel.costo - costoAnt) / costoAnt) * 100 : null;
 
@@ -86,7 +98,7 @@ export default function ConsultaCostos() {
     <div className="space-y-5">
       <div>
         <h1 className="titulo text-3xl text-emerald-900 flex items-center gap-2"><Search className="w-7 h-7" /> Consulta de costos</h1>
-        <p className="text-sm text-gray-500 mt-1">Costo de lista de un insumo y flete por distancia, sin armar una cotización.</p>
+        <p className="text-sm text-gray-500 mt-1">Costo de lista de un insumo, precio de venta con el margen que pongas y flete por distancia, sin armar una cotización.</p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5 items-start">
@@ -106,7 +118,7 @@ export default function ConsultaCostos() {
                   <p className="font-semibold text-gray-900 flex items-center gap-1">{sel.producto} <BotonFicha cod={sel.cod} producto={sel.producto} /></p>
                   <p className="text-xs text-gray-500">{sel.cod} · {sel.proveedor || 'Sin proveedor'} · {sel.familia || 'Sin familia'}</p>
                 </div>
-                <button onClick={() => { setSel(null); setBusqueda(''); }} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" aria-label="Buscar otro"><X className="w-4 h-4" /></button>
+                <button onClick={() => { setSel(null); setBusqueda(''); setMargenTxt(''); }} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" aria-label="Buscar otro"><X className="w-4 h-4" /></button>
               </div>
               <div className="mt-4 rounded-lg bg-emerald-900 text-white px-4 py-3">
                 <p className="text-emerald-300 text-xs">Costo de lista</p>
@@ -125,6 +137,37 @@ export default function ConsultaCostos() {
                 </p>
               )}
               {variacion !== null && Math.abs(variacion) < 0.05 && <p className="mt-2 text-sm text-gray-500">Igual que en la lista anterior.</p>}
+
+              {/* Precio de venta con margen */}
+              <div className="mt-4 rounded-lg border border-gray-200 p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label htmlFor="consulta-margen" className="block text-sm font-medium text-gray-700 mb-1">Margen</label>
+                    <div className="flex items-center gap-1.5">
+                      <input id="consulta-margen" type="text" inputMode="decimal" value={margenTxt} onChange={(e) => setMargenTxt(e.target.value)} placeholder="0"
+                        className="w-24 px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-emerald-500 outline-none" />
+                      <span className="text-sm text-gray-500">%</span>
+                    </div>
+                  </div>
+                  {margenSugerido !== null && Math.abs((Number.isNaN(margenNum) ? -1 : margenNum) - margenSugerido) > 0.001 && (
+                    <button onClick={() => setMargenTxt(formatInputNumber(margenSugerido, 2))} className="mb-2 text-xs text-emerald-700 hover:text-emerald-800 underline">
+                      Usar el sugerido ({formatUSD(margenSugerido, margenSugerido % 1 ? 1 : 0)} %)
+                    </button>
+                  )}
+                </div>
+                {venta ? (
+                  <div className="mt-3 space-y-1">
+                    <p className="text-xs text-gray-500">Precio de venta (sin IVA)</p>
+                    <p className="cifra text-3xl text-gray-900">{pre}{formatUSD(venta.precio, 2)}<span className="text-sm font-semibold text-gray-500 ml-1.5">/{costo.unidad}</span></p>
+                    <p className="text-sm text-gray-600">Ganancia {pre}{formatUSD(venta.ganancia, 2)}/{costo.unidad} · con IVA {formatUSD(ivaPct, 1)} %: {pre}{formatUSD(venta.conIva, 2)}</p>
+                    {costo.moneda === 'ARS' && tcBna && <p className="text-xs text-gray-500">≈ USD {formatUSD(venta.precio / tcBna.venta, 2)}/{costo.unidad} al TC vendedor BNA</p>}
+                    {fletePuesto !== null && (
+                      <p className="text-sm text-emerald-800 bg-emerald-50 rounded-lg px-3 py-2 mt-2">Con el flete de la consulta (USD {formatUSD(fletePuesto, 2)}/tn): <strong>USD {formatUSD(venta.precio + fletePuesto, 2)}/tn</strong> puesto</p>
+                    )}
+                    {margenNum > 95 && <p className="text-xs text-amber-700">El margen máximo es 95 %.</p>}
+                  </div>
+                ) : <p className="mt-2 text-sm text-gray-500">Poné un margen para ver el precio de venta.</p>}
+              </div>
             </div>
           ) : (
             <div>
@@ -141,7 +184,7 @@ export default function ConsultaCostos() {
                     const c = costoDeLista(p);
                     return (
                       <li key={p.id}>
-                        <button onClick={() => setSel(p)} className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-center justify-between gap-3">
+                        <button onClick={() => { setSel(p); setMargenTxt(config ? formatInputNumber(resolverMargen(p, config.margen_general, []), 2) : ''); }} className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-center justify-between gap-3">
                           <span className="min-w-0">
                             <span className="block text-sm font-medium text-gray-800 truncate">{p.producto}</span>
                             <span className="block text-xs text-gray-500 truncate">{p.cod} · {p.proveedor || 'Sin proveedor'}</span>
