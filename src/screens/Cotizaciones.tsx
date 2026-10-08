@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
@@ -172,6 +173,11 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
                       {formatDate(c.fecha)} · TC ${c.tc} · {c.km > 0 ? `${c.km} km` : 'Sin flete'}
                       {esSinRespuesta(c) && (
                         <span className="text-amber-600 ml-2">· Sin respuesta</span>
+                      )}
+                      {c.estado === 'Ganada' && (c.no_ganado || []).length > 0 && (
+                        <span className="text-amber-700 ml-2" title={(c.no_ganado || []).map((n) => `${n.producto}: ${n.motivo || 'sin motivo'}`).join('\n')}>
+                          · Ganada parcial ({formatUSD(c.subtotal_usd > 0 ? (montoGanado(c) / c.subtotal_usd) * 100 : 0, 0)} %)
+                        </span>
                       )}
                       {c.estado === 'Perdida' && c.motivo_perdida && (
                         <span className="text-red-500 ml-2">· Motivo: {c.motivo_perdida}</span>

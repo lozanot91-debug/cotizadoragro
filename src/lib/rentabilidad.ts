@@ -8,6 +8,7 @@
  *  - En las cotizaciones Ganadas, si se cargaron cantidades/precios reales, se usan esos.
  */
 import type { Cotizacion, CotizacionLinea } from '@/types';
+import { realDeLinea } from '@/lib/ganadaParcial';
 
 export interface GananciaLinea {
   venta: number;
@@ -18,25 +19,17 @@ export interface GananciaLinea {
   usoReales: boolean;
 }
 
-function num(v: unknown): number {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
-
 /** Ganancia de una línea; `reales` son las cantidades/precios reales de una cotización ganada (por id de línea). */
 export function gananciaLinea(
   l: Pick<CotizacionLinea, 'id' | 'cantidad' | 'precio_usd' | 'costo_usd'>,
   reales?: Cotizacion['cantidades_reales']
 ): GananciaLinea {
-  const r = reales?.[l.id];
-  const cantReal = r ? num(r.cantidad) : 0;
-  const precioReal = r ? num(r.precio) : 0;
-  const cantidad = cantReal > 0 ? cantReal : l.cantidad;
-  const precio = precioReal > 0 ? precioReal : l.precio_usd;
+  // Cantidad real 0 = esa línea no se ganó (ganada parcial): no suma venta ni costo
+  const { cantidad, precio } = realDeLinea(l, reales);
   const venta = precio * cantidad;
   const costo = (l.costo_usd || 0) * cantidad;
   const ganancia = venta - costo;
-  return { venta, costo, ganancia, margenPct: venta > 0 ? (ganancia / venta) * 100 : 0, usoReales: cantReal > 0 || precioReal > 0 };
+  return { venta, costo, ganancia, margenPct: venta > 0 ? (ganancia / venta) * 100 : 0, usoReales: Math.abs(cantidad - l.cantidad) > 0.005 || Math.abs(precio - l.precio_usd) > 0.005 };
 }
 
 export interface Fila {

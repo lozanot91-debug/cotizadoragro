@@ -8,6 +8,7 @@ import { esReapertura, estaCerrada } from '@/lib/estados';
 import { hoyAR, sumarDias } from '@/lib/fechas';
 import { generarCobranzas } from '@/lib/cobranzas';
 import { parseNumberInput } from '@/lib/format';
+import { detalleGanada, lineasGanadas, noGanados, subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import type { Cotizacion, CotizacionLinea, EstadoCotizacion } from '@/types';
 
 interface Pedido {
@@ -32,6 +33,27 @@ interface Seguimiento {
  * Uso: const { solicitarCambioEstado, modales } = useCambioEstado({ onCambiado: load });
  *      ... y renderizar {modales} una vez en la pantalla.
  */
+/**
+ * Pasa lo cargado en el modal a números. Si la cantidad o el precio quedaron como venían (solo
+ * redondeados a 2 decimales para mostrarlos) se guarda el valor exacto de la línea.
+ */
+function realesDesdeFormulario(lineas: CotizacionLinea[], form: DatosConfirmacion['cantidadesReales']): Reales {
+  const r: Reales = {};
+  const igual = (a: number, b: number) => Math.abs(a - b) < 0.005;
+  for (const l of lineas) {
+    const v = form[l.id];
+    if (!v) continue;
+    const cant = v.cantidad.trim() === '' ? l.cantidad : parseNumberInput(v.cantidad);
+    const precio = v.precio.trim() === '' ? l.precio_usd : parseNumberInput(v.precio);
+    r[l.id] = {
+      cantidad: igual(cant, l.cantidad) ? l.cantidad : cant,
+      precio: igual(precio, l.precio_usd) ? l.precio_usd : precio,
+      motivo: cant < l.cantidad - 0.005 ? (v.motivo || '').trim() || null : null,
+    };
+  }
+  return r;
+}
+
 export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
   solicitarCambioEstado: (cotiz: Cotizacion, hacia: EstadoCotizacion) => Promise<boolean>;
   modales: ReactNode;
@@ -65,18 +87,21 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
     const { cotiz, hacia } = pedido;
     setGuardando(true);
     try {
-      let cantidadesReales: Record<string, { cantidad: number; precio: number }> | undefined;
+      let cantidadesReales: Reales | undefined;
       if (hacia === 'Ganada') {
-        cantidadesReales = {};
-        for (const [lineaId, v] of Object.entries(datos.cantidadesReales)) {
-          cantidadesReales[lineaId] = { cantidad: parseNumberInput(v.cantidad), precio: parseNumberInput(v.precio) };
-        }
+        cantidadesReales = realesDesdeFormulario(pedido.lineas, datos.cantidadesReales);
+        const error = validarGanada(pedido.lineas, cantidadesReales);
+        if (error) { toast.aviso(error); return; }
       }
 
       const { anterior, motivoAnterior } = await data.cambiarEstadoCotizacion(cotiz.id, hacia, {
         motivo: datos.motivo,
         comentario: datos.comentario,
         cantidadesReales,
+        ganadoUsd: cantidadesReales ? subtotalGanado(pedido.lineas, cantidadesReales) : undefined,
+        noGanado: cantidadesReales
+          ? noGanados(pedido.lineas, cantidadesReales).map(({ cod, producto, cantidad, cotizada, usd, motivo }) => ({ cod, producto, cantidad, cotizada, usd, motivo }))
+          : undefined,
       });
 
       let detalle: string | undefined;
@@ -84,7 +109,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       else if (esReapertura(anterior, hacia)) {
         detalle = `Reabierta: ${datos.comentario}`;
         if (anterior === 'Perdida' && motivoAnterior) detalle += ` · Motivo de pérdida anterior: ${motivoAnterior}`;
-      } else if (hacia === 'Ganada') detalle = 'Cantidades y precios reales registrados';
+      } else if (hacia === 'Ganada' && cantidadesReales) detalle = detalleGanada(pedido.lineas, cantidadesReales);
 
       await registrarCambio({
         tipo: 'estado',
@@ -101,7 +126,8 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       // Cobranzas: al ganar se cargan los cobros por plazo; al reabrir se borran los que faltan cobrar
       try {
         if (hacia === 'Ganada' && (await data.contarCobranzas(cotiz.id)) === 0) {
-          const cobros = generarCobranzas(cotiz, pedido.lineas, hoyAR());
+          // Solo se cobra lo que realmente se ganó
+          const cobros = generarCobranzas(cotiz, lineasGanadas(pedido.lineas, cantidadesReales), hoyAR());
           await data.crearCobranzas(cobros.map((c) => ({ cotizacion_id: cotiz.id, ...c })));
           if (cobros.length > 0) toast.exito(cobros.length === 1 ? 'Se cargó 1 cobro en Cobranzas.' : `Se cargaron ${cobros.length} cobros en Cobranzas.`);
         } else if (anterior === 'Ganada') {

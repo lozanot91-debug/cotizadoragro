@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
 import type { Cotizacion, EstadoCotizacion, Tarea, Configuracion } from '@/types';
@@ -104,7 +105,7 @@ export default function Pipeline({ onEdit }: Props) {
     const mesActual = mesActualAR();
     const ganadasMes = filtradas.filter((c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual);
     const perdidasMes = filtradas.filter((c) => c.estado === 'Perdida' && c.fecha.substring(0, 7) === mesActual);
-    const ganadoMes = ganadasMes.reduce((s, c) => s + c.subtotal_usd, 0);
+    const ganadoMes = ganadasMes.reduce((s, c) => s + montoGanado(c), 0);
     const perdidoMes = perdidasMes.reduce((s, c) => s + c.subtotal_usd, 0);
     const tasa = ganadasMes.length + perdidasMes.length > 0
       ? (ganadasMes.length / (ganadasMes.length + perdidasMes.length)) * 100 : 0;

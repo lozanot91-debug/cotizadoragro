@@ -29,6 +29,11 @@ describe('gananciaLinea', () => {
     expect(g.venta).toBeCloseTo(764, 6);
     expect(g.ganancia).toBeCloseTo(764 - 640, 6);
   });
+  it('cantidad real 0 = la línea no se ganó (ganada parcial)', () => {
+    const g = gananciaLinea(l({}), { l1: { cantidad: 0, precio: 100, motivo: 'Precio' } });
+    expect(g.venta).toBe(0);
+    expect(g.costo).toBe(0);
+  });
   it('real vacío = usa lo cotizado', () => {
     const g = gananciaLinea(l({}), { l1: { cantidad: '', precio: '' } as never });
     expect(g.venta).toBe(1000);

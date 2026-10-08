@@ -294,7 +294,10 @@ export function useData() {
     opciones: {
       motivo?: string | null;
       comentario?: string | null;
-      cantidadesReales?: Record<string, { cantidad: number; precio: number }>;
+      cantidadesReales?: NonNullable<Cotizacion['cantidades_reales']>;
+      /** Ganada: resumen de lo ganado y lo no ganado (para estadísticas) */
+      ganadoUsd?: number;
+      noGanado?: NonNullable<Cotizacion['no_ganado']>;
     } = {}
   ): Promise<{ anterior: EstadoCotizacion; motivoAnterior: string | null }> {
     const actual = await ok(
@@ -314,6 +317,9 @@ export function useData() {
     };
     if (hacia === 'Enviada' && !actual.fecha_envio) patch.fecha_envio = ahora;
     if (hacia === 'Ganada' && opciones.cantidadesReales) patch.cantidades_reales = opciones.cantidadesReales;
+    // El resumen de ganada solo vale mientras está Ganada; al reabrir se limpia
+    patch.ganado_usd = hacia === 'Ganada' ? (opciones.ganadoUsd ?? null) : null;
+    patch.no_ganado = hacia === 'Ganada' ? (opciones.noGanado ?? []) : null;
 
     // .eq('estado', anterior): si otra persona lo cambió mientras tanto, no pisamos su cambio
     const filas = await ok(

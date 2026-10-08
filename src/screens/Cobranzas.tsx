@@ -5,6 +5,7 @@ import { useToast } from '@/components/Toast';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { registrarCambio } from '@/lib/historial';
+import { lineasGanadas } from '@/lib/ganadaParcial';
 import { generarCobranzas, resumenCobranzas, situacionCobro, diasParaCobrar, cobroEnGranos, type SituacionCobro } from '@/lib/cobranzas';
 import { formatUSD, formatDate, parseNumberInput, formatInputNumber } from '@/lib/format';
 import { hoyAR, fechaDeTimestamp } from '@/lib/fechas';
@@ -98,7 +99,7 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
       let n = 0;
       for (const c of ganadasSinCobros) {
         const lineas = await data.fetchLineas(c.id);
-        const nuevos = generarCobranzas(c, lineas, fechaDeTimestamp(c.updated_at));
+        const nuevos = generarCobranzas(c, lineasGanadas(lineas, c.cantidades_reales), fechaDeTimestamp(c.updated_at));
         await data.crearCobranzas(nuevos.map((x) => ({ cotizacion_id: c.id, ...x })));
         n += nuevos.length;
       }

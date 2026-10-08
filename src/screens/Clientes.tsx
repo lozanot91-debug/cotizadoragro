@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
 import type { Cliente, Cotizacion, MargenCliente, ProductoConCosto, Tarea, Visita, Configuracion } from '@/types';
@@ -200,7 +201,7 @@ export default function Clientes() {
         {(() => {
           const cotizado = cotizsCliente.reduce((s, c) => s + (c.subtotal_usd || 0), 0);
           const ganadas = cotizsCliente.filter((c) => c.estado === 'Ganada');
-          const ganado = ganadas.reduce((s, c) => s + (c.subtotal_usd || 0), 0);
+          const ganado = ganadas.reduce((s, c) => s + montoGanado(c), 0);
           const ultima = ganadas.map((c) => c.fecha).sort().pop();
           const tasa = cotizsCliente.length > 0 ? (ganadas.length / cotizsCliente.length) * 100 : 0;
           return (

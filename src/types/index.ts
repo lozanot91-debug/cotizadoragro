@@ -133,7 +133,12 @@ export interface Cotizacion {
   total_usd: number;
   total_ars: number;
   notas: string | null;
-  cantidades_reales: Record<string, { cantidad: number; precio: number }> | null;
+  /** Ganada: cantidad y precio reales por id de línea; motivo de lo que no se ganó (cantidad real menor a la cotizada). */
+  cantidades_reales: Record<string, { cantidad: number; precio: number; motivo?: string | null }> | null;
+  /** Ganada: subtotal realmente ganado (sin IVA ni financiación). Null si no está Ganada. */
+  ganado_usd?: number | null;
+  /** Ganada: lo que no se ganó, con su motivo. Null si no está Ganada. */
+  no_ganado?: { cod: string; producto: string; cantidad: number; cotizada: number; usd: number; motivo: string | null }[] | null;
   cotizacion_origen_id: string | null;
   probabilidad: number | null;
   fecha_cierre_estimada: string | null;

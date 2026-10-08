@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { montoGanado } from '@/lib/ganadaParcial';
 import AvisosPush from '@/components/AvisosPush';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
@@ -148,7 +149,7 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
     const ganadasMes = cotizaciones.filter(
       (c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual
     );
-    const ganadoMes = ganadasMes.reduce((s, c) => s + c.subtotal_usd, 0);
+    const ganadoMes = ganadasMes.reduce((s, c) => s + montoGanado(c), 0);
     return {
       totalAbierto,
       valorPonderado,
