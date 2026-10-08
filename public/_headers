@@ -1,0 +1,17 @@
+# Cloudflare Pages: cabeceras por ruta
+
+# El service worker siempre se revalida, para que las versiones nuevas lleguen enseguida
+/sw.js
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: no-cache
+
+# Archivos con huella en el nombre: no cambian nunca
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
