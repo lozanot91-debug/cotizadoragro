@@ -127,6 +127,7 @@ export function cabeceraRecotizada(
     tasa_mensual: cotiz.tasa_mensual || 0,
     canje_cultivo: cotiz.canje_cultivo,
     canje_precio_usd: cotiz.canje_precio_usd || 0,
+    canje_params: cotiz.canje_params ?? null,
     vigencia_dias: datos.vigenciaDias,
     estado: 'Borrador',
     vendedor: null,

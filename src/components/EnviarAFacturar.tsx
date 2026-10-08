@@ -6,6 +6,8 @@ import { useToast } from '@/components/Toast';
 import { registrarCambio } from '@/lib/historial';
 import { ivaDeLinea } from '@/lib/calculations';
 import { textoFlete } from '@/lib/fleteTramos';
+import { normalizarParams, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
+import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { formatearFechaHora } from '@/lib/fechas';
 import {
@@ -21,17 +23,17 @@ const inputCls = 'w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm f
 const fmt = (n: number, d = 2) => formatUSD(n, d);
 
 /** Condición en el formulario: los números como texto (coma decimal). */
-interface CondForm { id: string; tipo: TipoCondicion; plazo: string; tasa: string; cultivo: string; precio: string; tarjeta: string; nd: string }
+interface CondForm { id: string; tipo: TipoCondicion; plazo: string; tasa: string; cultivo: string; precio: string; tarjeta: string; nd: string; params: ParamsCanje | null }
 interface LineaForm extends LineaFacturacion { cantidadStr: string }
 
 const aTexto = (n: number | undefined) => (n === undefined || n === null || Number.isNaN(n) ? '' : String(n).replace('.', ','));
 function condAForm(c: CondicionPago): CondForm {
-  return { id: c.id, tipo: c.tipo, plazo: aTexto(c.plazo_dias), tasa: aTexto(c.tasa_mensual), cultivo: c.cultivo || '', precio: aTexto(c.precio_cultivo), tarjeta: c.tarjeta || '', nd: aTexto(c.nd_pct) };
+  return { id: c.id, tipo: c.tipo, plazo: aTexto(c.plazo_dias), tasa: aTexto(c.tasa_mensual), cultivo: c.cultivo || '', precio: aTexto(c.precio_cultivo), tarjeta: c.tarjeta || '', nd: aTexto(c.nd_pct), params: c.canje_params ? normalizarParams(c.canje_params) : null };
 }
 function formACond(f: CondForm): CondicionPago {
   const c: CondicionPago = { id: f.id, tipo: f.tipo };
   if (f.tipo === 'financiado' || f.tipo === 'tarjeta') { c.plazo_dias = Math.round(numCampo(f.plazo) ?? 0); c.tasa_mensual = numCampo(f.tasa) ?? 0; }
-  if (f.tipo === 'canje') { c.cultivo = f.cultivo.trim(); c.precio_cultivo = numCampo(f.precio) ?? 0; }
+  if (f.tipo === 'canje') { c.cultivo = f.cultivo.trim(); c.precio_cultivo = numCampo(f.precio) ?? 0; c.canje_params = f.params; }
   if (f.tipo === 'tarjeta') { c.tarjeta = f.tarjeta.trim(); c.nd_pct = numCampo(f.nd) ?? 0; }
   return c;
 }
@@ -160,6 +162,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
   const [dias, setDias] = useState('15');
   const [errores, setErrores] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
+  const [canjeDefaults, setCanjeDefaults] = useState<ParamsCanje>(PARAMS_CANJE_BASE);
 
   const armarDesdeCotizacion = useCallback(async () => {
     const [ls, cfg] = await Promise.all([data.fetchLineas(cotizacion.id), data.fetchConfig()]);
@@ -174,8 +177,9 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
     let vivo = true;
     (async () => {
       try {
-        const cls = await data.fetchClientes();
+        const [cls, cfg] = await Promise.all([data.fetchClientes(), data.fetchConfig()]);
         if (!vivo) return;
+        setCanjeDefaults(cfg.canje_parametros);
         setCliente(cls.find((c) => c.id === cotizacion.cliente_id) ?? null);
         if (previo) {
           setConds(previo.condiciones.map(condAForm));
@@ -196,7 +200,15 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
   );
   const totales = useMemo(() => calcularTotalesFacturacion(lineasCalc, condiciones), [lineasCalc, condiciones]);
 
-  function setCond(id: string, cambios: Partial<CondForm>) { setConds((cs) => cs.map((c) => (c.id === id ? { ...c, ...cambios } : c))); }
+  function setCond(id: string, cambios: Partial<CondForm>) {
+    setConds((cs) => cs.map((c) => {
+      if (c.id !== id) return c;
+      const n = { ...c, ...cambios };
+      // Una condición nueva de canje arranca con la liquidación por defecto
+      if (n.tipo === 'canje' && !n.params) n.params = { ...canjeDefaults };
+      return n;
+    }));
+  }
   function agregarCond() { const c = condAForm(nuevaCondicion('contado')); setConds((cs) => [...cs, c]); }
   function quitarCond(id: string) {
     const resto = conds.filter((c) => c.id !== id);
@@ -279,6 +291,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                         {c.tipo === 'canje' && <>
                           <Campo label="Cultivo"><input value={c.cultivo} onChange={(e) => setCond(c.id, { cultivo: e.target.value })} placeholder="Soja" className={inputCls} /></Campo>
                           <Campo label="Precio USD/tn"><input inputMode="decimal" value={c.precio} onChange={(e) => setCond(c.id, { precio: e.target.value })} className={inputCls} /></Campo>
+                          {c.params && <div className="col-span-2"><LiquidacionCanje precio={numCampo(c.precio) ?? 0} params={c.params} onChange={(p) => setCond(c.id, { params: p })} defaults={canjeDefaults} abiertoInicial={false} /></div>}
                         </>}
                       </div>
                       {t && t.lineas > 0 ? (

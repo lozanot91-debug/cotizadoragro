@@ -1,3 +1,4 @@
+import type { ParamsCanje } from '@/lib/canje';
 export type Rol = 'admin' | 'vendedor';
 
 export interface Usuario {
@@ -25,6 +26,8 @@ export interface Configuracion {
   sin_respuesta_dias: number;
   seguimiento_dias: number;
   ultimo_contacto_dias: number;
+  /** Canje: parámetros de liquidación por defecto */
+  canje_parametros: ParamsCanje;
 }
 
 export interface FamiliaConfig {
@@ -180,6 +183,8 @@ export interface Cotizacion {
   /** Canje: cultivo y precio de referencia (USD/tn). Precio 0 = sin canje. */
   canje_cultivo: string | null;
   canje_precio_usd: number;
+  /** Parámetros de la liquidación del canje (neto por tn). null = cotización vieja: tn = total / precio. */
+  canje_params?: ParamsCanje | null;
   estado: EstadoCotizacion;
   motivo_perdida: string | null;
   vigencia_dias: number;
@@ -330,7 +335,7 @@ export interface Cobranza {
   nota: string | null;
   created_at: string;
   updated_at: string;
-  cotizacion?: Pick<Cotizacion, 'numero' | 'numero_cliente' | 'cliente_nombre' | 'canje_cultivo' | 'canje_precio_usd' | 'con_iva'> | null;
+  cotizacion?: Pick<Cotizacion, 'numero' | 'numero_cliente' | 'cliente_nombre' | 'canje_cultivo' | 'canje_precio_usd' | 'canje_params' | 'con_iva'> | null;
 }
 
 export interface PedidoPrecioLinea {
@@ -458,4 +463,25 @@ export interface ExtraFacturacion {
   tc_flete?: number | null;
   flete?: string | null;
   vendedor?: string | null;
+}
+
+/** Cálculo de canje guardado desde la calculadora (historial por cliente). */
+export interface CanjeGuardado {
+  id: string;
+  cliente_id: string | null;
+  cliente_nombre: string | null;
+  cotizacion_id: string | null;
+  cultivo: string;
+  precio_usd: number;
+  params: ParamsCanje;
+  neto_usd: number;
+  /** Total de insumos con IVA */
+  monto_usd: number;
+  iva_insumos_pct: number | null;
+  tn: number;
+  tc_compra: number | null;
+  notas: string | null;
+  autor_id: string | null;
+  autor_nombre: string | null;
+  created_at: string;
 }

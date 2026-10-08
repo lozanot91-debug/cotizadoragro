@@ -3,6 +3,7 @@ import {
   calcularTotalesFacturacion, condicionesIniciales, lineasDesdeCotizacion, describirCondicion, nuevaCondicion, sinUsar,
   textoWhatsAppFacturacion, urlFacturacion, validarPedidoFacturacion, type LineaFacturacion,
 } from './facturacion';
+import { PARAMS_CANJE_BASE, netoPorTn } from './canje';
 
 const fmt = (n: number, d = 2) => n.toFixed(d).replace('.', ',');
 const linea = (o: Partial<LineaFacturacion>): LineaFacturacion => ({
@@ -41,6 +42,16 @@ describe('calcularTotalesFacturacion', () => {
     expect(cj.total).toBeCloseTo(3600 * 1.105, 6);
     expect(cj.toneladas).toBeCloseTo((3600 * 1.105) / 300, 6);
     expect(t.total).toBeCloseTo(7956 + 3978 + 128.26, 6);
+  });
+
+  it('canje con liquidación: toneladas = total con IVA / neto por tn', () => {
+    const params = { ...PARAMS_CANJE_BASE, pago_pct: 98, flete_usd_tn: 25 };
+    const c = { ...nuevaCondicion('canje', { cultivo: 'Soja', precio_cultivo: 340, canje_params: params }), id: 'c' };
+    const t = calcularTotalesFacturacion([linea({ condicion_id: 'c', cantidad: 5 })], [c]);
+    const cj = t.porCondicion[0];
+    expect(cj.netoTn).toBeCloseTo(323.190234, 6);
+    expect(cj.toneladas).toBeCloseTo((3600 * 1.105) / netoPorTn(340, params), 6);
+    expect(describirCondicion(c, fmt)).toBe('Canje · Soja a USD 340,00/tn · neto USD 323,19/tn · Necochea, condiciones cámara');
   });
 });
 

@@ -4,7 +4,8 @@
  * (contado, financiado, canje o tarjeta) y se pueden mezclar.
  * Se guarda una foto de los datos: si después cambia la cotización o la lista, el pedido no se mueve.
  */
-import { calcularTotalesIva, recargoPorcentaje, toneladasCanje } from '@/lib/calculations';
+import { calcularTotalesIva, recargoPorcentaje } from '@/lib/calculations';
+import { netoGuardado, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
 import { parseNumberInput } from '@/lib/format';
 import { lineasGanadas, type Reales } from '@/lib/ganadaParcial';
 import type { CotizacionLinea } from '@/types';
@@ -29,6 +30,8 @@ export interface CondicionPago {
   /** Canje */
   cultivo?: string;
   precio_cultivo?: number;
+  /** Canje: liquidación del grano (neto por tn). Sin parámetros = total / precio (pedidos viejos). */
+  canje_params?: ParamsCanje | null;
   /** Tarjeta */
   tarjeta?: string;
   /** Tarjeta: nota de débito, % sobre el total con IVA de esa condición */
@@ -61,6 +64,8 @@ export interface TotalCondicion {
   total: number;
   /** Canje: toneladas de grano por el total con IVA */
   toneladas: number | null;
+  /** Canje: neto por tn usado */
+  netoTn: number | null;
   /** Tarjeta: nota de débito en USD */
   ndMonto: number | null;
   lineas: number;
@@ -97,7 +102,8 @@ export function calcularTotalesFacturacion(lineas: LineaFacturacion[], condicion
       recargoPct: pct,
       iva: t.iva,
       total: t.total,
-      toneladas: c.tipo === 'canje' && (c.precio_cultivo || 0) > 0 ? toneladasCanje(t.total, c.precio_cultivo!) : null,
+      toneladas: c.tipo === 'canje' && (c.precio_cultivo || 0) > 0 ? toneladasPorMonto(t.total, netoGuardado(c.precio_cultivo!, c.canje_params)) : null,
+      netoTn: c.tipo === 'canje' && (c.precio_cultivo || 0) > 0 ? netoGuardado(c.precio_cultivo!, c.canje_params) : null,
       ndMonto: c.tipo === 'tarjeta' && (c.nd_pct || 0) > 0 ? t.total * (c.nd_pct! / 100) : null,
       lineas: ls.length,
     };
@@ -122,7 +128,11 @@ export function describirCondicion(c: CondicionPago, fmt: (n: number, d?: number
     p.push(c.tasa_mensual ? `${fmt(c.tasa_mensual, 2)} % mensual` : 'sin interés');
   }
   if (c.tipo === 'tarjeta' && c.nd_pct) p.push(`ND ${fmt(c.nd_pct, 2)} %`);
-  if (c.tipo === 'canje') p.push(`${c.cultivo || 'grano'}${c.precio_cultivo ? ` a USD ${fmt(c.precio_cultivo, 2)}/tn` : ''}`);
+  if (c.tipo === 'canje') {
+    p.push(`${c.cultivo || 'grano'}${c.precio_cultivo ? ` a USD ${fmt(c.precio_cultivo, 2)}/tn` : ''}`);
+    if (c.canje_params && c.precio_cultivo) p.push(`neto USD ${fmt(netoGuardado(c.precio_cultivo, c.canje_params), 2)}/tn`);
+    if (c.canje_params?.destino?.trim()) p.push(c.canje_params.destino.trim());
+  }
   return p.join(' · ');
 }
 
@@ -139,10 +149,10 @@ export function nuevaCondicion(tipo: TipoCondicion, datos: Partial<CondicionPago
  */
 export function condicionesIniciales(
   lineas: { plazo_dias: number | null }[],
-  cotiz: { plazo_dias: number; tasa_mensual: number; canje_cultivo: string | null; canje_precio_usd: number },
+  cotiz: { plazo_dias: number; tasa_mensual: number; canje_cultivo: string | null; canje_precio_usd: number; canje_params?: ParamsCanje | null },
 ): { condiciones: CondicionPago[]; asignacion: string[] } {
   if ((cotiz.canje_precio_usd || 0) > 0) {
-    const c = nuevaCondicion('canje', { cultivo: cotiz.canje_cultivo || 'Soja', precio_cultivo: cotiz.canje_precio_usd });
+    const c = nuevaCondicion('canje', { cultivo: cotiz.canje_cultivo || 'Soja', precio_cultivo: cotiz.canje_precio_usd, canje_params: cotiz.canje_params ?? null });
     return { condiciones: [c], asignacion: lineas.map(() => c.id) };
   }
   const porPlazo = new Map<number, CondicionPago>();

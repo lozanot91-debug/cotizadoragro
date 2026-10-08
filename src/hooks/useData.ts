@@ -28,11 +28,13 @@ import type {
   PedidoFacturacion,
   FichaProducto,
   ComentarioFicha,
+  CanjeGuardado,
 } from '@/types';
 import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
 import { hoyAR } from '@/lib/fechas';
+import { paramsDesdeConfig } from '@/lib/canje';
 import { usuarioActual } from '@/lib/usuarioActual';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
 import { validarCambioEstado } from '@/lib/estados';
@@ -89,6 +91,7 @@ export function useData() {
       sin_respuesta_dias: parseFloat(map.sin_respuesta_dias || '7'),
       seguimiento_dias: parseFloat(map.seguimiento_dias || '3'),
       ultimo_contacto_dias: parseFloat(map.ultimo_contacto_dias || '60'),
+      canje_parametros: paramsDesdeConfig(map.canje_parametros),
     };
   }
 
@@ -308,6 +311,28 @@ export function useData() {
 
   async function extenderFacturacion(id: string, dias: number) {
     await ok(supabase.from('pedidos_facturacion').update({ vence_el: new Date(Date.now() + dias * 86400000).toISOString() }).eq('id', id));
+  }
+
+  // ---- Canjes (historial de la calculadora) ----
+  async function fetchCanjes(filtro: { clienteId?: string; limite?: number } = {}): Promise<CanjeGuardado[]> {
+    let q = supabase.from('canjes').select('*').order('created_at', { ascending: false }).limit(filtro.limite ?? 300);
+    if (filtro.clienteId) q = q.eq('cliente_id', filtro.clienteId);
+    const data = await ok(q);
+    return (data || []).map((r) => ({ ...r, precio_usd: Number(r.precio_usd), neto_usd: Number(r.neto_usd), monto_usd: Number(r.monto_usd), tn: Number(r.tn), tc_compra: r.tc_compra === null ? null : Number(r.tc_compra), iva_insumos_pct: r.iva_insumos_pct === null ? null : Number(r.iva_insumos_pct) })) as CanjeGuardado[];
+  }
+
+  async function guardarCanje(c: Omit<CanjeGuardado, 'id' | 'autor_id' | 'autor_nombre' | 'created_at'>): Promise<CanjeGuardado> {
+    return (await ok(supabase.from('canjes').insert(c).select('*').single())) as CanjeGuardado;
+  }
+
+  async function eliminarCanje(id: string) {
+    await ok(supabase.from('canjes').delete().eq('id', id));
+  }
+
+  /** Cotizaciones del cliente que tienen canje (para mostrarlas junto al historial de la calculadora). */
+  async function fetchCotizacionesConCanje(clienteId: string): Promise<Cotizacion[]> {
+    const data = await ok(supabase.from('cotizaciones').select('*').eq('cliente_id', clienteId).gt('canje_precio_usd', 0).order('fecha', { ascending: false }).limit(100));
+    return (data || []) as Cotizacion[];
   }
 
   // ---- Contactos de clientes ----
@@ -820,7 +845,7 @@ export function useData() {
     return fetchAllPaged<Cobranza>(() =>
       supabase
         .from('cobranzas')
-        .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre, canje_cultivo, canje_precio_usd, con_iva)')
+        .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre, canje_cultivo, canje_precio_usd, canje_params, con_iva)')
         .order('vencimiento')
         .order('id') as unknown as AnyFilter
     );
@@ -1004,6 +1029,10 @@ export function useData() {
   return {
     fetchConfig,
     fetchTipoCambioBNA,
+    fetchCanjes,
+    guardarCanje,
+    eliminarCanje,
+    fetchCotizacionesConCanje,
     fetchCampos,
     fetchPlantas,
     fetchPlantasFlete,

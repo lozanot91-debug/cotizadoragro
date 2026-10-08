@@ -6,7 +6,7 @@
 import type { Cobranza, Cotizacion, CotizacionLinea } from '@/types';
 import { sumarDias, diasEntre } from '@/lib/fechas';
 import { plazoLinea, totalesDeCotizacion } from '@/lib/export';
-import { toneladasCanje } from '@/lib/calculations';
+import { netoGuardado, toneladasPorMonto } from '@/lib/canje';
 
 export interface CobroNuevo {
   plazo_dias: number;
@@ -73,5 +73,5 @@ export function resumenCobranzas(cobros: Cobranza[], hoy: string): ResumenCobran
 export function cobroEnGranos(c: Cobranza): { cultivo: string; tn: number } | null {
   const precio = c.cotizacion?.canje_precio_usd || 0;
   if (!(precio > 0)) return null;
-  return { cultivo: c.cotizacion?.canje_cultivo || 'grano', tn: toneladasCanje(c.monto_usd, precio) };
+  return { cultivo: c.cotizacion?.canje_cultivo || 'grano', tn: toneladasPorMonto(c.monto_usd, netoGuardado(precio, c.cotizacion?.canje_params)) };
 }

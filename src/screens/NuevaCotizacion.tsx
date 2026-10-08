@@ -3,7 +3,9 @@ import { elegirConvenio, elegirConvenioVigente } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
-import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, toneladasCanje, ivaDeLinea } from '@/lib/calculations';
+import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, ivaDeLinea } from '@/lib/calculations';
+import { PARAMS_CANJE_BASE, netoPorTn, normalizarParams, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
+import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
@@ -104,6 +106,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [canjeCultivo, setCanjeCultivo] = useState('Soja');
   const [canjeOtro, setCanjeOtro] = useState('');
   const [canjePrecio, setCanjePrecio] = useState('');
+  // Liquidación del grano (null = todavía no se tocó: se usan los valores por defecto de Configuración)
+  const [canjeParams, setCanjeParams] = useState<ParamsCanje | null>(null);
   const [notas, setNotas] = useState('');
   const [lineas, setLineas] = useState<LineaEditable[]>([]);
   const [busqueda, setBusqueda] = useState('');
@@ -138,6 +142,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     if (CULTIVOS.includes(cult)) { setCanjeCultivo(cult); setCanjeOtro(''); }
     else { setCanjeCultivo('Otro'); setCanjeOtro(cult); }
     setCanjePrecio(formatInputNumber(cotiz.canje_precio_usd || 0, 2));
+    setCanjeParams(cotiz.canje_params ? normalizarParams(cotiz.canje_params) : null);
   }
 
   const cargar = useCallback(async () => {
@@ -466,7 +471,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   }, [lineasFin, tcNum, conIva]);
   const plazoMax = lineas.reduce((m, l) => Math.max(m, l.plazo), 0);
   const hayFinanciado = plazoMax > 0;
-  const canjeTn = conCanje ? toneladasCanje(totales.total, canjePrecioNum) : 0;
+  // Canje: se paga el total CON IVA (lo que se factura) con el neto por tn de la liquidación
+  const canjeParamsEf = canjeParams ?? config?.canje_parametros ?? PARAMS_CANJE_BASE;
+  const canjeMonto = useMemo(() => calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: l.iva, recargoPct: l.recargoPct })), tcNum).total, [lineasFin, tcNum]);
+  const canjeNeto = conCanje ? netoPorTn(canjePrecioNum, canjeParamsEf) : 0;
+  const canjeTn = conCanje ? toneladasPorMonto(canjeMonto, canjeNeto) : 0;
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
@@ -604,7 +613,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       estado: editData?.estado || 'Borrador', vendedor: null,
       lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva,
       plazo_dias: plazoMax, tasa_mensual: hayFinanciado ? tasaNum : 0,
-      canje_cultivo: conCanje ? canjeNombre : null, canje_precio_usd: conCanje ? canjePrecioNum : 0,
+      canje_cultivo: conCanje ? canjeNombre : null, canje_precio_usd: conCanje ? canjePrecioNum : 0, canje_params: conCanje ? canjeParamsEf : null,
       total_usd: totales.total, total_ars: totales.totalARS, notas,
       ...(origenId && !editId ? { cotizacion_origen_id: origenId } : {}),
     };
@@ -707,7 +716,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           setLineas([]); setClienteId(''); setClienteBusqueda(''); setClienteSeleccionado(null);
           setNotas(''); setSaveMsg(null); setOrigenId(null); setOrigenNombre(null);
           setComparacion(null); setProductosFaltantes([]);
-          setPlazo('0'); setTasaMensual(''); setConCanje(false); setCanjePrecio('');
+          setPlazo('0'); setTasaMensual(''); setConCanje(false); setCanjePrecio(''); setCanjeParams(null);
         }, 2000);
       }
       return saved;
@@ -1030,6 +1039,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                 <span className="text-xs text-gray-400">/tn</span>
               </div>
             )}
+            {conCanje && (
+              <div className="mt-2">
+                <LiquidacionCanje precio={canjePrecioNum} params={canjeParamsEf} onChange={setCanjeParams}
+                  defaults={config?.canje_parametros} disabled={esReadOnly} abiertoInicial={false} tcCompra={tcBna?.compra} />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1173,9 +1188,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           </p>
           <p className="text-emerald-200 text-sm mt-2">$ {formatUSD(totales.totalARS, 0)} al tipo de cambio de la cotización</p>
           {conCanje && canjePrecioNum > 0 && (
-            <div className="mt-3 bg-amber-400 text-emerald-950 rounded-lg px-3 py-2 flex items-baseline justify-between gap-3">
-              <span className="text-sm">Equivale a {canjeNombre || 'grano'} a USD {formatUSD(canjePrecioNum)}/tn</span>
-              <span className="cifra text-2xl">{formatUSD(canjeTn)} tn</span>
+            <div className="mt-3 bg-amber-400 text-emerald-950 rounded-lg px-3 py-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm">Equivale a {canjeNombre || 'grano'} a USD {formatUSD(canjePrecioNum)}/tn</span>
+                <span className="cifra text-2xl">{formatUSD(canjeTn)} tn</span>
+              </div>
+              <p className="text-xs mt-0.5 text-emerald-900">Neto liquidación USD {formatUSD(canjeNeto)}/tn · sobre el total con IVA de USD {formatUSD(canjeMonto)}</p>
             </div>
           )}
           <div className="mt-4 pt-3 border-t border-emerald-700 space-y-1.5 text-sm text-emerald-100">

@@ -7,6 +7,10 @@ import { Settings, Save, Upload, Loader2, Check, Tag, Building2, Users, AlertCir
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import LiquidacionCanje from '@/components/LiquidacionCanje';
+import { normalizarParams, PARAMS_CANJE_BASE } from '@/lib/canje';
+
+const canjeEjemplo = 300;
 
 export default function ConfigScreen() {
   const data = useData();
@@ -16,7 +20,7 @@ export default function ConfigScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [tab, setTab] = useState<'empresa' | 'familias' | 'margenes' | 'crm'>('empresa');
+  const [tab, setTab] = useState<'empresa' | 'familias' | 'margenes' | 'crm' | 'canje'>('empresa');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
@@ -54,6 +58,7 @@ export default function ConfigScreen() {
       { clave: 'sin_respuesta_dias', valor: String(config.sin_respuesta_dias) },
       { clave: 'seguimiento_dias', valor: String(config.seguimiento_dias) },
       { clave: 'ultimo_contacto_dias', valor: String(config.ultimo_contacto_dias) },
+      { clave: 'canje_parametros', valor: JSON.stringify(normalizarParams(config.canje_parametros)) },
     ];
     const cambios: CambioHistorial[] = [];
     for (const u of updates) {
@@ -69,6 +74,9 @@ export default function ConfigScreen() {
       }
       if (u.clave === 'iva_agroquimicos' && prev.iva_agroquimicos !== config.iva_agroquimicos) {
         cambios.push({ tipo: 'config', campo: 'IVA agroquímicos', valor_anterior: `${prev.iva_agroquimicos}%`, valor_nuevo: `${config.iva_agroquimicos}%` });
+      }
+      if (u.clave === 'canje_parametros' && JSON.stringify(prev.canje_parametros) !== u.valor) {
+        cambios.push({ tipo: 'config', campo: 'parámetros de canje', valor_anterior: JSON.stringify(prev.canje_parametros), valor_nuevo: u.valor });
       }
       if (u.clave === 'vigencia_default' && prev.vigencia_default !== config.vigencia_default) {
         cambios.push({ tipo: 'config', campo: 'vigencia default', valor_anterior: `${prev.vigencia_default} días`, valor_nuevo: `${config.vigencia_default} días` });
@@ -182,6 +190,7 @@ export default function ConfigScreen() {
         <button onClick={() => setTab('familias')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'familias' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Familias</button>
         <button onClick={() => setTab('margenes')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'margenes' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Márgenes por producto</button>
         <button onClick={() => setTab('crm')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'crm' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>CRM</button>
+        <button onClick={() => setTab('canje')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'canje' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Canje</button>
       </div>
 
       {/* Tab: Empresa */}
@@ -377,6 +386,20 @@ export default function ConfigScreen() {
               <p className="text-xs text-gray-400 mt-1">Chip rojo en la ficha del cliente si pasaron más de N días</p>
             </div>
           </div>
+          <button onClick={guardarConfig} disabled={saving} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+          </button>
+        </div>
+      )}
+
+      {/* Tab: Canje */}
+      {tab === 'canje' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4 max-w-2xl">
+          <div>
+            <h3 className="font-semibold text-gray-700">Liquidación del grano por defecto</h3>
+            <p className="text-xs text-gray-500 mt-1">Con estos valores arrancan la calculadora de canje, la cotización y el pedido de facturación. En cada cálculo se pueden cambiar. El desglose de abajo es un ejemplo con soja a USD {canjeEjemplo}/tn.</p>
+          </div>
+          <LiquidacionCanje precio={canjeEjemplo} params={config.canje_parametros} onChange={(p) => setConfig({ ...config, canje_parametros: p })} defaults={PARAMS_CANJE_BASE} />
           <button onClick={guardarConfig} disabled={saving} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
           </button>

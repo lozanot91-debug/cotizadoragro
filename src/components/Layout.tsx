@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import MiPerfil from '@/components/MiPerfil';
@@ -13,7 +13,7 @@ type Icono = React.ComponentType<{ className?: string }>;
 const ICONOS: Record<Screen, Icono> = {
   inicio: Home, nueva: FilePlus, cotizaciones: FileText, pipeline: KanbanSquare, vencimientos: CalendarClock,
   recotizar: RefreshCw, pedidos: ClipboardList, facturacion: Receipt, catalogo: BookOpen, clientes: Users, tareas: CheckSquare, visitas: MapPin,
-  cobranzas: Wallet, consulta: SearchCheck, listas: ListChecks, costos: LineChart, estadisticas: BarChart3,
+  cobranzas: Wallet, consulta: SearchCheck, canje: Wheat, listas: ListChecks, costos: LineChart, estadisticas: BarChart3,
   rentabilidad: TrendingUp, config: Settings, historial: History,
 };
 const ICONOS_GRUPO: Record<string, Icono> = { cotizaciones: Briefcase, clientes: Contact, precios: Tags, analisis: PieChart, admin: ShieldCheck };

@@ -1,6 +1,6 @@
 /** Estructura del menú lateral: dos accesos sueltos arriba y grupos que se abren y cierran. */
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion' | 'catalogo';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion' | 'catalogo' | 'canje';
 
 export type Badge = 'venc' | 'pedido' | 'cobro' | 'tarea' | 'factura';
 
@@ -39,6 +39,7 @@ export const GRUPOS: GrupoMenu[] = [
   ] },
   { id: 'precios', label: 'Precios', items: [
     { id: 'consulta', label: 'Consulta de costos' },
+    { id: 'canje', label: 'Calculadora de canje' },
     { id: 'catalogo', label: 'Catálogo' },
     { id: 'listas', label: 'Listas y fletes' },
     { id: 'costos', label: 'Evolución de costos' },

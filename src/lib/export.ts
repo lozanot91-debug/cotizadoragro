@@ -3,7 +3,8 @@ import { nombreModalidad, textoFlete } from '@/lib/fleteTramos';
 import * as XLSX from 'xlsx';
 import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/types';
 import { formatUSD, formatDate } from '@/lib/format';
-import { calcularTotalesIva, recargoPorcentaje, toneladasCanje, type TotalesIva } from '@/lib/calculations';
+import { calcularTotalesIva, recargoPorcentaje, type TotalesIva } from '@/lib/calculations';
+import { netoGuardado, resumenLiquidacion, toneladasPorMonto } from '@/lib/canje';
 import { fechaVencimiento } from '@/lib/vencimientos';
 import { LOGO_CERES_TOLVAS } from '@/assets/logoCeresTolvas';
 import { nombreCotizacion, archivoCotizacion } from '@/lib/nombreCotizacion';
@@ -52,10 +53,29 @@ export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]
   );
 }
 
+/**
+ * Monto que se paga con grano: el total CON IVA (lo que se factura), aunque la cotización se muestre sin IVA.
+ * Cotizaciones viejas (sin parámetros de liquidación) siguen usando el total mostrado, como antes.
+ */
+export function montoCanjeDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): number {
+  if (!cotiz.canje_params) return totalesDeCotizacion(cotiz, lineas).total;
+  return calcularTotalesIva(
+    lineas.map((l) => ({ totalUSD: l.total_usd, ivaPercent: ivaLinea(l, cotiz), recargoPct: financiacionLinea(l, cotiz).pct })),
+    cotiz.tc
+  ).total;
+}
+
 /** Equivalente en granos si la cotización es de canje; null si no. */
-function datosCanje(cotiz: Cotizacion, total: number): { cultivo: string; precio: number; tn: number } | null {
+function datosCanje(cotiz: Cotizacion, lineas: CotizacionLinea[]): { cultivo: string; precio: number; neto: number; monto: number; tn: number; detalle: string; conIva: boolean } | null {
   if (!(cotiz.canje_precio_usd > 0)) return null;
-  return { cultivo: cotiz.canje_cultivo || 'grano', precio: cotiz.canje_precio_usd, tn: toneladasCanje(total, cotiz.canje_precio_usd) };
+  const neto = netoGuardado(cotiz.canje_precio_usd, cotiz.canje_params);
+  const monto = montoCanjeDeCotizacion(cotiz, lineas);
+  return {
+    cultivo: cotiz.canje_cultivo || 'grano', precio: cotiz.canje_precio_usd, neto, monto,
+    tn: toneladasPorMonto(monto, neto),
+    detalle: resumenLiquidacion(cotiz.canje_precio_usd, cotiz.canje_params, (n, d) => formatUSD(n, d ?? 2)),
+    conIva: !!cotiz.canje_params || cotiz.con_iva,
+  };
 }
 
 // Paleta del PDF: la misma de la app (tailwind.config.js)
@@ -246,14 +266,18 @@ export function construirPDF(
   y += 9;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); color(PDF.suave);
   doc.text(`Equivale a $ ${formatUSD(t.totalARS, 0)} (TC ${formatUSD(cotiz.tc, 2)})`, totalX, y, { align: 'right' });
-  const canje = datosCanje(cotiz, t.total);
+  const canje = datosCanje(cotiz, lineas);
   if (canje) {
     y += 7;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); color(PDF.cultivo700);
     doc.text(`Canje: ${formatUSD(canje.tn)} tn de ${canje.cultivo}`, totalX, y, { align: 'right' });
     y += 4.5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); color(PDF.suave);
-    doc.text(`precio de referencia USD ${formatUSD(canje.precio)}/tn`, totalX, y, { align: 'right' });
+    doc.text(canje.detalle, totalX, y, { align: 'right' });
+    if (canje.conIva && !cotiz.con_iva) {
+      y += 4;
+      doc.text(`sobre el total con IVA de USD ${formatUSD(canje.monto)}`, totalX, y, { align: 'right' });
+    }
   }
 
   // Notas
@@ -331,7 +355,7 @@ export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
         }
       : { 'Total USD (sin IVA)': t.total }),
     'Total ARS': t.totalARS,
-    ...(datosCanje(cotiz, t.total) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje tn': datosCanje(cotiz, t.total)!.tn } : {}),
+    ...(datosCanje(cotiz, lineas) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje neto USD/tn': datosCanje(cotiz, lineas)!.neto, 'Canje monto USD': datosCanje(cotiz, lineas)!.monto, 'Canje tn': datosCanje(cotiz, lineas)!.tn, ...(cotiz.canje_params?.destino ? { 'Canje destino': cotiz.canje_params.destino } : {}) } : {}),
     'Estado': cotiz.estado,
   }];
   const wsResumen = XLSX.utils.json_to_sheet(resumen);
@@ -378,9 +402,9 @@ export function generarWhatsApp(
     msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
   }
   msg += `Total ARS: $${formatUSD(t.totalARS, 0)}\n`;
-  const canje = datosCanje(cotiz, t.total);
+  const canje = datosCanje(cotiz, lineas);
   if (canje) {
-    msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}* (precio de referencia USD ${formatUSD(canje.precio)}/tn)\n`;
+    msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}*\n(${canje.detalle}${canje.conIva && !cotiz.con_iva ? `; sobre el total con IVA de USD ${formatUSD(canje.monto)}` : ''})\n`;
   }
 
   return msg;

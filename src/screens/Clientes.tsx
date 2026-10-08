@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import CamposCliente from '@/components/CamposCliente';
 import ContactosCliente from '@/components/ContactosCliente';
+import CanjesCliente from '@/components/CanjesCliente';
 import { useAuth } from '@/context/AuthContext';
 import { ESTADOS_CLIENTE, filtrarClientes, formClienteVacio, formDeCliente, validarCliente, type FiltroEstado, type FormCliente, type ResumenCliente } from '@/lib/clientes';
 import { linkWhatsApp } from '@/lib/contactos';
@@ -17,7 +18,7 @@ import { productosDelCliente, type LineaDeCliente } from '@/lib/historialCliente
 import { hoyAR } from '@/lib/fechas';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
-export default function Clientes() {
+export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularCanje?: (clienteId: string) => void; onEditCotiz?: (id: string) => void } = {}) {
   const data = useData();
   const { usuario } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -41,7 +42,7 @@ export default function Clientes() {
   const [tareasCliente, setTareasCliente] = useState<Tarea[]>([]);
   const [visitasCliente, setVisitasCliente] = useState<Visita[]>([]);
   const [configCli, setConfigCli] = useState<Configuracion | null>(null);
-  const [tabCli, setTabCli] = useState<'cotizaciones' | 'contactos' | 'campos' | 'productos' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
+  const [tabCli, setTabCli] = useState<'cotizaciones' | 'contactos' | 'campos' | 'productos' | 'canjes' | 'tareas' | 'visitas' | 'timeline'>('cotizaciones');
 
   const [modalEliminar, setModalEliminar] = useState<Cliente | null>(null);
 
@@ -379,6 +380,7 @@ export default function Clientes() {
           <button onClick={() => setTabCli('contactos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'contactos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Contactos</button>
           <button onClick={() => setTabCli('campos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'campos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Campos</button>
           <button onClick={() => setTabCli('productos')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'productos' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Productos</button>
+          <button onClick={() => setTabCli('canjes')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'canjes' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Canjes</button>
           <button onClick={() => setTabCli('tareas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'tareas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Tareas</button>
           <button onClick={() => setTabCli('visitas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'visitas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Visitas</button>
           <button onClick={() => setTabCli('timeline')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tabCli === 'timeline' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Línea de tiempo</button>
@@ -386,6 +388,7 @@ export default function Clientes() {
 
         {tabCli === 'contactos' && <ContactosCliente cliente={detalle} onCambio={() => void recargarResumen()} />}
         {tabCli === 'campos' && <CamposCliente cliente={detalle} onCambio={() => void recargarResumen()} />}
+        {tabCli === 'canjes' && <CanjesCliente cliente={detalle} onEditCotiz={onEditCotiz} onCalcular={onCalcularCanje ? () => onCalcularCanje(detalle.id) : undefined} />}
 
         {/* Tab: Cotizaciones (includes márgenes) */}
         {tabCli === 'cotizaciones' && (
