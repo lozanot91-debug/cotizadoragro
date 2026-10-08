@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import ConveniosFlete from '@/components/ConveniosFlete';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
-import { parsearListaCostos, parsearTarifaFlete } from '@/lib/excel';
+import { parsearListaCostos } from '@/lib/excel';
 import { formatDate, formatUSD } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
 import type { ListaCostos, ProductoConCosto, Cotizacion } from '@/types';
-import { Upload, ListChecks, Truck, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp, X } from 'lucide-react';
+import { Upload, ListChecks, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp, X } from 'lucide-react';
 import { hoyAR } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -22,16 +23,12 @@ export default function Listas() {
   const [mensaje, setMensaje] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [cambiosCosto, setCambiosCosto] = useState<{ cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] | null>(null);
   const [cotizAfectadas, setCotizAfectadas] = useState<{ numero: number; cliente: string }[]>([]);
-  const [tarifaStatus, setTarifaStatus] = useState<number | null>(null);
   const [modalConfirmar, setModalConfirmar] = useState<{ fecha: string; file: File; filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[]; afectadas: { total: number; abiertas: number } } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fleteInputRef = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
     const ls = await data.fetchListas();
     setListas(ls);
-    const tars = await data.fetchTarifasFlete();
-    setTarifaStatus(tars.length);
   }, []);
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
@@ -154,38 +151,6 @@ export default function Listas() {
     }
   }
 
-  async function handleUploadFlete(file: File) {
-    setUploading(true);
-    setMensaje(null);
-    try {
-      const buffer = await file.arrayBuffer();
-      const filas = parsearTarifaFlete(buffer);
-
-      if (filas.length === 0) {
-        setMensaje({ type: 'error', text: 'No se pudieron extraer tarifas del archivo' });
-        setUploading(false);
-        return;
-      }
-
-      // Una sola transacción: si algo falla queda la tarifa anterior intacta
-      await data.cargarTarifaFlete(filas.map((f) => ({ km: f.km, tarifa: f.tarifa })));
-
-      const maxKm = filas[filas.length - 1]?.km || filas.length;
-      setMensaje({ type: 'success', text: `Tarifa cargada: ${filas.length} km` });
-
-      await registrarCambio({
-        tipo: 'lista',
-        campo: 'tarifa de flete',
-        valor_nuevo: `${filas.length} km`,
-        detalle: `Máximo: ${maxKm} km`,
-      });
-
-      load();
-    } catch (err) {
-      setMensaje({ type: 'error', text: `No se cargó la tarifa (queda la anterior). ${traducirError(err)}` });
-    }
-    setUploading(false);
-  }
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
@@ -203,7 +168,7 @@ export default function Listas() {
 
       {/* Carga de archivos (solo admin) */}
       {esAdmin && (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {/* Lista de costos */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
           <div className="flex items-center gap-3 mb-4">
@@ -242,44 +207,10 @@ export default function Listas() {
           </p>
         </div>
 
-        {/* Tarifa de flete */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Truck className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-800">Tarifa de flete</h3>
-              <p className="text-xs text-gray-500">
-                {tarifaStatus !== null ? `Tarifa cargada: ${tarifaStatus} km` : 'No cargada'}
-              </p>
-            </div>
-          </div>
-          <input
-            ref={fleteInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFlete(f); e.target.value = ''; }}
-          />
-          <button
-            onClick={() => fleteInputRef.current?.click()}
-            disabled={uploading}
-            className="w-full border-2 border-dashed border-gray-300 rounded-lg py-6 hover:border-blue-400 hover:bg-blue-50 transition-colors flex flex-col items-center gap-2 disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-            ) : (
-              <Upload className="w-6 h-6 text-gray-400" />
-            )}
-            <span className="text-sm text-gray-500">Seleccionar archivo .xls/.xlsx</span>
-          </button>
-          <p className="text-xs text-gray-400 mt-2">
-            Tarifa en pesos por 100 kg, de 1 a 1200 km
-          </p>
-        </div>
       </div>
       )}
+
+      <ConveniosFlete esAdmin={esAdmin} />
 
       {/* Mensaje */}
       {mensaje && (

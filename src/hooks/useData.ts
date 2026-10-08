@@ -20,6 +20,7 @@ import type {
   VisitaFoto,
   TipoCambioBNA,
   Campo,
+  ConvenioFlete,
 } from '@/types';
 import { hoyAR } from '@/lib/fechas';
 import { usuarioActual } from '@/lib/usuarioActual';
@@ -226,11 +227,41 @@ export function useData() {
       .filter((f) => f.fecha);
   }
 
-  async function fetchTarifasFlete(): Promise<TarifaFlete[]> {
-    const data = await fetchAllPaged<TarifaFlete>(() =>
-      supabase.from('tarifa_flete').select('*').order('km') as unknown as AnyFilter
-    );
-    return data;
+  // ---- Convenios de flete (cada uno con su planilla de tarifas) ----
+  async function fetchConvenios(): Promise<ConvenioFlete[]> {
+    const data = await ok(supabase.from('convenios_flete').select('*').order('numero'));
+    return ((data || []) as ConvenioFlete[]).map((c) => ({
+      ...c,
+      tarifas: (c.tarifas || []).map((t) => ({ km: Number(t.km), tarifa: Number(t.tarifa) })),
+    }));
+  }
+
+  /** Tarifas de un convenio; sin id (o si no existe), las del convenio predeterminado. */
+  async function fetchTarifasFlete(convenioId?: string | null): Promise<TarifaFlete[]> {
+    const cs = await fetchConvenios();
+    return (cs.find((c) => c.id === convenioId) ?? cs.find((c) => c.predeterminado) ?? cs[0])?.tarifas ?? [];
+  }
+
+  async function guardarConvenio(c: { id?: string; numero: number; descripcion: string }): Promise<ConvenioFlete> {
+    const datos = { numero: c.numero, descripcion: c.descripcion.trim() };
+    const q = c.id
+      ? supabase.from('convenios_flete').update(datos).eq('id', c.id).select('*').single()
+      : supabase.from('convenios_flete').insert(datos).select('*').single();
+    return (await ok(q)) as ConvenioFlete;
+  }
+
+  async function eliminarConvenio(id: string) {
+    await ok(supabase.from('convenios_flete').delete().eq('id', id));
+  }
+
+  async function predeterminarConvenio(id: string) {
+    await ok(supabase.rpc('predeterminar_convenio', { p_convenio_id: id }));
+  }
+
+  /** Reemplaza la planilla de UN convenio (las demás no se tocan). */
+  async function cargarTarifaConvenio(convenioId: string, filas: { km: number; tarifa: number }[]): Promise<number> {
+    const n = await ok(supabase.rpc('cargar_tarifa_convenio', { p_convenio_id: convenioId, p_filas: filas as unknown as Record<string, unknown>[] }));
+    return (n as number) ?? 0;
   }
 
   async function fetchClientes(): Promise<Cliente[]> {
@@ -402,12 +433,6 @@ export function useData() {
   }
 
   /** Carga la tarifa de flete completa en una transacción (reemplaza la anterior). */
-  async function cargarTarifaFlete(filas: { km: number; tarifa: number }[]): Promise<number> {
-    const n = await ok(
-      supabase.rpc('cargar_tarifa_flete', { p_filas: filas as unknown as Record<string, unknown>[] })
-    );
-    return (n as number) ?? 0;
-  }
 
   /** Líneas de todas las cotizaciones abiertas, en un solo pedido paginado (para saber cuáles usan un producto). */
   async function fetchLineasCotizacionesAbiertas(): Promise<{ cod: string; numero: number; cliente: string }[]> {
@@ -749,6 +774,11 @@ export function useData() {
     fetchListaByFecha,
     fetchProductosConCosto,
     fetchTarifasFlete,
+    fetchConvenios,
+    guardarConvenio,
+    eliminarConvenio,
+    predeterminarConvenio,
+    cargarTarifaConvenio,
     fetchCostosDeProducto,
     fetchClientes,
     createCliente,
@@ -769,7 +799,6 @@ export function useData() {
     cargarLista,
     cotizacionesAfectadas,
     fetchListaAnteriorA,
-    cargarTarifaFlete,
     fetchLineasCotizacionesAbiertas,
     fetchLineasDeCotizacionesAbiertas,
     fetchTodasLasLineas,

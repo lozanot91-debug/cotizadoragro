@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { elegirConvenio } from '@/lib/convenios';
 import { RefreshCw, Loader2, AlertTriangle, ArrowUp, ArrowDown, CheckCircle2 } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useToast } from '@/components/Toast';
@@ -8,7 +9,7 @@ import { registrarCambio } from '@/lib/historial';
 import { recotizar, cabeceraRecotizada, type ResultadoRecotizar } from '@/lib/recotizar';
 import { formatUSD, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
-import type { Configuracion, Cotizacion, CotizacionLinea, ListaCostos, ProductoConCosto, TarifaFlete, EstadoCotizacion } from '@/types';
+import type { Configuracion, Cotizacion, CotizacionLinea, ListaCostos, ProductoConCosto, ConvenioFlete, EstadoCotizacion } from '@/types';
 
 const estadoColors: Record<string, string> = {
   'Borrador': 'bg-gray-100 text-gray-600',
@@ -30,7 +31,7 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
   const [vigente, setVigente] = useState<ListaCostos | null>(null);
   const [listas, setListas] = useState<ListaCostos[]>([]);
   const [productos, setProductos] = useState<ProductoConCosto[]>([]);
-  const [tarifas, setTarifas] = useState<TarifaFlete[]>([]);
+  const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [lineas, setLineas] = useState<CotizacionLinea[]>([]);
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
@@ -39,9 +40,9 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
 
   const cargar = useCallback(async () => {
     const [cfg, lv, ls, tars] = await Promise.all([
-      data.fetchConfig(), data.fetchListaVigente(), data.fetchListas(), data.fetchTarifasFlete(),
+      data.fetchConfig(), data.fetchListaVigente(), data.fetchListas(), data.fetchConvenios(),
     ]);
-    setConfig(cfg); setVigente(lv); setListas(ls); setTarifas(tars);
+    setConfig(cfg); setVigente(lv); setListas(ls); setConvenios(tars);
     if (!lv) { setProductos([]); setCotizaciones([]); setLineas([]); return; }
     const [prods, cots, lins] = await Promise.all([
       data.fetchProductosConCosto(lv.id), data.fetchCotizaciones(), data.fetchLineasDeCotizacionesAbiertas(),
@@ -65,11 +66,11 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
         return {
           cotiz,
           fechaLista: cotiz.lista_id ? fechaDe.get(cotiz.lista_id) || null : null,
-          r: recotizar({ cotiz, lineas: ls, productos, tarifas, config }),
+          r: recotizar({ cotiz, lineas: ls, productos, tarifas: elegirConvenio(convenios, cotiz.convenio_flete_id)?.tarifas ?? [], config }),
         };
       })
       .sort((a, b) => b.cotiz.numero - a.cotiz.numero);
-  }, [cotizaciones, lineas, productos, tarifas, config, listas]);
+  }, [cotizaciones, lineas, productos, convenios, config, listas]);
 
   const recotizables = filas.filter((f) => !f.r.bloqueada && f.r.lineas.length > 0);
 

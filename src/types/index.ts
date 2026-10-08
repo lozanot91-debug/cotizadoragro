@@ -60,9 +60,22 @@ export interface CostoHistorial {
 }
 
 export interface TarifaFlete {
-  id: string;
+  id?: string;
   km: number;
+  /** Valor por 100 kg (× 10 = $/tn) */
   tarifa: number;
+}
+
+/** Convenio de flete: una planilla de tarifas con número y descripción. */
+export interface ConvenioFlete {
+  id: string;
+  numero: number;
+  descripcion: string;
+  predeterminado: boolean;
+  actualizado_at: string | null;
+  created_at: string;
+  /** Ordenadas por km */
+  tarifas: TarifaFlete[];
 }
 
 export interface Cliente {
@@ -134,6 +147,8 @@ export interface Cotizacion {
   total_ars: number;
   notas: string | null;
   /** Ganada: cantidad y precio reales por id de línea; motivo de lo que no se ganó (cantidad real menor a la cotizada). */
+  /** Convenio de flete con el que se calculó (null = el predeterminado) */
+  convenio_flete_id?: string | null;
   cantidades_reales: Record<string, { cantidad: number; precio: number; motivo?: string | null }> | null;
   /** Ganada: subtotal realmente ganado (sin IVA ni financiación). Null si no está Ganada. */
   ganado_usd?: number | null;

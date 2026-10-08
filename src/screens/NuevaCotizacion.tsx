@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { elegirConvenio, nombreConvenio } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, toneladasCanje, ivaDeLinea } from '@/lib/calculations';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
-import type { TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
+import type { ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
@@ -51,7 +52,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [productos, setProductos] = useState<ProductoConCosto[]>([]);
-  const [tarifas, setTarifas] = useState<TarifaFlete[]>([]);
+  // Convenio de flete: cada uno tiene su planilla; la cotización guarda con cuál se calculó
+  const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
+  const [convenioId, setConvenioId] = useState<string | null>(null);
+  const convenio = useMemo(() => elegirConvenio(convenios, convenioId), [convenios, convenioId]);
+  const tarifas = useMemo<TarifaFlete[]>(() => convenio?.tarifas ?? [], [convenio]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,12 +121,19 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   }
 
   const cargar = useCallback(async () => {
-    const [cfg, lista, tars, cls] = await Promise.all([
+    const [cfg, lista, convs, cls] = await Promise.all([
       data.fetchConfig(),
       data.fetchListaVigente(),
-      data.fetchTarifasFlete(),
+      data.fetchConvenios(),
       data.fetchClientes(),
     ]);
+    setConvenios(convs);
+    // Nueva: el predeterminado. Editar / Recotizar: el de la cotización (si se borró, el predeterminado)
+    let convSel = elegirConvenio(convs, null)?.id ?? null;
+    const conConvenio = editId || duplicateFromId ? await data.fetchCotizacion((editId || duplicateFromId)!) : null;
+    if (conConvenio?.convenio_flete_id) convSel = elegirConvenio(convs, conConvenio.convenio_flete_id)?.id ?? convSel;
+    setConvenioId(convSel);
+    const tars = elegirConvenio(convs, convSel)?.tarifas ?? [];
     setConfig(cfg);
     setTc(String(cfg.tipo_cambio_default));
     tcTocadoRef.current = false;
@@ -131,7 +143,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       if (bna && !editId && !tcTocadoRef.current) setTc(String(bna.venta));
     });
     setVigencia(String(cfg.vigencia_default));
-    setTarifas(tars);
     setClientes(cls);
     listaIdRef.current = lista?.id || null;
 
@@ -294,7 +305,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   useEffect(() => { load(); }, [load]);
 
   const kmNum = parseInt(km) || 0;
-  useEffect(() => { setKmWarning(kmNum > 1200); }, [kmNum]);
+  const kmMaxTarifa = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
+  useEffect(() => { setKmWarning(kmMaxTarifa > 0 && kmNum > kmMaxTarifa); }, [kmNum, kmMaxTarifa]);
 
   const clientesFiltrados = useMemo(() => {
     if (!clienteBusqueda) return [];
@@ -496,7 +508,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   function buildCotizData(): Partial<Cotizacion> {
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
-      km: kmNum, con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
+      km: kmNum, convenio_flete_id: convenio?.id ?? null, con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
       lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva,
       plazo_dias: plazoMax, tasa_mensual: hayFinanciado ? tasaNum : 0,
@@ -557,6 +569,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       if (!!editData.con_iva !== conIva) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'IVA', valor_anterior: editData.con_iva ? 'Con IVA' : 'Sin IVA', valor_nuevo: conIva ? 'Con IVA' : 'Sin IVA' });
       if (hayFinanciado && (editData.tasa_mensual || 0) !== tasaNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tasa mensual', valor_anterior: `${editData.tasa_mensual || 0}%`, valor_nuevo: `${tasaNum}%` });
       if ((editData.canje_precio_usd || 0) !== (conCanje ? canjePrecioNum : 0)) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'canje', valor_anterior: editData.canje_precio_usd ? `${editData.canje_cultivo} a USD ${formatUSD(editData.canje_precio_usd)}/tn` : 'Sin canje', valor_nuevo: conCanje ? `${canjeNombre} a USD ${formatUSD(canjePrecioNum)}/tn` : 'Sin canje' });
+      if ((editData.convenio_flete_id ?? null) !== (convenio?.id ?? null) && editData.convenio_flete_id !== undefined) {
+        const ant = convenios.find((c) => c.id === editData.convenio_flete_id);
+        cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'convenio de flete', valor_anterior: ant ? String(ant.numero) : 'predeterminado', valor_nuevo: convenio ? String(convenio.numero) : null });
+      }
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if (editData.km !== kmNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km', valor_anterior: String(editData.km), valor_nuevo: String(kmNum) });
       if (editData.cliente_nombre !== clienteBusqueda) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'cliente', valor_anterior: editData.cliente_nombre || '', valor_nuevo: clienteBusqueda });
@@ -849,7 +865,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               </p>
             )}
           </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">KM destino</label><input type="number" value={km} disabled={esReadOnly} onChange={(e) => setKm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" />{kmWarning && <p className="text-xs text-red-500 mt-1">Fuera de tabla (máx. 1200 km)</p>}</div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">KM destino</label><input type="number" value={km} disabled={esReadOnly} onChange={(e) => setKm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" />{kmWarning && <p className="text-xs text-red-500 mt-1">Fuera de la planilla del convenio (máx. {kmMaxTarifa} km)</p>}</div>
+          <div><label htmlFor="cotiz-convenio" className="block text-sm font-medium text-gray-700 mb-1">Convenio de flete</label>
+            <select id="cotiz-convenio" value={convenio?.id ?? ''} disabled={esReadOnly || convenios.length === 0} onChange={(e) => setConvenioId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50 bg-white">
+              {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
+              {convenios.map((c) => <option key={c.id} value={c.id}>{nombreConvenio(c)}{c.predeterminado ? ' (predet.)' : ''}</option>)}
+            </select>
+          </div>
+
           
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Vigencia (días)</label><input type="number" value={vigencia} disabled={esReadOnly} onChange={(e) => setVigencia(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
           <div className="flex items-end">

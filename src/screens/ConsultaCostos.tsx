@@ -5,7 +5,8 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { buscarProductos, costoDeLista, fleteConsulta } from '@/lib/consulta';
 import { formatUSD, formatDate, parseNumberInput } from '@/lib/format';
-import type { ListaCostos, ProductoConCosto, TarifaFlete, TipoCambioBNA } from '@/types';
+import type { ConvenioFlete, ListaCostos, ProductoConCosto, TarifaFlete, TipoCambioBNA } from '@/types';
+import { elegirConvenio, nombreConvenio } from '@/lib/convenios';
 
 /** Consulta rápida: costo de lista de un insumo y flete por km (en $/tn y USD/tn al TC comprador divisa BNA). */
 export default function ConsultaCostos() {
@@ -14,7 +15,8 @@ export default function ConsultaCostos() {
   const [lista, setLista] = useState<ListaCostos | null>(null);
   const [productos, setProductos] = useState<ProductoConCosto[]>([]);
   const [anteriores, setAnteriores] = useState<Map<string, number>>(new Map());
-  const [tarifas, setTarifas] = useState<TarifaFlete[]>([]);
+  const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
+  const [convenioId, setConvenioId] = useState<string | null>(null);
   const [tcBna, setTcBna] = useState<TipoCambioBNA | null>(null);
   const [tcRespaldo, setTcRespaldo] = useState(0);
 
@@ -23,8 +25,8 @@ export default function ConsultaCostos() {
   const [kmTxt, setKmTxt] = useState('');
 
   const cargar = useCallback(async () => {
-    const [listas, tars, cfg] = await Promise.all([data.fetchListas(), data.fetchTarifasFlete(), data.fetchConfig()]);
-    setTarifas(tars);
+    const [listas, convs, cfg] = await Promise.all([data.fetchListas(), data.fetchConvenios(), data.fetchConfig()]);
+    setConvenios(convs);
     setTcRespaldo(cfg.tipo_cambio_default);
     setLista(listas[0] ?? null);
     if (listas[0]) {
@@ -46,6 +48,8 @@ export default function ConsultaCostos() {
   // Para el flete se usa el TC comprador divisa BNA; si no responde, el TC de respaldo de la configuración
   const tc = tcBna?.compra || tcRespaldo;
   const km = parseNumberInput(kmTxt);
+  const convenio = useMemo(() => elegirConvenio(convenios, convenioId), [convenios, convenioId]);
+  const tarifas = useMemo<TarifaFlete[]>(() => convenio?.tarifas ?? [], [convenio]);
   const flete = useMemo(() => fleteConsulta(km, tarifas, tc), [km, tarifas, tc]);
   const kmMax = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
 
@@ -135,12 +139,18 @@ export default function ConsultaCostos() {
         {/* ===== Flete ===== */}
         <section className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-800 flex items-center gap-2 mb-3"><Truck className="w-5 h-5 text-emerald-700" /> Flete</h2>
+          <label htmlFor="consulta-convenio" className="block text-sm font-medium text-gray-700 mb-1">Convenio</label>
+          <select id="consulta-convenio" value={convenio?.id ?? ''} onChange={(e) => setConvenioId(e.target.value)} disabled={convenios.length === 0}
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white mb-3">
+            {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
+            {convenios.map((c) => <option key={c.id} value={c.id}>{nombreConvenio(c)}{c.predeterminado ? ' (predet.)' : ''}</option>)}
+          </select>
           <label htmlFor="consulta-km" className="block text-sm font-medium text-gray-700 mb-1">Distancia (km)</label>
           <input id="consulta-km" type="text" inputMode="decimal" value={kmTxt} onChange={(e) => setKmTxt(e.target.value)} placeholder="Ej.: 120"
             className="w-full sm:w-40 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
 
           {km > 0 && !flete && (
-            <p className="mt-3 text-sm text-amber-700">No hay tarifa cargada para {Math.ceil(km)} km{kmMax ? ` (la tabla llega hasta ${kmMax} km)` : ''}.</p>
+            <p className="mt-3 text-sm text-amber-700">No hay tarifa para {Math.ceil(km)} km en este convenio{kmMax ? ` (la planilla llega hasta ${kmMax} km)` : ''}.</p>
           )}
           {flete && (
             <div className="mt-4 grid grid-cols-2 gap-3">
