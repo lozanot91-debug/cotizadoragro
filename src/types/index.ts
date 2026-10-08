@@ -380,3 +380,47 @@ export interface Campo {
   created_at: string;
   updated_at: string;
 }
+
+/** Pedido de facturación (foto de lo que se manda a facturar). */
+export interface PedidoFacturacion {
+  id: string;
+  cotizacion_id: string;
+  token: string;
+  estado: 'Pendiente' | 'Facturado' | 'Observado' | 'Cancelado';
+  vence_el: string;
+  nota_venta: string | null;
+  observaciones: string | null;
+  cliente: ClienteFacturacion;
+  condiciones: import('@/lib/facturacion').CondicionPago[];
+  lineas: import('@/lib/facturacion').LineaFacturacion[];
+  totales: import('@/lib/facturacion').TotalesFacturacion;
+  extra: ExtraFacturacion;
+  creado_por: string | null;
+  enviado_at: string;
+  factura_numero: string | null;
+  factura_fecha: string | null;
+  facturado_por: string | null;
+  facturado_at: string | null;
+  observacion: string | null;
+  observado_por: string | null;
+  observado_at: string | null;
+  created_at: string;
+  cotizacion?: { numero: number; cliente_nombre: string | null; estado: string } | null;
+}
+
+export interface ClienteFacturacion {
+  nombre: string;
+  razon_social: string | null;
+  cuit: string | null;
+  domicilio: string | null;
+  localidad: string | null;
+}
+
+export interface ExtraFacturacion {
+  numero?: number;
+  fecha_cotizacion?: string;
+  tc?: number;
+  tc_flete?: number | null;
+  flete?: string | null;
+  vendedor?: string | null;
+}

@@ -22,6 +22,8 @@ import ConsultaCostos from '@/screens/ConsultaCostos';
 import EvolucionCostos from '@/screens/EvolucionCostos';
 import PedidosMesa from '@/screens/PedidosMesa';
 import PublicoMesa from '@/screens/PublicoMesa';
+import PublicoFacturacion from '@/screens/PublicoFacturacion';
+import Facturacion from '@/screens/Facturacion';
 import { vencimientos } from '@/lib/vencimientos';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -36,6 +38,7 @@ function AppContent() {
   const [vencBadge, setVencBadge] = useState(0);
   const [cobroBadge, setCobroBadge] = useState(0);
   const [pedidoBadge, setPedidoBadge] = useState(0);
+  const [facturaBadge, setFacturaBadge] = useState(0);
 
   const loadTaskBadge = useCallback(async () => {
     const hoy = hoyAR();
@@ -76,15 +79,24 @@ function AppContent() {
     setPedidoBadge(count || 0);
   }, []);
 
-  useEffect(() => { loadTaskBadge(); loadVencBadge(); loadCobroBadge(); loadPedidoBadge(); }, [loadTaskBadge, loadVencBadge, loadCobroBadge, loadPedidoBadge, screen]);
+  /** Pedidos de facturación observados: el vendedor tiene que corregirlos y reenviarlos. */
+  const loadFacturaBadge = useCallback(async () => {
+    const { count } = await supabase
+      .from('pedidos_facturacion')
+      .select('*', { count: 'exact', head: true })
+      .eq('estado', 'Observado');
+    setFacturaBadge(count || 0);
+  }, []);
+
+  useEffect(() => { loadTaskBadge(); loadVencBadge(); loadCobroBadge(); loadPedidoBadge(); loadFacturaBadge(); }, [loadTaskBadge, loadVencBadge, loadCobroBadge, loadPedidoBadge, loadFacturaBadge, screen]);
 
   // La mesa puede responder mientras la app está abierta: se revisa cada 2 minutos y al volver a la pestaña
   useEffect(() => {
-    const t = setInterval(() => { void loadPedidoBadge(); }, 120000);
-    const alVolver = () => { if (document.visibilityState === 'visible') void loadPedidoBadge(); };
+    const t = setInterval(() => { void loadPedidoBadge(); void loadFacturaBadge(); }, 120000);
+    const alVolver = () => { if (document.visibilityState === 'visible') { void loadPedidoBadge(); void loadFacturaBadge(); } };
     document.addEventListener('visibilitychange', alVolver);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver); };
-  }, [loadPedidoBadge]);
+  }, [loadPedidoBadge, loadFacturaBadge]);
 
   // Al tocar una notificación: llega ?abrir=<id> (app cerrada) o un mensaje del service worker (app abierta)
   useEffect(() => {
@@ -122,7 +134,7 @@ function AppContent() {
   }
 
   return (
-    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge}>
+    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge} facturaBadge={facturaBadge}>
       {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} pedidoBadge={pedidoBadge} />}
       {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} onAbrirGuardada={handleEditCotiz} />}
       {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
@@ -131,6 +143,7 @@ function AppContent() {
       {screen === 'vencimientos' && <Vencimientos onEdit={handleEditCotiz} />}
       {screen === 'cobranzas' && <Cobranzas onEdit={handleEditCotiz} />}
       {screen === 'pedidos' && <PedidosMesa onEdit={handleEditCotiz} />}
+      {screen === 'facturacion' && <Facturacion onEdit={handleEditCotiz} />}
       {screen === 'costos' && <EvolucionCostos />}
       {screen === 'consulta' && <ConsultaCostos />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
@@ -156,16 +169,20 @@ function Puerta() {
   return <AppContent />;
 }
 
-/** Link público de la mesa de insumos (?mesa=código): se abre sin usuario ni contraseña. */
-function codigoMesa(): string | null {
-  const t = new URLSearchParams(window.location.search).get('mesa');
+/** Links públicos (?mesa=código o ?facturar=código): se abren sin usuario ni contraseña. */
+function codigoPublico(param: 'mesa' | 'facturar'): string | null {
+  const t = new URLSearchParams(window.location.search).get(param);
   return t && /^[a-f0-9]{64}$/i.test(t) ? t : t ? 'invalido' : null;
 }
 
 export default function App() {
-  const mesa = codigoMesa();
+  const mesa = codigoPublico('mesa');
   if (mesa) {
     return <ToastProvider><PublicoMesa token={mesa} /></ToastProvider>;
+  }
+  const facturar = codigoPublico('facturar');
+  if (facturar) {
+    return <ToastProvider><PublicoFacturacion token={facturar} /></ToastProvider>;
   }
   return (
     <AuthProvider>

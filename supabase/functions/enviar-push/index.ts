@@ -1,5 +1,6 @@
-// Edge function: manda la notificación push cuando la mesa de insumos responde un pedido de precios.
-// La llama el trigger `pedidos_precio_avisar` (pg_net) con el secreto compartido en `x-webhook-secreto`.
+// Edge function: manda la notificación push cuando la mesa de insumos responde un pedido de precios
+// (trigger `pedidos_precio_avisar`) o cuando facturación factura u observa un pedido (trigger
+// `pedidos_facturacion_avisar`). Los triggers la llaman por pg_net con el secreto en `x-webhook-secreto`.
 // Avisa al vendedor de la cotización y a los admins; borra las suscripciones que ya no existen.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
@@ -32,10 +33,11 @@ Deno.serve(async (req) => {
   const { data: cfg, error: errCfg } = await db.rpc('push_config');
   if (errCfg || !cfg?.push_vapid_privada) return respuesta({ error: 'Falta la configuración de push' }, 500);
 
-  let pedidoId = '', tipo = '';
+  let pedidoId = '', facturacionId = '', tipo = '';
   try {
     const b = await req.json();
     pedidoId = String(b.pedido_id || '');
+    facturacionId = String(b.facturacion_id || '');
     tipo = String(b.tipo || '');
   } catch { /* cuerpo inválido */ }
 
@@ -50,7 +52,9 @@ Deno.serve(async (req) => {
     if (!iguales(req.headers.get('x-webhook-secreto') || '', cfg.push_webhook_secreto || '')) {
       return respuesta({ error: 'No autorizado' }, 401);
     }
-    if (!pedidoId || !['respondido', 'correccion'].includes(tipo)) return respuesta({ error: 'Pedido inválido' }, 400);
+    const okMesa = !!pedidoId && ['respondido', 'correccion'].includes(tipo);
+    const okFact = !!facturacionId && ['facturado', 'observado'].includes(tipo);
+    if (!okMesa && !okFact) return respuesta({ error: 'Pedido inválido' }, 400);
   }
 
   let destinatarios: string[] = [];
@@ -59,6 +63,25 @@ Deno.serve(async (req) => {
     destinatarios = [usuarioPrueba];
     titulo = 'Avisos activados';
     cuerpo = 'Así te va a llegar el aviso cuando la mesa cargue precios.';
+  } else if (facturacionId) {
+    const { data: f } = await db
+      .from('pedidos_facturacion')
+      .select('id, creado_por_id, factura_numero, facturado_por, observacion, observado_por, cotizacion_id, cotizaciones(numero, cliente_nombre, vendedor)')
+      .eq('id', facturacionId).maybeSingle();
+    if (!f) return respuesta({ error: 'No existe el pedido de facturación' }, 404);
+    // deno-lint-ignore no-explicit-any
+    const c = (f as any).cotizaciones as { numero: number; cliente_nombre: string | null; vendedor: string | null } | null;
+    cotizacionId = f.cotizacion_id;
+    const ref = c ? `N° ${c.numero}${c.cliente_nombre ? ` · ${c.cliente_nombre}` : ''}` : 'una cotización';
+    if (tipo === 'facturado') {
+      titulo = 'Pedido facturado';
+      cuerpo = `${ref}${f.factura_numero ? ` — factura ${f.factura_numero}` : ''}${f.facturado_por ? ` (${f.facturado_por})` : ''}.`;
+    } else {
+      titulo = 'Facturación observó un pedido';
+      cuerpo = `${ref}${f.observacion ? `: "${String(f.observacion).slice(0, 120)}"` : ''}`;
+    }
+    const { data: admins } = await db.from('usuarios').select('id').eq('rol', 'admin');
+    destinatarios = [...new Set([f.creado_por_id, c?.vendedor, ...(admins || []).map((a) => a.id)].filter(Boolean) as string[])];
   } else {
     const { data: p } = await db
       .from('pedidos_precio')
@@ -85,7 +108,7 @@ Deno.serve(async (req) => {
   if (!subs?.length) return respuesta({ enviados: 0, motivo: 'Nadie tiene los avisos activados' });
 
   webpush.setVapidDetails('mailto:lozanot91@gmail.com', cfg.push_vapid_publica, cfg.push_vapid_privada);
-  const payload = JSON.stringify({ titulo, cuerpo, cotizacionId, tag: usuarioPrueba ? 'prueba' : `pedido-${pedidoId}` });
+  const payload = JSON.stringify({ titulo, cuerpo, cotizacionId, tag: usuarioPrueba ? 'prueba' : facturacionId ? `facturacion-${facturacionId}` : `pedido-${pedidoId}` });
 
   let enviados = 0;
   const vencidas: string[] = [];

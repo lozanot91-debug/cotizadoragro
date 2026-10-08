@@ -10,6 +10,7 @@ import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } fr
 import type { Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import FleteCotizacion from '@/components/FleteCotizacion';
+import EnviarAFacturar from '@/components/EnviarAFacturar';
 import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizacion } from '@/lib/fleteTramos';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
@@ -867,6 +868,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           </span>
         )}
       </div>
+
+      {/* Ganada: enviar a facturar y seguir el pedido */}
+      {editId && editData?.estado === 'Ganada' && <EnviarAFacturar cotizacion={editData} />}
 
       {/* Productos faltantes al duplicar */}
       {productosFaltantes.length > 0 && (

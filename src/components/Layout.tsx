@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import SinConexion from '@/components/SinConexion';
@@ -11,7 +11,7 @@ export type { Screen };
 type Icono = React.ComponentType<{ className?: string }>;
 const ICONOS: Record<Screen, Icono> = {
   inicio: Home, nueva: FilePlus, cotizaciones: FileText, pipeline: KanbanSquare, vencimientos: CalendarClock,
-  recotizar: RefreshCw, pedidos: ClipboardList, clientes: Users, tareas: CheckSquare, visitas: MapPin,
+  recotizar: RefreshCw, pedidos: ClipboardList, facturacion: Receipt, clientes: Users, tareas: CheckSquare, visitas: MapPin,
   cobranzas: Wallet, consulta: SearchCheck, listas: ListChecks, costos: LineChart, estadisticas: BarChart3,
   rentabilidad: TrendingUp, config: Settings, historial: History,
 };
@@ -38,9 +38,10 @@ interface Props {
   vencBadge?: number;
   cobroBadge?: number;
   pedidoBadge?: number;
+  facturaBadge?: number;
 }
 
-export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge, pedidoBadge }: Props) {
+export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge, pedidoBadge, facturaBadge }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { usuario, signOut } = useAuth();
 
@@ -49,7 +50,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
     setMenuOpen(false);
   }
 
-  const badges: Partial<Record<Badge, number>> = { venc: vencBadge, pedido: pedidoBadge, cobro: cobroBadge, tarea: taskBadge };
+  const badges: Partial<Record<Badge, number>> = { venc: vencBadge, pedido: pedidoBadge, cobro: cobroBadge, tarea: taskBadge, factura: facturaBadge };
   const grupos = gruposVisibles(usuario.rol === 'admin');
 
   // Grupos abiertos: los que el usuario dejó abiertos + siempre el de la pantalla actual

@@ -24,6 +24,7 @@ import type {
   Contacto,
   Usuario,
   Planta,
+  PedidoFacturacion,
 } from '@/types';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
@@ -147,6 +148,35 @@ export function useData() {
 
   async function eliminarCampo(id: string) {
     await ok(supabase.from('campos').delete().eq('id', id));
+  }
+
+  // ---- Pedidos de facturación ----
+  async function fetchPedidosFacturacion(): Promise<PedidoFacturacion[]> {
+    const data = await ok(supabase.from('pedidos_facturacion')
+      .select('*, cotizacion:cotizaciones(numero, cliente_nombre, estado)')
+      .order('enviado_at', { ascending: false }).limit(500));
+    return (data || []) as PedidoFacturacion[];
+  }
+
+  /** El pedido vigente (no cancelado) de una cotización, si hay. */
+  async function fetchFacturacionDeCotizacion(cotizacionId: string): Promise<PedidoFacturacion | null> {
+    const data = await ok(supabase.from('pedidos_facturacion').select('*')
+      .eq('cotizacion_id', cotizacionId).neq('estado', 'Cancelado').maybeSingle());
+    return (data as PedidoFacturacion | null) ?? null;
+  }
+
+  /** Envía (o reenvía después de una observación). Devuelve el código del link. */
+  async function enviarAFacturar(cotizacionId: string, dias: number, datos: Record<string, unknown>): Promise<string> {
+    const t = await ok(supabase.rpc('enviar_a_facturar', { p_cotizacion_id: cotizacionId, p_dias: dias, p_datos: datos }));
+    return t as string;
+  }
+
+  async function cancelarFacturacion(id: string) {
+    await ok(supabase.from('pedidos_facturacion').update({ estado: 'Cancelado' }).eq('id', id));
+  }
+
+  async function extenderFacturacion(id: string, dias: number) {
+    await ok(supabase.from('pedidos_facturacion').update({ vence_el: new Date(Date.now() + dias * 86400000).toISOString() }).eq('id', id));
   }
 
   // ---- Contactos de clientes ----
@@ -851,6 +881,11 @@ export function useData() {
     guardarCampo,
     eliminarCampo,
     fetchContactos,
+    fetchPedidosFacturacion,
+    fetchFacturacionDeCotizacion,
+    enviarAFacturar,
+    cancelarFacturacion,
+    extenderFacturacion,
     guardarContacto,
     eliminarContacto,
     fetchResumenClientes,

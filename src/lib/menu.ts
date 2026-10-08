@@ -1,8 +1,8 @@
 /** Estructura del menú lateral: dos accesos sueltos arriba y grupos que se abren y cierran. */
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion';
 
-export type Badge = 'venc' | 'pedido' | 'cobro' | 'tarea';
+export type Badge = 'venc' | 'pedido' | 'cobro' | 'tarea' | 'factura';
 
 export interface ItemMenu {
   id: Screen;
@@ -29,6 +29,7 @@ export const GRUPOS: GrupoMenu[] = [
     { id: 'vencimientos', label: 'Vencimientos', badge: 'venc' },
     { id: 'recotizar', label: 'Recotizar' },
     { id: 'pedidos', label: 'Pedidos a mesa', badge: 'pedido' },
+    { id: 'facturacion', label: 'A facturar', badge: 'factura' },
   ] },
   { id: 'clientes', label: 'Clientes', items: [
     { id: 'clientes', label: 'Clientes' },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GRUPOS, SUELTOS, badgeDeGrupo, grupoDe, gruposVisibles, type Screen } from './menu';
 
-const TODAS: Screen[] = ['inicio', 'nueva', 'pipeline', 'cotizaciones', 'tareas', 'visitas', 'clientes', 'listas', 'estadisticas', 'config', 'historial', 'recotizar', 'rentabilidad', 'vencimientos', 'cobranzas', 'costos', 'pedidos', 'consulta'];
+const TODAS: Screen[] = ['inicio', 'nueva', 'pipeline', 'cotizaciones', 'tareas', 'visitas', 'clientes', 'listas', 'estadisticas', 'config', 'historial', 'recotizar', 'rentabilidad', 'vencimientos', 'cobranzas', 'costos', 'pedidos', 'consulta', 'facturacion'];
 
 describe('menú', () => {
   it('cada pantalla aparece una sola vez', () => {
