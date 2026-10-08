@@ -1,10 +1,34 @@
-import { useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import SinConexion from '@/components/SinConexion';
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta';
+import { SUELTOS, badgeDeGrupo, grupoDe, gruposVisibles, type Badge, type Screen } from '@/lib/menu';
+
+export type { Screen };
+
+type Icono = React.ComponentType<{ className?: string }>;
+const ICONOS: Record<Screen, Icono> = {
+  inicio: Home, nueva: FilePlus, cotizaciones: FileText, pipeline: KanbanSquare, vencimientos: CalendarClock,
+  recotizar: RefreshCw, pedidos: ClipboardList, clientes: Users, tareas: CheckSquare, visitas: MapPin,
+  cobranzas: Wallet, consulta: SearchCheck, listas: ListChecks, costos: LineChart, estadisticas: BarChart3,
+  rentabilidad: TrendingUp, config: Settings, historial: History,
+};
+const ICONOS_GRUPO: Record<string, Icono> = { cotizaciones: Briefcase, clientes: Contact, precios: Tags, analisis: PieChart, admin: ShieldCheck };
+
+const CLAVE_ABIERTOS = 'cotizador.menu.abiertos';
+function leerAbiertos(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(CLAVE_ABIERTOS) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function guardarAbiertos(ids: string[]) {
+  try { localStorage.setItem(CLAVE_ABIERTOS, JSON.stringify(ids)); } catch { /* sin almacenamiento */ }
+}
+
+function Aviso({ n }: { n: number }) {
+  if (!(n > 0)) return null;
+  return <span className="ml-auto bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold min-w-5 text-center">{n}</span>;
+}
 
 interface Props {
   current: Screen;
@@ -25,28 +49,31 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
     setMenuOpen(false);
   }
 
-  const todosLosItems: { id: Screen; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
-    { id: 'inicio', label: 'Inicio', icon: Home },
-    { id: 'nueva', label: 'Nueva cotización', icon: FilePlus },
-    { id: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
-    { id: 'cotizaciones', label: 'Cotizaciones', icon: FileText },
-    { id: 'vencimientos', label: 'Vencimientos', icon: CalendarClock, badge: vencBadge },
-    { id: 'pedidos', label: 'Pedidos a mesa', icon: ClipboardList, badge: pedidoBadge },
-    { id: 'recotizar', label: 'Recotizar', icon: RefreshCw },
-    { id: 'consulta', label: 'Consulta de costos', icon: SearchCheck },
-    { id: 'cobranzas', label: 'Cobranzas', icon: Wallet, badge: cobroBadge },
-    { id: 'tareas', label: 'Tareas', icon: CheckSquare, badge: taskBadge },
-    { id: 'visitas', label: 'Visitas', icon: MapPin },
-    { id: 'clientes', label: 'Clientes', icon: Users },
-    { id: 'listas', label: 'Listas', icon: ListChecks },
-    { id: 'estadisticas', label: 'Estadísticas', icon: BarChart3 },
-    { id: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUp },
-    { id: 'costos', label: 'Evolución de costos', icon: LineChart },
-    { id: 'config', label: 'Márgenes y config.', icon: Settings },
-    { id: 'historial', label: 'Historial', icon: History },
-  ];
-  // Tocar márgenes y configuración es solo del administrador (las listas las ven todos, solo el admin las carga)
-  const navItems = todosLosItems.filter((item) => (usuario.rol === 'admin' || item.id !== 'config'));
+  const badges: Partial<Record<Badge, number>> = { venc: vencBadge, pedido: pedidoBadge, cobro: cobroBadge, tarea: taskBadge };
+  const grupos = gruposVisibles(usuario.rol === 'admin');
+
+  // Grupos abiertos: los que el usuario dejó abiertos + siempre el de la pantalla actual
+  const [abiertos, setAbiertos] = useState<string[]>(leerAbiertos);
+  const grupoActual = grupoDe(current);
+  useEffect(() => {
+    if (grupoActual && !abiertos.includes(grupoActual)) setAbiertos((a) => [...a, grupoActual]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupoActual]);
+  useEffect(() => { guardarAbiertos(abiertos); }, [abiertos]);
+  const alternar = (id: string) => setAbiertos((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
+
+  const botonItem = (id: Screen, label: string, n?: number, sangria = false) => {
+    const Icon = ICONOS[id];
+    const active = current === id;
+    return (
+      <button key={id} onClick={() => handleNav(id)} aria-current={active ? 'page' : undefined}
+        className={`w-full flex items-center gap-3 ${sangria ? 'pl-5 pr-3 py-2' : 'px-3 py-2.5'} rounded-lg text-sm font-medium transition-all ${active ? 'bg-gray-100 text-emerald-800 shadow-[inset_3px_0_0_#C0900F]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+        <Icon className={`${sangria ? 'w-4 h-4' : 'w-5 h-5'} flex-shrink-0`} />
+        {label}
+        <Aviso n={n || 0} />
+      </button>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -83,18 +110,33 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
           h-[calc(100vh-3.5rem)] overflow-y-auto
         `}>
           <nav className="p-3 space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const active = current === item.id;
+            {botonItem('inicio', SUELTOS[0].label)}
+            <button onClick={() => handleNav('nueva')} aria-current={current === 'nueva' ? 'page' : undefined}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${current === 'nueva' ? 'bg-emerald-800 text-white shadow-[inset_3px_0_0_#C0900F]' : 'bg-emerald-700 text-white hover:bg-emerald-800'}`}>
+              <FilePlus className="w-5 h-5 flex-shrink-0" /> {SUELTOS[1].label}
+            </button>
+
+            {grupos.map((g) => {
+              const abierto = abiertos.includes(g.id);
+              const Icono = ICONOS_GRUPO[g.id] ?? FileText;
+              const avisos = badgeDeGrupo(g, badges);
               return (
-                <button key={item.id} onClick={() => handleNav(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active ? 'bg-gray-100 text-emerald-800 shadow-[inset_3px_0_0_#C0900F]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  {item.label}
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className="ml-auto bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold min-w-5 text-center">{item.badge}</span>
+                <div key={g.id} className="pt-2">
+                  <button onClick={() => alternar(g.id)} aria-expanded={abierto}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors ${grupoActual === g.id ? 'text-emerald-800' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                    <Icono className="w-4 h-4 flex-shrink-0" />
+                    {g.label}
+                    {!abierto && avisos > 0
+                      ? <Aviso n={avisos} />
+                      : <span className="ml-auto" />}
+                    <ChevronDown className={`w-4 h-4 transition-transform ${abierto ? '' : '-rotate-90'}`} />
+                  </button>
+                  {abierto && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {g.items.map((i) => botonItem(i.id, i.label, i.badge ? badges[i.badge] : undefined, true))}
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </nav>
