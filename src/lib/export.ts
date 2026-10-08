@@ -14,7 +14,7 @@ function tasaTxt(t: number): string {
 }
 
 /** IVA de la línea; en cotizaciones viejas (sin IVA por línea) se usa el de la cabecera. */
-function ivaLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
+export function ivaLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
   return l.iva ?? cotiz.iva ?? 0;
 }
 

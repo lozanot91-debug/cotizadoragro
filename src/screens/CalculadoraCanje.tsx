@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight } from 'lucide-react';
+import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
@@ -13,7 +13,8 @@ import {
 import { montoCanjeDeCotizacion } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { formatDate, formatUSD } from '@/lib/format';
-import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, TipoCambioBNA } from '@/types';
+import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, TipoCambioBNA } from '@/types';
+import VistaPreviaCotizacion from '@/components/VistaPreviaCotizacion';
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
 const fmt = (n: number, d = 2) => formatUSD(n, d);
@@ -54,6 +55,9 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const [notas, setNotas] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [cargandoCotiz, setCargandoCotiz] = useState(false);
+  // Vista previa de la cotización traída
+  const [previa, setPrevia] = useState<{ cotizacion: Cotizacion; lineas: CotizacionLinea[] } | null>(null);
+  const [verPrevia, setVerPrevia] = useState(false);
   const [filtro, setFiltro] = useState('');
 
   const cargar = useCallback(async () => {
@@ -107,6 +111,8 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     setCargandoCotiz(true);
     try {
       const lineas = await data.fetchLineas(c.id);
+      setPrevia({ cotizacion: c, lineas });
+      setVerPrevia(true);
       const p = c.canje_params ? normalizarParams(c.canje_params) : params;
       setModo('monto');
       setIvaInsumos(null);
@@ -239,6 +245,10 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                     {cotizCliente.map((c) => <option key={c.id} value={c.id}>{nombreCotizacion(c)} · {formatDate(c.fecha)} · {c.estado}</option>)}
                   </select>
                   {cargandoCotiz && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
+                  {!cargandoCotiz && previa && cotizacionId === previa.cotizacion.id && (
+                    <button type="button" onClick={() => setVerPrevia(true)} title="Ver la cotización" aria-label="Ver la cotización"
+                      className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:text-emerald-700 hover:border-emerald-400 flex-shrink-0"><Eye className="w-4 h-4" /></button>
+                  )}
                 </div>
               </label>
             </div>
@@ -305,6 +315,11 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
             flete={{ convenios, tcCompra, campos: camposCliente }} />
         </section>
       </div>
+
+      {verPrevia && previa && (
+        <VistaPreviaCotizacion cotizacion={previa.cotizacion} lineas={previa.lineas} onCerrar={() => setVerPrevia(false)}
+          onAbrir={onEditCotiz ? () => onEditCotiz(previa.cotizacion.id) : undefined} />
+      )}
 
       {/* ===== Historial ===== */}
       <section className="bg-white rounded-xl border border-gray-200 p-5">
