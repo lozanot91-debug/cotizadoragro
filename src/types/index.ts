@@ -260,3 +260,37 @@ export interface Cobranza {
   updated_at: string;
   cotizacion?: Pick<Cotizacion, 'numero' | 'cliente_nombre' | 'canje_cultivo' | 'canje_precio_usd' | 'con_iva'> | null;
 }
+
+export interface PedidoPrecioLinea {
+  id: string;
+  pedido_id: string;
+  orden: number;
+  cod: string;
+  producto: string;
+  unidad: string | null;
+  es_fertilizante: boolean;
+  cantidad: number;
+  /** Costo cargado por la mesa: USD/tn en fertilizantes, USD por unidad en el resto. Null = pendiente. */
+  costo_usd: number | null;
+  proveedor: string | null;
+}
+
+export interface PedidoPrecio {
+  id: string;
+  cotizacion_id: string;
+  token: string;
+  estado: 'Abierto' | 'Respondido' | 'Cancelado';
+  vence_el: string;
+  auto_aplicar: boolean;
+  nota: string | null;
+  creado_por: string | null;
+  respondido_por: string | null;
+  respondido_at: string | null;
+  nota_respuesta: string | null;
+  correccion_solicitada: boolean;
+  correccion_mensaje: string | null;
+  aplicado_at: string | null;
+  created_at: string;
+  cotizacion?: Pick<Cotizacion, 'numero' | 'cliente_nombre'> | null;
+  lineas?: PedidoPrecioLinea[];
+}

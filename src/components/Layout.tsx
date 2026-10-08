@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import SinConexion from '@/components/SinConexion';
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos';
 
 interface Props {
   current: Screen;
@@ -13,9 +13,10 @@ interface Props {
   taskBadge?: number;
   vencBadge?: number;
   cobroBadge?: number;
+  pedidoBadge?: number;
 }
 
-export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge }: Props) {
+export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge, pedidoBadge }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { usuario, signOut } = useAuth();
 
@@ -30,6 +31,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
     { id: 'pipeline', label: 'Pipeline', icon: KanbanSquare },
     { id: 'cotizaciones', label: 'Cotizaciones', icon: FileText },
     { id: 'vencimientos', label: 'Vencimientos', icon: CalendarClock, badge: vencBadge },
+    { id: 'pedidos', label: 'Pedidos a mesa', icon: ClipboardList, badge: pedidoBadge },
     { id: 'recotizar', label: 'Recotizar', icon: RefreshCw },
     { id: 'cobranzas', label: 'Cobranzas', icon: Wallet, badge: cobroBadge },
     { id: 'tareas', label: 'Tareas', icon: CheckSquare, badge: taskBadge },

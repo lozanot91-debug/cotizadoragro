@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { formatUSD, formatDate } from '@/lib/format';
 import type { Cotizacion, Tarea, Visita, Configuracion } from '@/types';
 import type { Screen } from '@/components/Layout';
-import { Plus, CheckCircle, Calendar, Clock, AlertCircle, ArrowRight } from 'lucide-react';
+import { Plus, CheckCircle, Calendar, Clock, AlertCircle, ArrowRight, ClipboardList, ChevronRight } from 'lucide-react';
 import { diasDesde, hoyAR, mesActualAR, sumarDias } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
@@ -14,9 +14,11 @@ import type { Cobranza } from '@/types';
 interface Props {
   onNavigate: (s: Screen) => void;
   onEditCotiz: (id: string) => void;
+  /** Pedidos a mesa de insumos con costos para revisar. */
+  pedidoBadge?: number;
 }
 
-export default function Inicio({ onNavigate, onEditCotiz }: Props) {
+export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Props) {
   const data = useData();
   const { usuario } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -211,6 +213,20 @@ export default function Inicio({ onNavigate, onEditCotiz }: Props) {
           </button>
         </div>
       </section>
+
+      {/* ===== Aviso: la mesa de insumos cargó costos ===== */}
+      {pedidoBadge > 0 && (
+        <button
+          onClick={() => onNavigate('pedidos')}
+          className="w-full bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex items-center gap-3 hover:bg-emerald-100 transition-colors text-left"
+        >
+          <ClipboardList className="w-5 h-5 text-emerald-700 flex-shrink-0" />
+          <p className="text-sm text-emerald-900 flex-1">
+            La mesa de insumos respondió <strong>{pedidoBadge}</strong> {pedidoBadge === 1 ? 'pedido' : 'pedidos'} de precios. Abrilos para aplicar los costos a la cotización.
+          </p>
+          <ChevronRight className="w-4 h-4 text-emerald-700" />
+        </button>
+      )}
 
       {/* ===== Alert bar: tareas de hoy + vencidas ===== */}
       {tareasHoy.length + tareasVencidas.length > 0 && (

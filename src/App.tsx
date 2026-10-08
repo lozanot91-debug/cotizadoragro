@@ -19,6 +19,8 @@ import Rentabilidad from '@/screens/Rentabilidad';
 import Vencimientos from '@/screens/Vencimientos';
 import Cobranzas from '@/screens/Cobranzas';
 import EvolucionCostos from '@/screens/EvolucionCostos';
+import PedidosMesa from '@/screens/PedidosMesa';
+import PublicoMesa from '@/screens/PublicoMesa';
 import { vencimientos } from '@/lib/vencimientos';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -32,6 +34,7 @@ function AppContent() {
   const [taskBadge, setTaskBadge] = useState(0);
   const [vencBadge, setVencBadge] = useState(0);
   const [cobroBadge, setCobroBadge] = useState(0);
+  const [pedidoBadge, setPedidoBadge] = useState(0);
 
   const loadTaskBadge = useCallback(async () => {
     const hoy = hoyAR();
@@ -63,7 +66,24 @@ function AppContent() {
     setCobroBadge(count || 0);
   }, []);
 
-  useEffect(() => { loadTaskBadge(); loadVencBadge(); loadCobroBadge(); }, [loadTaskBadge, loadVencBadge, loadCobroBadge, screen]);
+  /** Pedidos a mesa con costos cargados sin aplicar, o con corrección pedida. */
+  const loadPedidoBadge = useCallback(async () => {
+    const { count } = await supabase
+      .from('pedidos_precio')
+      .select('*', { count: 'exact', head: true })
+      .or('and(estado.eq.Respondido,aplicado_at.is.null),and(estado.eq.Respondido,correccion_solicitada.eq.true)');
+    setPedidoBadge(count || 0);
+  }, []);
+
+  useEffect(() => { loadTaskBadge(); loadVencBadge(); loadCobroBadge(); loadPedidoBadge(); }, [loadTaskBadge, loadVencBadge, loadCobroBadge, loadPedidoBadge, screen]);
+
+  // La mesa puede responder mientras la app está abierta: se revisa cada 2 minutos y al volver a la pestaña
+  useEffect(() => {
+    const t = setInterval(() => { void loadPedidoBadge(); }, 120000);
+    const alVolver = () => { if (document.visibilityState === 'visible') void loadPedidoBadge(); };
+    document.addEventListener('visibilitychange', alVolver);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver); };
+  }, [loadPedidoBadge]);
 
   function handleNavigate(s: Screen) {
     setScreen(s);
@@ -79,14 +99,15 @@ function AppContent() {
   }
 
   return (
-    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge}>
-      {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} />}
-      {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} />}
+    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge}>
+      {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} pedidoBadge={pedidoBadge} />}
+      {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} onAbrirGuardada={handleEditCotiz} />}
       {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
       {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
       {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
       {screen === 'vencimientos' && <Vencimientos onEdit={handleEditCotiz} />}
       {screen === 'cobranzas' && <Cobranzas onEdit={handleEditCotiz} />}
+      {screen === 'pedidos' && <PedidosMesa onEdit={handleEditCotiz} />}
       {screen === 'costos' && <EvolucionCostos />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
@@ -110,7 +131,17 @@ function Puerta() {
   return <AppContent />;
 }
 
+/** Link público de la mesa de insumos (?mesa=código): se abre sin usuario ni contraseña. */
+function codigoMesa(): string | null {
+  const t = new URLSearchParams(window.location.search).get('mesa');
+  return t && /^[a-f0-9]{64}$/i.test(t) ? t : t ? 'invalido' : null;
+}
+
 export default function App() {
+  const mesa = codigoMesa();
+  if (mesa) {
+    return <ToastProvider><PublicoMesa token={mesa} /></ToastProvider>;
+  }
   return (
     <AuthProvider>
       <ToastProvider>

@@ -15,10 +15,12 @@ import type {
   HistorialCambio,
   Tarea,
   Cobranza,
+  PedidoPrecio,
   Visita,
   VisitaFoto,
 } from '@/types';
 import { hoyAR } from '@/lib/fechas';
+import { usuarioActual } from '@/lib/usuarioActual';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
 import { validarCambioEstado } from '@/lib/estados';
 import type { LineaDeCliente } from '@/lib/historialCliente';
@@ -441,6 +443,64 @@ export function useData() {
     return (data || []) as HistorialCambio[];
   }
 
+
+  // ============ PEDIDOS DE PRECIO A MESA DE INSUMOS ============
+  /** Crea el pedido y devuelve el código del link. */
+  async function crearPedidoPrecio(args: {
+    cotizacion_id: string; dias: number; auto_aplicar: boolean; nota: string;
+    lineas: { cod: string; producto: string; unidad: string; es_fertilizante: boolean; cantidad: number }[];
+  }): Promise<string> {
+    const token = await ok(supabase.rpc('crear_pedido_precio', {
+      p_cotizacion_id: args.cotizacion_id, p_dias: args.dias, p_auto_aplicar: args.auto_aplicar,
+      p_nota: args.nota, p_creado_por: usuarioActual(), p_lineas: args.lineas,
+    }));
+    return token as unknown as string;
+  }
+
+  async function fetchPedidosPrecio(): Promise<PedidoPrecio[]> {
+    return fetchAllPaged<PedidoPrecio>(() =>
+      supabase
+        .from('pedidos_precio')
+        .select('*, cotizacion:cotizaciones(numero, cliente_nombre), lineas:pedidos_precio_lineas(*)')
+        .order('created_at', { ascending: false })
+        .order('id') as unknown as AnyFilter
+    );
+  }
+
+  /** El pedido más reciente que no esté cancelado de una cotización (con sus líneas). */
+  async function fetchPedidoDeCotizacion(cotizacionId: string): Promise<PedidoPrecio | null> {
+    const filas = await ok(supabase
+      .from('pedidos_precio')
+      .select('*, lineas:pedidos_precio_lineas(*)')
+      .eq('cotizacion_id', cotizacionId)
+      .neq('estado', 'Cancelado')
+      .order('created_at', { ascending: false })
+      .limit(1));
+    const p = ((filas || []) as unknown as PedidoPrecio[])[0];
+    if (!p) return null;
+    p.lineas = (p.lineas || []).slice().sort((a, b) => a.orden - b.orden);
+    return p;
+  }
+
+  async function extenderPedidoPrecio(id: string, venceEl: string) {
+    await ok(supabase.from('pedidos_precio').update({ vence_el: venceEl }).eq('id', id));
+  }
+
+  async function cancelarPedidoPrecio(id: string) {
+    await ok(supabase.from('pedidos_precio').update({ estado: 'Cancelado' }).eq('id', id));
+  }
+
+  /** Reabre un pedido ya guardado para que la mesa lo corrija. Solo desde la app, con sesión. */
+  async function habilitarCorreccionPedido(id: string, venceEl: string) {
+    await ok(supabase.from('pedidos_precio').update({
+      estado: 'Abierto', correccion_solicitada: false, correccion_mensaje: null, aplicado_at: null, vence_el: venceEl,
+    }).eq('id', id));
+  }
+
+  async function marcarPedidoAplicado(id: string) {
+    await ok(supabase.from('pedidos_precio').update({ aplicado_at: new Date().toISOString() }).eq('id', id));
+  }
+
   // ============ COBRANZAS ============
   async function fetchCobranzas(): Promise<Cobranza[]> {
     return fetchAllPaged<Cobranza>(() =>
@@ -666,6 +726,13 @@ export function useData() {
     actualizarVigencia,
     fetchHistorialCotizacion,
     fetchCobranzas,
+    crearPedidoPrecio,
+    fetchPedidosPrecio,
+    fetchPedidoDeCotizacion,
+    extenderPedidoPrecio,
+    cancelarPedidoPrecio,
+    habilitarCorreccionPedido,
+    marcarPedidoAplicado,
     crearCobranzas,
     actualizarCobranza,
     borrarCobranzasPendientes,

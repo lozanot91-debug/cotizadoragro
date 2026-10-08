@@ -5,8 +5,11 @@ import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, t
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
-import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio } from '@/types';
-import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2 } from 'lucide-react';
+import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
+import PanelPedidoMesa from '@/components/PanelPedidoMesa';
+import { useToast } from '@/components/Toast';
+import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
+import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2, ClipboardList } from 'lucide-react';
 import { hoyAR, formatearFechaHora } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -43,8 +46,9 @@ interface LineaComparacion {
   pct: number;
 }
 
-export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: { editId?: string; duplicateFromId?: string; onDeleted?: () => void }) {
+export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, onAbrirGuardada }: { editId?: string; duplicateFromId?: string; onDeleted?: () => void; onAbrirGuardada?: (id: string) => void }) {
   const data = useData();
+  const toast = useToast();
 
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [productos, setProductos] = useState<ProductoConCosto[]>([]);
@@ -87,6 +91,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const [showHistorial, setShowHistorial] = useState(false);
   const [modalEliminar, setModalEliminar] = useState(false);
   const [showInsumoManual, setShowInsumoManual] = useState(false);
+  // Pedido de precios a la mesa de insumos
+  const [pedido, setPedido] = useState<PedidoPrecio | null>(null);
+  const [pedidoPorMarcar, setPedidoPorMarcar] = useState<string | null>(null);
+  const [showPedirMesa, setShowPedirMesa] = useState(false);
+  const [pedidoForm, setPedidoForm] = useState({ dias: '3', auto: false, nota: '' });
+  const [pedidoLink, setPedidoLink] = useState<{ url: string; texto: string } | null>(null);
+  const [creandoPedido, setCreandoPedido] = useState(false);
+  const [idGuardadoNuevo, setIdGuardadoNuevo] = useState<string | null>(null);
+  const autoAplicadoRef = useRef<string | null>(null);
   const [insumoForm, setInsumoForm] = useState({ nombre: '', unid: 'un', costoUSD: '', familia: '' });
 
   const { usuario } = useAuth();
@@ -355,15 +368,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
   const kmFaltante = kmNum <= 0 && lineasCalc.some((l) => l.producto.es_fertilizante && l.conFlete);
-  const costoZero = lineasCalc.some((l) => l.costoUSD <= 0);
+  /** Hay productos sin costo (a confirmar con la mesa de insumos): se puede guardar, pero no enviar al cliente. */
+  const costoPendiente = lineasCalc.some((l) => l.costoUSD <= 0);
 
   function agregarProducto(producto: ProductoConCosto) {
     if (esReadOnly) return;
-    if (producto.costo <= 0) {
-      setSaveMsg({ type: 'error', text: `No se puede agregar ${producto.producto || producto.cod}: costo en cero` });
-      setTimeout(() => setSaveMsg(null), 3000);
-      return;
-    }
     const margen = resolverMargen(producto, config?.margen_general || 8, margenesClienteState);
     const costoDisplay = producto.es_fertilizante
       ? (producto.moneda === 'ARS' ? producto.costo / tcNum : producto.costo) * 1000
@@ -389,7 +398,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     const nombre = insumoForm.nombre.trim();
     const costo = parseNumberInput(insumoForm.costoUSD);
     if (!nombre) { setSaveMsg({ type: 'error', text: 'Ingresá el nombre del insumo' }); setTimeout(() => setSaveMsg(null), 3000); return; }
-    if (costo <= 0) { setSaveMsg({ type: 'error', text: 'Ingresá un costo mayor a cero' }); setTimeout(() => setSaveMsg(null), 3000); return; }
+    if (costo < 0) { setSaveMsg({ type: 'error', text: 'El costo no puede ser negativo' }); setTimeout(() => setSaveMsg(null), 3000); return; }
     const productoManual: ProductoConCosto = {
       id: '', cod: `MANUAL-${Date.now()}`, proveedor: '',
       familia: insumoForm.familia.trim() || 'Otros',
@@ -400,7 +409,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     setLineas([...lineas, {
       key: Math.random().toString(36), producto: productoManual, cantidad: 1, margen, margenOriginal: margen,
       conFlete: false, cantidadStr: '1', margenStr: formatInputNumber(margen, 1),
-      costoOverrideUSD: null, costoStr: formatInputNumber(costo, 2),
+      costoOverrideUSD: null, costoStr: costo > 0 ? formatInputNumber(costo, 2) : '',
       iva: ivaSugerido(false), ivaStr: formatInputNumber(ivaSugerido(false), 2),
       plazo: plazoNum, plazoStr: String(plazoNum),
     }]);
@@ -490,17 +499,16 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
     };
   }
 
-  async function handleGuardar() {
+  async function handleGuardar(opts?: { mantener?: boolean }): Promise<Cotizacion | null> {
     setSaving(true);
     setSaveMsg(null);
 
-    if (!clienteId || !clienteBusqueda) { setSaveMsg({ type: 'error', text: 'Seleccioná un cliente' }); setSaving(false); return; }
-    if (!tcNum || tcNum <= 0) { setSaveMsg({ type: 'error', text: 'El tipo de cambio es obligatorio' }); setSaving(false); return; }
-    if (lineas.length === 0) { setSaveMsg({ type: 'error', text: 'Agregá al menos una línea' }); setSaving(false); return; }
-    if (conCanje && (!canjeNombre || canjePrecioNum <= 0)) { setSaveMsg({ type: 'error', text: 'Para el canje cargá el cultivo y el precio del grano (USD/tn), o destildá el canje.' }); setSaving(false); return; }
-    if (kmFaltante) { setSaveMsg({ type: 'error', text: 'Hay fertilizantes con flete tildado pero no cargaste los km de destino. Cargá los km o destildá el flete.' }); setSaving(false); return; }
-    if (tarifaFaltante) { setSaveMsg({ type: 'error', text: 'Falta tarifa de flete. No se puede guardar.' }); setSaving(false); return; }
-    if (costoZero) { setSaveMsg({ type: 'error', text: 'Hay líneas con costo en cero.' }); setSaving(false); return; }
+    if (!clienteId || !clienteBusqueda) { setSaveMsg({ type: 'error', text: 'Seleccioná un cliente' }); setSaving(false); return null; }
+    if (!tcNum || tcNum <= 0) { setSaveMsg({ type: 'error', text: 'El tipo de cambio es obligatorio' }); setSaving(false); return null; }
+    if (lineas.length === 0) { setSaveMsg({ type: 'error', text: 'Agregá al menos una línea' }); setSaving(false); return null; }
+    if (conCanje && (!canjeNombre || canjePrecioNum <= 0)) { setSaveMsg({ type: 'error', text: 'Para el canje cargá el cultivo y el precio del grano (USD/tn), o destildá el canje.' }); setSaving(false); return null; }
+    if (kmFaltante) { setSaveMsg({ type: 'error', text: 'Hay fertilizantes con flete tildado pero no cargaste los km de destino. Cargá los km o destildá el flete.' }); setSaving(false); return null; }
+    if (tarifaFaltante) { setSaveMsg({ type: 'error', text: 'Falta tarifa de flete. No se puede guardar.' }); setSaving(false); return null; }
 
     // If editing, compare with previous lines for historial
     const cambiosHist: CambioHistorial[] = [];
@@ -509,7 +517,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         setSaveMsg({ type: 'error', text: `No se pudo leer la cotización actual. ${traducirError(e)}` });
         return null;
       });
-      if (!prevLineas) { setSaving(false); return; }
+      if (!prevLineas) { setSaving(false); return null; }
       const prevByCod = new Map(prevLineas.map((l) => [l.cod, l]));
       const newCods = new Set(lineasCalc.map((l) => l.producto.cod));
 
@@ -552,6 +560,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       const saved = await data.saveCotizacion(buildCotizData(), buildLineasData(), editId);
       setSaveMsg({ type: 'success', text: `Cotización N° ${saved.numero} guardada` });
       setEditData(saved);
+      if (pedidoPorMarcar) {
+        try { await data.marcarPedidoAplicado(pedidoPorMarcar); setPedidoPorMarcar(null); setPedido(await data.fetchPedidoDeCotizacion(saved.id)); }
+        catch (e) { console.error('No se pudo marcar el pedido como aplicado:', e); }
+      }
 
       if (!editId) {
         // New cotización or duplicate
@@ -568,7 +580,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
       const hist = await data.fetchHistorialCotizacion(saved.id);
       setHistorial(hist);
 
-      if (!editId) {
+      if (!editId && !opts?.mantener) {
         setTimeout(() => {
           setLineas([]); setClienteId(''); setClienteBusqueda(''); setClienteSeleccionado(null);
           setNotas(''); setSaveMsg(null); setOrigenId(null); setOrigenNumero(null);
@@ -576,12 +588,81 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
           setPlazo('0'); setTasaMensual(''); setConCanje(false); setCanjePrecio('');
         }, 2000);
       }
+      return saved;
     } catch (e) {
       // La cotización NO se guardó (la operación es atómica): lo que está en pantalla sigue intacto.
       setSaveMsg({ type: 'error', text: `No se pudo guardar la cotización. ${traducirError(e)}` });
+      return null;
     } finally {
       setSaving(false);
     }
+  }
+
+
+  // ============ Pedido de precios a la mesa de insumos ============
+  const recargarPedido = useCallback(async (id?: string) => {
+    const cid = id ?? editId;
+    if (!cid) { setPedido(null); return; }
+    try { setPedido(await data.fetchPedidoDeCotizacion(cid)); }
+    catch (e) { console.error('No se pudo leer el pedido a la mesa de insumos:', e); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
+  useEffect(() => { void recargarPedido(); }, [recargarPedido]);
+
+  /** Vuelca en las líneas los costos que cargó la mesa. No guarda: el usuario revisa y guarda. */
+  function aplicarCostosMesa(auto = false) {
+    if (!pedido?.lineas || esReadOnly) return;
+    const { aplicar, sinCosto } = costosAplicables(pedido.lineas, lineas.map((l) => ({ key: l.key, cod: l.producto.cod })));
+    if (aplicar.length === 0) { toast.aviso('Ningún producto de la cotización coincide con los costos de la mesa.'); return; }
+    const porKey = new Map(aplicar.map((a) => [a.key, a]));
+    setLineas((ls) => ls.map((l) => {
+      const a = porKey.get(l.key);
+      if (!a) return l;
+      return { ...l, costoOverrideUSD: a.costo, costoStr: formatInputNumber(a.costo, 2), producto: a.proveedor ? { ...l.producto, proveedor: a.proveedor } : l.producto };
+    }));
+    setPedidoPorMarcar(pedido.id);
+    toast.exito(`${auto ? 'La mesa cargó los costos y se aplicaron solos' : 'Costos aplicados'} (${aplicar.length} producto${aplicar.length === 1 ? '' : 's'}). Revisá margen y flete y guardá.`);
+    if (sinCosto.length > 0) toast.aviso(`${sinCosto.length} producto${sinCosto.length === 1 ? '' : 's'} de la cotización no tienen costo de la mesa.`);
+  }
+
+  // Modo automático: al abrir la cotización con costos nuevos de la mesa, se aplican solos (una sola vez por respuesta)
+  useEffect(() => {
+    if (!pedido || pedido.estado !== 'Respondido' || !pedido.auto_aplicar || pedido.aplicado_at || esReadOnly || lineas.length === 0) return;
+    const marca = `${pedido.id}|${pedido.respondido_at}`;
+    if (autoAplicadoRef.current === marca) return;
+    autoAplicadoRef.current = marca;
+    aplicarCostosMesa(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido, lineas.length, esReadOnly]);
+
+  async function crearPedidoMesa() {
+    const dias = parseInt(pedidoForm.dias);
+    if (!diasValidos(dias)) { toast.aviso('Poné entre 1 y 60 días de vigencia del link.'); return; }
+    setCreandoPedido(true);
+    try {
+      // Primero se guarda la cotización para que el pedido quede atado a ella y a sus productos actuales
+      const saved = await handleGuardar({ mantener: true });
+      if (!saved) return;
+      if (!editId) setIdGuardadoNuevo(saved.id);
+      const lins = lineasParaPedido(lineasCalc.map((l) => ({ cod: l.producto.cod, producto: l.producto.producto || l.producto.cod, unid: l.producto.unid || '', es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad })));
+      const token = await data.crearPedidoPrecio({ cotizacion_id: saved.id, dias, auto_aplicar: pedidoForm.auto, nota: pedidoForm.nota.trim(), lineas: lins });
+      const url = urlPedido(window.location.origin, token);
+      setPedidoLink({ url, texto: textoWhatsAppPedido({ url, numero: saved.numero, cliente: clienteBusqueda, venceEl: new Date(Date.now() + dias * 86400000).toISOString(), nota: pedidoForm.nota }) });
+      await registrarCambio({ tipo: 'cotizacion', cotizacion_id: saved.id, detalle: `Pidió precios a la mesa de insumos (link por ${dias} día${dias === 1 ? '' : 's'})` });
+      await recargarPedido(saved.id);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setCreandoPedido(false);
+    }
+  }
+
+  function cerrarModalPedido() {
+    setShowPedirMesa(false);
+    setPedidoLink(null);
+    // Una cotización nueva ya quedó guardada: se abre en modo edición para no duplicarla al volver a guardar
+    if (idGuardadoNuevo && onAbrirGuardada) onAbrirGuardada(idGuardadoNuevo);
+    setIdGuardadoNuevo(null);
   }
 
   /** Líneas en el formato que esperan PDF / WhatsApp / Excel (CotizacionLinea). */
@@ -915,7 +996,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                           {Math.abs(dif) >= 0.5 && <span className={dif > 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif > 0 ? 'Ahora +' : 'Ahora '}{formatUSD(dif, 1)}%</span>}
                         </p>
                       );
-                    })()}{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}</td>
+                    })()}{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}{l.costoUSD <= 0 && <span className="block text-xs font-semibold text-red-600">Costo pendiente</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
                     {puedeVerCostos && (<td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>)}
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
@@ -962,16 +1043,33 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
         </div>
       </div>
 
+      {/* Costos pendientes y pedido a la mesa de insumos */}
+      {costoPendiente && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-800">Hay productos con <strong>costo pendiente</strong>. Podés guardar la cotización, pero no descargar el PDF/Excel ni copiar el texto de WhatsApp hasta completarlos{!esReadOnly && ' (a mano en la columna Costo, o pidiéndolos a la mesa de insumos)'}.</p>
+        </div>
+      )}
+      {pedidoPorMarcar && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-sm text-amber-900">Aplicaste los costos de la mesa: <strong>guardá la cotización</strong> para confirmarlos.</div>
+      )}
+      {pedido && pedido.estado !== 'Cancelado' && (
+        <PanelPedidoMesa pedido={pedido} onAplicar={esReadOnly ? undefined : () => aplicarCostosMesa()} onCambio={() => void recargarPedido()} numero={editData?.numero} cliente={clienteBusqueda} />
+      )}
+
       {/* Botones */}
       <div className="flex flex-wrap gap-2">
         {!esReadOnly && (
-          <button onClick={handleGuardar} disabled={saving || tarifaFaltante || kmFaltante || costoZero} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:opacity-50">
+          <button onClick={() => void handleGuardar()} disabled={saving || tarifaFaltante || kmFaltante} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
           </button>
         )}
-        <button onClick={handleCopiarWhatsApp} disabled={lineasCalc.length === 0} className="px-5 py-2.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center gap-2 disabled:opacity-50"><Copy className="w-4 h-4" /> WhatsApp</button>
-        <button onClick={handleDescargarPDF} disabled={lineasCalc.length === 0} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"><FileDown className="w-4 h-4" /> PDF</button>
-        <button onClick={handleDescargarExcel} disabled={lineasCalc.length === 0} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
+        {!esReadOnly && lineas.length > 0 && (
+          <button onClick={() => { setPedidoLink(null); setShowPedirMesa(true); }} className="px-5 py-2.5 bg-white border border-amber-400 text-amber-800 rounded-lg font-medium hover:bg-amber-50 transition-colors flex items-center gap-2"><ClipboardList className="w-4 h-4" /> Pedir precios a mesa</button>
+        )}
+        <button onClick={handleCopiarWhatsApp} disabled={lineasCalc.length === 0 || costoPendiente} title={costoPendiente ? 'Hay productos sin costo: completalos antes de enviar' : undefined} className="px-5 py-2.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center gap-2 disabled:opacity-50"><Copy className="w-4 h-4" /> WhatsApp</button>
+        <button onClick={handleDescargarPDF} disabled={lineasCalc.length === 0 || costoPendiente} title={costoPendiente ? 'Hay productos sin costo: completalos antes de enviar' : undefined} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"><FileDown className="w-4 h-4" /> PDF</button>
+        <button onClick={handleDescargarExcel} disabled={lineasCalc.length === 0 || costoPendiente} title={costoPendiente ? 'Hay productos sin costo: completalos antes de enviar' : undefined} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
         {editId && (
           <button onClick={() => setShowHistorial(!showHistorial)} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2">
             <History className="w-4 h-4" /> Historial
@@ -1036,6 +1134,55 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted }: 
                 if (onDeleted) onDeleted();
               }} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Eliminar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+
+      {showPedirMesa && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget && !creandoPedido) cerrarModalPedido(); }}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="titulo text-xl text-emerald-900 flex items-center gap-2"><ClipboardList className="w-5 h-5" /> Pedir precios a mesa de insumos</h3>
+              <button onClick={cerrarModalPedido} disabled={creandoPedido} className="p-1 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            {!pedidoLink ? (
+              <>
+                <p className="text-sm text-gray-600">Se guarda la cotización y se genera un link <strong>sin usuario ni contraseña</strong>. La mesa ve solo el cliente, el número y los productos con sus cantidades (nunca márgenes ni otros clientes).</p>
+                {pedido && pedido.estado === 'Abierto' && <p className="text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">Ya hay un pedido abierto. Si generás uno nuevo, el anterior deja de funcionar.</p>}
+                <div>
+                  <span className="text-sm font-medium text-gray-700">¿Cuántos días vale el link?</span>
+                  <div className="flex flex-wrap gap-2 mt-1.5 items-center">
+                    {['1', '2', '3', '7'].map((d) => (
+                      <button key={d} onClick={() => setPedidoForm({ ...pedidoForm, dias: d })} className={`px-3.5 py-2 rounded-lg text-sm font-medium border ${pedidoForm.dias === d ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-700 border-gray-300'}`}>{d} {d === '1' ? 'día' : 'días'}</button>
+                    ))}
+                    <span className="flex items-center gap-1 text-sm text-gray-500">otro: <input type="number" min={1} max={60} value={pedidoForm.dias} onChange={(e) => setPedidoForm({ ...pedidoForm, dias: e.target.value })} className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm text-right" /></span>
+                  </div>
+                </div>
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={pedidoForm.auto} onChange={(e) => setPedidoForm({ ...pedidoForm, auto: e.target.checked })} className="mt-0.5 w-4 h-4 accent-emerald-600" />
+                  <span>Aplicar los costos solos cuando la mesa los cargue (al abrir la cotización). Si no, los aplicás vos con un botón.</span>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Nota para la mesa (opcional)</span>
+                  <textarea value={pedidoForm.nota} maxLength={500} rows={2} onChange={(e) => setPedidoForm({ ...pedidoForm, nota: e.target.value })} placeholder="Ej: necesito precio puesto en Tandil" className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                </label>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={cerrarModalPedido} disabled={creandoPedido} className="px-4 py-2.5 text-gray-600 rounded-lg text-sm">Cancelar</button>
+                  <button onClick={() => void crearPedidoMesa()} disabled={creandoPedido} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50">{creandoPedido && <Loader2 className="w-4 h-4 animate-spin" />} Guardar y generar link</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">Listo. Mandale este link a la mesa de insumos. Cuando carguen los costos te avisamos en el menú y en Inicio.</p>
+                <input readOnly value={pedidoLink.url} onFocus={(e) => e.currentTarget.select()} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-600" />
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={async () => { try { await navigator.clipboard.writeText(pedidoLink.url); toast.exito('Link copiado'); } catch { toast.aviso('No se pudo copiar'); } }} className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 flex items-center gap-2"><Link2 className="w-4 h-4" /> Copiar link</button>
+                  <button onClick={async () => { try { await navigator.clipboard.writeText(pedidoLink.texto); toast.exito('Texto para WhatsApp copiado'); } catch { toast.aviso('No se pudo copiar'); } }} className="px-4 py-2.5 bg-green-500 text-white rounded-lg text-sm font-medium flex items-center gap-2"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
+                  <button onClick={cerrarModalPedido} className="ml-auto px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium">Listo</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
