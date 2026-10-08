@@ -16,7 +16,7 @@ import {
   urlFacturacion, validarPedidoFacturacion, type CondicionPago, type LineaFacturacion, type TipoCondicion,
 } from '@/lib/facturacion';
 import { docDePedido, facturacionExcel, facturacionPDF } from '@/lib/facturacionExport';
-import type { Cliente, Cotizacion, PedidoFacturacion } from '@/types';
+import type { Cliente, ConvenioFlete, Cotizacion, PedidoFacturacion } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const inputCls = 'w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
@@ -163,6 +163,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
   const [errores, setErrores] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [canjeDefaults, setCanjeDefaults] = useState<ParamsCanje>(PARAMS_CANJE_BASE);
+  const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
 
   const armarDesdeCotizacion = useCallback(async () => {
     const [ls, cfg] = await Promise.all([data.fetchLineas(cotizacion.id), data.fetchConfig()]);
@@ -177,8 +178,9 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
     let vivo = true;
     (async () => {
       try {
-        const [cls, cfg] = await Promise.all([data.fetchClientes(), data.fetchConfig()]);
+        const [cls, cfg, convs] = await Promise.all([data.fetchClientes(), data.fetchConfig(), data.fetchConvenios()]);
         if (!vivo) return;
+        setConvenios(convs);
         setCanjeDefaults(cfg.canje_parametros);
         setCliente(cls.find((c) => c.id === cotizacion.cliente_id) ?? null);
         if (previo) {
@@ -291,7 +293,8 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                         {c.tipo === 'canje' && <>
                           <Campo label="Cultivo"><input value={c.cultivo} onChange={(e) => setCond(c.id, { cultivo: e.target.value })} placeholder="Soja" className={inputCls} /></Campo>
                           <Campo label="Precio USD/tn"><input inputMode="decimal" value={c.precio} onChange={(e) => setCond(c.id, { precio: e.target.value })} className={inputCls} /></Campo>
-                          {c.params && <div className="col-span-2"><LiquidacionCanje precio={numCampo(c.precio) ?? 0} params={c.params} onChange={(p) => setCond(c.id, { params: p })} defaults={canjeDefaults} abiertoInicial={false} /></div>}
+                          {c.params && <div className="col-span-2"><LiquidacionCanje precio={numCampo(c.precio) ?? 0} params={c.params} onChange={(p) => setCond(c.id, { params: p })} defaults={canjeDefaults} abiertoInicial={false}
+                            flete={{ convenios, tcCompra: cotizacion.tc_flete || cotizacion.tc || null }} /></div>}
                         </>}
                       </div>
                       {t && t.lineas > 0 ? (

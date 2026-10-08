@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PARAMS_CANJE_BASE, conIvaInsumos, liquidarTn, montoPorToneladas, netoGuardado, netoPorTn,
+  PARAMS_CANJE_BASE, conIvaInsumos, fleteGranoUSD, liquidarTn, montoPorToneladas, netoGuardado, netoPorTn,
   normalizarParams, paramsDesdeConfig, toneladasPorMonto, type ParamsCanje,
 } from './canje';
 
@@ -88,5 +88,22 @@ describe('normalizar', () => {
     expect(paramsDesdeConfig('no json')).toEqual(PARAMS_CANJE_BASE);
     expect(paramsDesdeConfig(null)).toEqual(PARAMS_CANJE_BASE);
     expect(paramsDesdeConfig(JSON.stringify({ sellos_pct: 0.75 })).sellos_pct).toBe(0.75);
+  });
+});
+
+describe('flete del grano por convenio', () => {
+  const tarifas = [{ km: 120, tarifa: 2500 }, { km: 121, tarifa: 2520 }];
+  it('tarifa × 10 / TC comprador, km redondeado hacia arriba', () => {
+    expect(fleteGranoUSD(120.3, tarifas, 1400)).toEqual({ km: 121, pesosTn: 25200, usdTn: 18 });
+  });
+  it('sin km, TC o tarifa → null', () => {
+    expect(fleteGranoUSD(0, tarifas, 1400)).toBeNull();
+    expect(fleteGranoUSD(120, tarifas, 0)).toBeNull();
+    expect(fleteGranoUSD(300, tarifas, 1400)).toBeNull();
+  });
+  it('normalizar conserva modo, convenio y km', () => {
+    const p = normalizarParams({ flete_modo: 'manual', flete_convenio_id: 'abc', flete_km: 150 });
+    expect(p).toMatchObject({ flete_modo: 'manual', flete_convenio_id: 'abc', flete_km: 150 });
+    expect(normalizarParams({}).flete_modo).toBe('convenio');
   });
 });

@@ -26,7 +26,13 @@ export interface ParamsCanje {
   iva_grano_pct: number;
   comision_pct: number;
   iva_comision_pct: number;
+  /** Flete del grano en USD/tn (en modo convenio lo calcula la pantalla con la planilla y el TC comprador) */
   flete_usd_tn: number;
+  /** 'convenio': planilla del convenio × km; 'manual': USD/tn escrito a mano */
+  flete_modo: 'convenio' | 'manual';
+  /** Convenio elegido (null = el predeterminado) */
+  flete_convenio_id: string | null;
+  flete_km: number;
   iva_flete_pct: number;
   almacenaje_usd_tn_dia: number;
   almacenaje_dias: number;
@@ -47,6 +53,9 @@ export const PARAMS_CANJE_BASE: ParamsCanje = {
   comision_pct: 2.5,
   iva_comision_pct: 10.5,
   flete_usd_tn: 0,
+  flete_modo: 'convenio',
+  flete_convenio_id: null,
+  flete_km: 0,
   iva_flete_pct: 21,
   almacenaje_usd_tn_dia: 0,
   almacenaje_dias: 0,
@@ -79,6 +88,9 @@ export function normalizarParams(p: Partial<ParamsCanje> | null | undefined, bas
     comision_pct: num(x.comision_pct, base.comision_pct),
     iva_comision_pct: num(x.iva_comision_pct, base.iva_comision_pct),
     flete_usd_tn: num(x.flete_usd_tn, base.flete_usd_tn),
+    flete_modo: x.flete_modo === 'manual' || x.flete_modo === 'convenio' ? x.flete_modo : base.flete_modo,
+    flete_convenio_id: typeof x.flete_convenio_id === 'string' && x.flete_convenio_id ? x.flete_convenio_id : x.flete_convenio_id === null ? null : base.flete_convenio_id,
+    flete_km: num(x.flete_km, base.flete_km),
     iva_flete_pct: num(x.iva_flete_pct, base.iva_flete_pct),
     almacenaje_usd_tn_dia: num(x.almacenaje_usd_tn_dia, base.almacenaje_usd_tn_dia),
     almacenaje_dias: Math.round(num(x.almacenaje_dias, base.almacenaje_dias)),
@@ -157,7 +169,7 @@ export function liquidarTn(precio: number, params: ParamsCanje): LiquidacionCanj
     { clave: 'iva_grano', concepto: 'IVA grano', tasa: p.iva_grano_pct, usd: ivaGrano },
     { clave: 'comision', concepto: 'Comisión', tasa: p.comision_pct, usd: -comision },
   ];
-  if (flete) c.push({ clave: 'flete', concepto: 'Flete', tasa: null, usd: -flete });
+  if (flete) c.push({ clave: 'flete', concepto: p.flete_modo === 'convenio' && p.flete_km > 0 ? `Flete (${Math.ceil(p.flete_km)} km)` : 'Flete', tasa: null, usd: -flete });
   if (almacenaje) c.push({ clave: 'almacenaje', concepto: `Almacenaje (${p.almacenaje_dias} días)`, tasa: null, usd: -almacenaje });
   c.push({ clave: 'iva_com', concepto: almacenaje ? 'IVA comisión y almacenaje' : 'IVA comisión', tasa: p.iva_comision_pct, usd: -ivaComAlm });
   if (flete) c.push({ clave: 'iva_flete', concepto: 'IVA flete', tasa: p.iva_flete_pct, usd: -ivaFlete });
@@ -228,4 +240,16 @@ export function textoWhatsAppCanje(d: {
   m += `Neto liquidación: USD ${d.fmt(liq.neto)}/tn\n`;
   m += `*Toneladas a entregar: ${d.fmt(d.tn)} tn*\n`;
   return m;
+}
+
+/**
+ * Flete del grano por convenio: tarifa de la planilla (por 100 kg, en pesos) × 10 / TC comprador.
+ * Devuelve null si no hay km, TC o tarifa para esos km.
+ */
+export function fleteGranoUSD(km: number, tarifas: { km: number; tarifa: number }[], tcCompra: number | null | undefined): { usdTn: number; pesosTn: number; km: number } | null {
+  if (!(km > 0) || !(tcCompra && tcCompra > 0)) return null;
+  const kmR = Math.ceil(km);
+  const t = tarifas.find((x) => x.km === kmR);
+  if (!t) return null;
+  return { km: kmR, pesosTn: t.tarifa * 10, usdTn: (t.tarifa * 10) / tcCompra };
 }

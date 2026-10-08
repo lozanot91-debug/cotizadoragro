@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
 import { parsearMargenesExcel } from '@/lib/excel';
-import type { FamiliaConfig, MargenProducto, Configuracion } from '@/types';
+import type { FamiliaConfig, MargenProducto, Configuracion, ConvenioFlete } from '@/types';
 import { Settings, Save, Upload, Loader2, Check, Tag, Building2, Users, AlertCircle } from 'lucide-react';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -17,6 +17,7 @@ export default function ConfigScreen() {
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [familias, setFamilias] = useState<FamiliaConfig[]>([]);
   const [margenesProd, setMargenesProd] = useState<MargenProducto[]>([]);
+  const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -30,6 +31,7 @@ export default function ConfigScreen() {
       data.fetchMargenesProducto(),
     ]);
     setConfig(cfg);
+    data.fetchConvenios().then(setConvenios).catch(() => setConvenios([]));
     setFamilias(fams);
     setMargenesProd(margs as MargenProducto[]);
   }, []);
@@ -399,7 +401,9 @@ export default function ConfigScreen() {
             <h3 className="font-semibold text-gray-700">Liquidación del grano por defecto</h3>
             <p className="text-xs text-gray-500 mt-1">Con estos valores arrancan la calculadora de canje, la cotización y el pedido de facturación. En cada cálculo se pueden cambiar. El desglose de abajo es un ejemplo con soja a USD {canjeEjemplo}/tn.</p>
           </div>
-          <LiquidacionCanje precio={canjeEjemplo} params={config.canje_parametros} onChange={(p) => setConfig({ ...config, canje_parametros: p })} defaults={PARAMS_CANJE_BASE} />
+          <LiquidacionCanje precio={canjeEjemplo} params={config.canje_parametros} onChange={(p) => setConfig({ ...config, canje_parametros: p })} defaults={PARAMS_CANJE_BASE}
+            flete={{ convenios, tcCompra: config.tipo_cambio_default || null }} />
+          <p className="text-xs text-gray-400">El flete del ejemplo usa el TC de respaldo; en cada cálculo se usa el comprador del BNA.</p>
           <button onClick={guardarConfig} disabled={saving} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
           </button>

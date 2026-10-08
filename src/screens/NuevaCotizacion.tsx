@@ -1042,7 +1042,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             {conCanje && (
               <div className="mt-2">
                 <LiquidacionCanje precio={canjePrecioNum} params={canjeParamsEf} onChange={setCanjeParams}
-                  defaults={config?.canje_parametros} disabled={esReadOnly} abiertoInicial={false} tcCompra={tcBna?.compra} />
+                  defaults={config?.canje_parametros} disabled={esReadOnly} abiertoInicial={false} tcCompra={tcBna?.compra}
+                  flete={{ convenios, tcCompra: tcFleteNum || tcBna?.compra || null, campos: camposCliente }} />
               </div>
             )}
           </div>
