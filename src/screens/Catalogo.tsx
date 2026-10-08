@@ -23,7 +23,7 @@ export default function Catalogo() {
   const esAdmin = usuario.rol === 'admin';
   const [loading, setLoading] = useState(true);
   const [fichas, setFichas] = useState<FichaProducto[]>([]);
-  const [codigos, setCodigos] = useState<{ cod: string; ficha_id: string }[]>([]);
+  const [codigos, setCodigos] = useState<{ cod: string; ficha_id: string; presentacion: string | null }[]>([]);
   const [productos, setProductos] = useState<ProductoLista[]>([]);
   const [comentarios, setComentarios] = useState<Record<string, number>>({});
   const [tab, setTab] = useState<'fichas' | 'sin-ficha'>('fichas');
@@ -44,7 +44,7 @@ export default function Catalogo() {
   const porCod = useMemo(() => new Map(productos.map((p) => [p.cod, p])), [productos]);
   const codsDeFicha = useMemo(() => {
     const m = new Map<string, ProductoLista[]>();
-    for (const c of codigos) m.set(c.ficha_id, [...(m.get(c.ficha_id) || []), porCod.get(c.cod) ?? { cod: c.cod, producto: c.cod, familia: null }]);
+    for (const c of codigos) m.set(c.ficha_id, [...(m.get(c.ficha_id) || []), { ...(porCod.get(c.cod) ?? { cod: c.cod, producto: c.cod, familia: null }), presentacion: c.presentacion }]);
     return m;
   }, [codigos, porCod]);
   const familias = useMemo(() => [...new Set(productos.map((p) => p.familia).filter(Boolean) as string[])].sort(), [productos]);

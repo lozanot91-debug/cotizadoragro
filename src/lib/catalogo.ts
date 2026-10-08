@@ -73,8 +73,14 @@ export function separarEnvase(nombre: string): { base: string; envase: string | 
   return { base, envase };
 }
 
-/** Lo que se muestra como presentación de un código: el envase del nombre, o la unidad de la lista. */
-export function presentacion(p: { producto: string; unid?: string | null; es_fertilizante?: boolean }): string {
+/** Lo que se muestra como presentación de un código: la cargada a mano, el envase del nombre, o la unidad de la lista. */
+export function presentacion(p: { producto: string; unid?: string | null; es_fertilizante?: boolean; presentacion?: string | null }): string {
+  if (p.presentacion?.trim()) return p.presentacion.trim();
+  return presentacionAutomatica(p);
+}
+
+/** Presentación que sale sola del nombre del producto o de la unidad de la lista. */
+export function presentacionAutomatica(p: { producto: string; unid?: string | null; es_fertilizante?: boolean }): string {
   const { envase } = separarEnvase(p.producto);
   if (envase) return envase;
   if (p.es_fertilizante) return 'Por tonelada';
@@ -88,7 +94,54 @@ export function presentacion(p: { producto: string; unid?: string | null; es_fer
 const clave = (familia: string | null | undefined, base: string) =>
   `${(familia || '').trim().toUpperCase()}|${base.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim()}`;
 
-export interface ProductoLista { cod: string; producto: string; familia: string | null; unid?: string | null }
+export interface ProductoLista { cod: string; producto: string; familia: string | null; unid?: string | null; /** Cargada a mano en la ficha (null = automática) */ presentacion?: string | null }
+
+// ---- Presentación cargada a mano: envase + cantidad + unidad ("Bidón 20 L") ----
+export const ENVASES = ['Bidón', 'Caja', 'Bolsa', 'Big bag', 'Balde', 'Frasco', 'Botella', 'Tambor', 'Contenedor', 'Sobre', 'Granel'] as const;
+export const UNIDADES_PRESENTACION = ['L', 'cc', 'ml', 'kg', 'g', 'tn', 'unidades'] as const;
+
+export interface PartesPresentacion { envase: string; cantidad: string; unidad: string }
+
+/** "Bidón" + "20" + "L" → "Bidón 20 L". Sin cantidad, solo el envase ("Granel"). */
+export function armarPresentacion(p: PartesPresentacion): string {
+  const env = p.envase.trim();
+  const cant = p.cantidad.trim().replace('.', ',');
+  const uni = p.unidad.trim();
+  return limpiar([env, cant ? `${cant}${uni ? ` ${uni}` : ''}` : ''].filter(Boolean).join(' '));
+}
+
+/** Intenta separar una presentación guardada en sus partes (para editarla). Si no se puede, va todo al envase. */
+export function partesDePresentacion(texto: string | null | undefined): PartesPresentacion {
+  const t = (texto || '').trim();
+  const m = t.match(/^(.*?)\s*(\d+(?:[.,]\d+)?)\s*(L|cc|ml|kg|g|tn|unidades)?$/i);
+  if (m && m[1]) {
+    const uni = UNIDADES_PRESENTACION.find((u) => u.toLowerCase() === (m[3] || '').toLowerCase()) ?? (m[3] || '');
+    return { envase: m[1].trim(), cantidad: m[2].replace('.', ','), unidad: uni };
+  }
+  return { envase: t, cantidad: '', unidad: '' };
+}
+
+/**
+ * Punto de partida del editor cuando el código no tiene presentación cargada, a partir de la automática:
+ * "x 5 L" → Bidón 5 L; "x 25 kg" → Bolsa 25 kg; "Bolsa" → Bolsa; lo demás → Bidón vacío.
+ */
+export function sugerirPartes(automatica: string): PartesPresentacion {
+  const m = automatica.trim().match(/^x\s*(\d+(?:[.,]\d+)?)\s*(L|cc|ml|kg|g)\b/i);
+  if (m) {
+    const uni = UNIDADES_PRESENTACION.find((u) => u.toLowerCase() === m[2].toLowerCase()) ?? m[2];
+    return { envase: ['kg', 'g'].includes(uni) ? 'Bolsa' : 'Bidón', cantidad: m[1].replace('.', ','), unidad: uni };
+  }
+  const env = ENVASES.find((e) => e.toLowerCase() === automatica.trim().toLowerCase());
+  return { envase: env ?? 'Bidón', cantidad: '', unidad: env ? '' : 'L' };
+}
+
+/** Error para mostrar, o null si la presentación sirve. */
+export function validarPresentacion(texto: string): string | null {
+  const t = texto.trim();
+  if (!t) return 'Elegí o escribí el envase.';
+  if (t.length > 60) return 'La presentación es muy larga (máximo 60 caracteres).';
+  return null;
+}
 export interface GrupoSugerido { nombre: string; familia: string | null; codigos: ProductoLista[] }
 
 /**

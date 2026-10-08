@@ -6,7 +6,10 @@ import { useToast } from '@/components/Toast';
 import { refrescarIndiceFichas, useIndiceFichas } from '@/hooks/useIndiceFichas';
 import { registrarCambio } from '@/lib/historial';
 import { formatearFechaHora } from '@/lib/fechas';
-import { ETIQUETAS_COMENTARIO, pesoLegible, presentacion, rutaMarbete, separarEnvase, validarComentario, validarMarbete, type ProductoLista } from '@/lib/catalogo';
+import {
+  ENVASES, ETIQUETAS_COMENTARIO, UNIDADES_PRESENTACION, armarPresentacion, partesDePresentacion, pesoLegible, presentacion, presentacionAutomatica,
+  rutaMarbete, separarEnvase, sugerirPartes, validarComentario, validarMarbete, validarPresentacion, type PartesPresentacion, type ProductoLista,
+} from '@/lib/catalogo';
 import type { ComentarioFicha, FichaProducto as Ficha } from '@/types';
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
@@ -34,6 +37,47 @@ export function BotonFicha({ cod, producto, className = '' }: { cod: string; pro
   );
 }
 
+/** Editor de la presentación de un código: envase + cantidad + unidad, o volver a la automática. */
+function EditorPresentacion({ item, ocupado, onGuardar, onCancelar }: {
+  item: ProductoLista; ocupado: boolean; onGuardar: (valor: string | null) => void; onCancelar: () => void;
+}) {
+  const inicial = item.presentacion ? partesDePresentacion(item.presentacion) : sugerirPartes(presentacionAutomatica(item));
+  const enLista = (ENVASES as readonly string[]).includes(inicial.envase);
+  const [partes, setPartes] = useState<PartesPresentacion>(inicial);
+  const [envaseSel, setEnvaseSel] = useState(enLista ? inicial.envase : 'Otro');
+  const texto = armarPresentacion(partes);
+  const error = validarPresentacion(texto);
+  const sinCantidad = partes.envase === 'Granel';
+  const cls = 'px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500';
+  return (
+    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-2 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label="Envase" value={envaseSel} className={cls}
+          onChange={(e) => { setEnvaseSel(e.target.value); setPartes((p) => ({ ...p, envase: e.target.value === 'Otro' ? '' : e.target.value, ...(e.target.value === 'Granel' ? { cantidad: '', unidad: '' } : {}) })); }}>
+          {ENVASES.map((e) => <option key={e} value={e}>{e}</option>)}
+          <option value="Otro">Otro…</option>
+        </select>
+        {envaseSel === 'Otro' && <input aria-label="Otro envase" value={partes.envase} onChange={(e) => setPartes({ ...partes, envase: e.target.value })} placeholder="Ej.: Pack" className={cls + ' w-28'} />}
+        {!sinCantidad && <>
+          <input aria-label="Cantidad" inputMode="decimal" value={partes.cantidad} onChange={(e) => setPartes({ ...partes, cantidad: e.target.value })} placeholder="20" className={cls + ' w-20 text-right'} />
+          <select aria-label="Unidad" value={partes.unidad} onChange={(e) => setPartes({ ...partes, unidad: e.target.value })} className={cls}>
+            <option value="">—</option>
+            {UNIDADES_PRESENTACION.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </>}
+      </div>
+      <p className="text-xs text-gray-600">Queda: <strong className="text-gray-800">{texto || '—'}</strong>{error && texto ? <span className="text-red-700"> · {error}</span> : null}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={() => !error && onGuardar(texto)} disabled={!!error || ocupado} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1">
+          {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
+        </button>
+        {item.presentacion && <button onClick={() => onGuardar(null)} disabled={ocupado} className="text-xs text-gray-600 hover:underline">Usar la automática ({presentacionAutomatica(item)})</button>}
+        <button onClick={onCancelar} className="text-xs text-gray-500 hover:underline">Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 /** Panel lateral con presentaciones, marbete y comentarios. */
 export function PanelFicha({ cod, fichaId: fichaIdInicial, nombreProducto, onCerrar, onCambio }: {
   cod?: string; fichaId?: string; nombreProducto?: string; onCerrar: () => void; onCambio?: () => void;
@@ -50,6 +94,7 @@ export function PanelFicha({ cod, fichaId: fichaIdInicial, nombreProducto, onCer
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
   const [agregando, setAgregando] = useState<{ q: string; libres: ProductoLista[] } | null>(null);
+  const [editandoPres, setEditandoPres] = useState<string | null>(null);
   const archivoRef = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
@@ -207,13 +252,31 @@ export function PanelFicha({ cod, fichaId: fichaIdInicial, nombreProducto, onCer
                 </div>
                 <ul className="divide-y divide-gray-100 border border-gray-200 rounded-lg">
                   {codigos.map((c) => (
-                    <li key={c.cod} className="px-3 py-2 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800">{presentacion(c)}</p>
-                        <p className="text-xs text-gray-400 truncate">{c.producto} · {c.cod}</p>
+                    <li key={c.cod} className="px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            {presentacion(c)}
+                            {!c.presentacion && <span className="ml-1.5 text-[11px] font-normal text-gray-400">(automática)</span>}
+                          </p>
+                          <p className="text-xs text-gray-400 truncate">{c.producto} · {c.cod}</p>
+                        </div>
+                        {esAdmin && editandoPres !== c.cod && (
+                          <div className="flex items-center flex-shrink-0">
+                            <button onClick={() => setEditandoPres(c.cod)} className="p-1.5 text-gray-400 hover:text-emerald-700" aria-label={`Editar presentación de ${c.producto}`} title="Editar presentación"><Pencil className="w-4 h-4" /></button>
+                            {codigos.length > 1 && (
+                              <button onClick={() => void correr(`q-${c.cod}`, async () => { await data.quitarCodigoFicha(c.cod); }, 'Presentación quitada')} disabled={!!ocupado} className="p-1.5 text-gray-300 hover:text-red-600" aria-label={`Quitar ${c.producto}`}><X className="w-4 h-4" /></button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {esAdmin && codigos.length > 1 && (
-                        <button onClick={() => void correr(`q-${c.cod}`, async () => { await data.quitarCodigoFicha(c.cod); }, 'Presentación quitada')} disabled={!!ocupado} className="p-1.5 text-gray-300 hover:text-red-600" aria-label={`Quitar ${c.producto}`}><X className="w-4 h-4" /></button>
+                      {editandoPres === c.cod && (
+                        <EditorPresentacion item={c} ocupado={ocupado === `p-${c.cod}`} onCancelar={() => setEditandoPres(null)}
+                          onGuardar={(valor) => void correr(`p-${c.cod}`, async () => {
+                            await data.guardarPresentacion(c.cod, valor);
+                            await registrarCambio({ tipo: 'lista', entidad: `Ficha ${ficha.nombre}`, campo: `presentación ${c.cod}`, valor_anterior: presentacion(c), valor_nuevo: valor ?? `${presentacionAutomatica(c)} (automática)` });
+                            setEditandoPres(null);
+                          }, 'Presentación guardada')} />
                       )}
                     </li>
                   ))}

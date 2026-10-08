@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pesoLegible, presentacion, rutaMarbete, separarEnvase, sugerirGrupos, validarComentario, validarMarbete } from './catalogo';
+import { armarPresentacion, partesDePresentacion, pesoLegible, presentacion, rutaMarbete, sugerirPartes, validarPresentacion, separarEnvase, sugerirGrupos, validarComentario, validarMarbete } from './catalogo';
 
 describe('separarEnvase (nombres reales de la lista)', () => {
   it.each([
@@ -103,5 +103,36 @@ describe('validaciones', () => {
     expect(validarComentario('  ', '')).toBe('Escribí el comentario.');
     expect(validarComentario('Aplicar con 80 L/ha', 'Manejo')).toBeNull();
     expect(validarComentario('x', 'Otra')).toBe('Etiqueta inválida.');
+  });
+});
+
+
+describe('presentación cargada a mano', () => {
+  it('arma envase + cantidad + unidad', () => {
+    expect(armarPresentacion({ envase: 'Bidón', cantidad: '20', unidad: 'L' })).toBe('Bidón 20 L');
+    expect(armarPresentacion({ envase: 'Caja', cantidad: '15', unidad: 'kg' })).toBe('Caja 15 kg');
+    expect(armarPresentacion({ envase: 'Frasco', cantidad: '0.5', unidad: 'L' })).toBe('Frasco 0,5 L');
+    expect(armarPresentacion({ envase: 'Granel', cantidad: '', unidad: 'kg' })).toBe('Granel');
+  });
+  it('separa una guardada para editarla', () => {
+    expect(partesDePresentacion('Bidón 20 L')).toEqual({ envase: 'Bidón', cantidad: '20', unidad: 'L' });
+    expect(partesDePresentacion('Caja 15 KG')).toEqual({ envase: 'Caja', cantidad: '15', unidad: 'kg' });
+    expect(partesDePresentacion('Big bag 1,2 tn')).toEqual({ envase: 'Big bag', cantidad: '1,2', unidad: 'tn' });
+    expect(partesDePresentacion('Granel')).toEqual({ envase: 'Granel', cantidad: '', unidad: '' });
+  });
+  it('la cargada a mano manda sobre la automática', () => {
+    expect(presentacion({ producto: 'A 35 T (X 5 LTRS)', presentacion: 'Bidón 5 L' })).toBe('Bidón 5 L');
+    expect(presentacion({ producto: 'A 35 T (X 5 LTRS)', presentacion: '  ' })).toBe('x 5 L');
+  });
+  it('sugiere desde la automática', () => {
+    expect(sugerirPartes('x 5 L')).toEqual({ envase: 'Bidón', cantidad: '5', unidad: 'L' });
+    expect(sugerirPartes('x 25 kg')).toEqual({ envase: 'Bolsa', cantidad: '25', unidad: 'kg' });
+    expect(sugerirPartes('Bolsa')).toEqual({ envase: 'Bolsa', cantidad: '', unidad: '' });
+    expect(sugerirPartes('Por litro')).toEqual({ envase: 'Bidón', cantidad: '', unidad: 'L' });
+  });
+  it('valida', () => {
+    expect(validarPresentacion('')).not.toBeNull();
+    expect(validarPresentacion('x'.repeat(61))).not.toBeNull();
+    expect(validarPresentacion('Bidón 20 L')).toBeNull();
   });
 });

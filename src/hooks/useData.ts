@@ -158,10 +158,10 @@ export function useData() {
   }
 
   // ---- Catálogo: fichas de producto, marbetes y comentarios ----
-  async function fetchCatalogo(): Promise<{ fichas: FichaProducto[]; codigos: { cod: string; ficha_id: string }[]; productos: ProductoLista[]; comentarios: Record<string, number> }> {
+  async function fetchCatalogo(): Promise<{ fichas: FichaProducto[]; codigos: { cod: string; ficha_id: string; presentacion: string | null }[]; productos: ProductoLista[]; comentarios: Record<string, number> }> {
     const [fichas, codigos, productos, coms] = await Promise.all([
       ok(supabase.from('fichas_producto').select('*').order('nombre')),
-      fetchAllPaged<{ cod: string; ficha_id: string }>(() => supabase.from('fichas_codigos').select('cod, ficha_id').order('cod') as unknown as AnyFilter),
+      fetchAllPaged<{ cod: string; ficha_id: string; presentacion: string | null }>(() => supabase.from('fichas_codigos').select('cod, ficha_id, presentacion').order('cod') as unknown as AnyFilter),
       fetchAllPaged<ProductoLista>(() => supabase.from('productos').select('cod, producto, familia, unid').order('producto') as unknown as AnyFilter),
       fetchAllPaged<{ ficha_id: string }>(() => supabase.from('fichas_comentarios').select('ficha_id').order('id') as unknown as AnyFilter),
     ]);
@@ -183,15 +183,16 @@ export function useData() {
     const ficha = await ok(supabase.from('fichas_producto').select('*').eq('id', id).maybeSingle());
     if (!ficha) return null;
     const [cods, comentarios] = await Promise.all([
-      ok(supabase.from('fichas_codigos').select('cod').eq('ficha_id', id)),
+      ok(supabase.from('fichas_codigos').select('cod, presentacion').eq('ficha_id', id)),
       ok(supabase.from('fichas_comentarios').select('*').eq('ficha_id', id).order('created_at', { ascending: false })),
     ]);
     const lista = (cods || []).map((c: { cod: string }) => c.cod);
+    const manual = new Map((cods || []).map((c: { cod: string; presentacion: string | null }) => [c.cod, c.presentacion]));
     const prods = lista.length ? await ok(supabase.from('productos').select('cod, producto, familia, unid').in('cod', lista)) : [];
     const porCod = new Map(((prods || []) as ProductoLista[]).map((p) => [p.cod, p]));
     return {
       ficha: ficha as FichaProducto,
-      codigos: lista.map((c: string) => porCod.get(c) ?? { cod: c, producto: c, familia: null, unid: null }),
+      codigos: lista.map((c: string) => ({ ...(porCod.get(c) ?? { cod: c, producto: c, familia: null, unid: null }), presentacion: manual.get(c) ?? null })),
       comentarios: (comentarios || []) as ComentarioFicha[],
     };
   }
@@ -234,6 +235,11 @@ export function useData() {
 
   async function agregarCodigosFicha(fichaId: string, cods: string[]) {
     if (cods.length) await ok(supabase.from('fichas_codigos').insert(cods.map((cod) => ({ cod, ficha_id: fichaId }))));
+  }
+
+  /** Presentación cargada a mano de un código (null = volver a la automática). */
+  async function guardarPresentacion(cod: string, presentacion: string | null) {
+    await ok(supabase.from('fichas_codigos').update({ presentacion: presentacion?.trim() || null }).eq('cod', cod));
   }
 
   async function quitarCodigoFicha(cod: string) {
@@ -1050,6 +1056,7 @@ export function useData() {
     renombrarFicha,
     agregarCodigosFicha,
     quitarCodigoFicha,
+    guardarPresentacion,
     eliminarFicha,
     subirMarbete,
     quitarMarbete,
