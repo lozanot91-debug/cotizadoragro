@@ -307,6 +307,10 @@ export function useData() {
     await ok(supabase.from('convenios_flete').delete().eq('id', id));
   }
 
+  async function cambiarVigenciaConvenio(id: string, vigente: boolean) {
+    await ok(supabase.from('convenios_flete').update({ vigente }).eq('id', id));
+  }
+
   async function predeterminarConvenio(id: string) {
     await ok(supabase.rpc('predeterminar_convenio', { p_convenio_id: id }));
   }
@@ -833,6 +837,7 @@ export function useData() {
     fetchProductosConCosto,
     fetchTarifasFlete,
     fetchConvenios,
+    cambiarVigenciaConvenio,
     guardarConvenio,
     eliminarConvenio,
     predeterminarConvenio,

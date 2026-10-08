@@ -72,6 +72,8 @@ export interface ConvenioFlete {
   numero: number;
   descripcion: string;
   predeterminado: boolean;
+  /** Los no vigentes no se ofrecen al cotizar, pero las cotizaciones viejas los conservan. */
+  vigente: boolean;
   actualizado_at: string | null;
   created_at: string;
   /** Ordenadas por km */

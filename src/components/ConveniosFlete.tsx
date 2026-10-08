@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Truck, Plus, Upload, Pencil, Trash2, Star, Loader2 } from 'lucide-react';
+import { Truck, Plus, Upload, Pencil, Trash2, Star, Loader2, PowerOff, Power } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useToast } from '@/components/Toast';
 import { registrarCambio } from '@/lib/historial';
 import { parsearTarifaFlete } from '@/lib/excel';
-import { nombreConvenio, resumenTarifas, validarConvenio } from '@/lib/convenios';
+import { nombreConvenio, ordenarConvenios, resumenTarifas, validarConvenio } from '@/lib/convenios';
 import { formatDate } from '@/lib/format';
 import { fechaDeTimestamp } from '@/lib/fechas';
 import type { ConvenioFlete } from '@/types';
@@ -26,7 +26,7 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
   const [subirA, setSubirA] = useState<ConvenioFlete | null>(null);
 
   const cargar = useCallback(async () => {
-    try { setConvenios(await data.fetchConvenios()); } catch (e) { toast.error(e); } finally { setCargando(false); }
+    try { setConvenios(ordenarConvenios(await data.fetchConvenios())); } catch (e) { toast.error(e); } finally { setCargando(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { void cargar(); }, [cargar]);
@@ -78,6 +78,22 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
     } catch (e) { toast.error(e); } finally { setOcupado(null); }
   }
 
+  async function cambiarVigencia(c: ConvenioFlete) {
+    const vigente = !c.vigente;
+    setOcupado(c.id);
+    try {
+      await data.cambiarVigenciaConvenio(c.id, vigente);
+      await registrarCambio({
+        tipo: 'lista', entidad: `Convenio ${nombreConvenio(c)}`, campo: 'vigencia',
+        valor_anterior: c.vigente ? 'Vigente' : 'No vigente', valor_nuevo: vigente ? 'Vigente' : 'No vigente',
+      });
+      toast.exito(vigente ? `Convenio ${c.numero} vigente otra vez` : `Convenio ${c.numero} ya no se ofrece al cotizar`);
+      await cargar();
+    } catch (e) { toast.error(e); } finally { setOcupado(null); }
+  }
+
+  const vigentes = convenios.filter((c) => c.vigente).length;
+
   async function borrar() {
     if (!aBorrar) return;
     setOcupado(aBorrar.id);
@@ -97,7 +113,7 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
           <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center"><Truck className="w-5 h-5 text-blue-600" /></div>
           <div>
             <h3 className="font-semibold text-gray-800">Convenios de flete</h3>
-            <p className="text-xs text-gray-500">Cada convenio tiene su planilla. Cargar una no toca las demás.</p>
+            <p className="text-xs text-gray-500">Cada convenio tiene su planilla. Cargar una no toca las demás.{convenios.length > 0 && ` ${vigentes} de ${convenios.length} vigentes.`}</p>
           </div>
         </div>
         {esAdmin && (
@@ -121,14 +137,15 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
             const r = resumenTarifas(c.tarifas);
             return (
               <li key={c.id} className="py-3 flex flex-wrap items-center gap-3">
-                <div className="w-16 text-center flex-shrink-0">
+                <div className={`w-16 text-center flex-shrink-0 ${c.vigente ? '' : 'opacity-60'}`}>
                   <p className="text-xs text-gray-400">Convenio</p>
-                  <p className="cifra text-2xl text-emerald-900">{c.numero}</p>
+                  <p className={`cifra text-2xl ${c.vigente ? 'text-emerald-900' : 'text-gray-500'}`}>{c.numero}</p>
                 </div>
-                <div className="flex-1 min-w-[12rem]">
+                <div className={`flex-1 min-w-[12rem] ${c.vigente ? '' : 'opacity-60'}`}>
                   <p className="text-sm font-medium text-gray-800">
                     {c.descripcion}
                     {c.predeterminado && <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium align-middle">Predeterminado</span>}
+                    <span className={`ml-2 text-xs px-1.5 py-0.5 rounded font-medium align-middle ${c.vigente ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'}`}>{c.vigente ? 'Vigente' : 'No vigente'}</span>
                   </p>
                   <p className={`text-xs mt-0.5 ${r.cantidad ? 'text-gray-500' : 'text-red-600'}`}>
                     {r.cantidad ? `${r.cantidad} km cargados (de ${r.desde} a ${r.hasta} km)` : 'Sin planilla cargada'}
@@ -141,7 +158,12 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
                       className="px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1">
                       {ocupado === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} {r.cantidad ? 'Actualizar planilla' : 'Subir planilla'}
                     </button>
-                    {!c.predeterminado && (
+                    <button onClick={() => void cambiarVigencia(c)} disabled={!!ocupado || c.predeterminado}
+                      title={c.predeterminado ? 'El predeterminado tiene que estar vigente. Predeterminá otro primero.' : c.vigente ? 'Dejar de ofrecerlo al cotizar' : 'Volver a ofrecerlo al cotizar'}
+                      className={`px-2.5 py-1.5 border rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 ${c.vigente ? 'border-gray-300 text-gray-700 hover:bg-gray-50' : 'border-emerald-300 text-emerald-800 hover:bg-emerald-50'}`}>
+                      {c.vigente ? <><PowerOff className="w-3.5 h-3.5" /> Dar de baja</> : <><Power className="w-3.5 h-3.5" /> Volver a vigente</>}
+                    </button>
+                    {!c.predeterminado && c.vigente && (
                       <button onClick={() => void predeterminar(c)} disabled={!!ocupado} title="Usar por defecto en las cotizaciones" aria-label={`Predeterminar convenio ${c.numero}`}
                         className="p-1.5 text-gray-400 hover:text-amber-600 rounded disabled:opacity-50"><Star className="w-4 h-4" /></button>
                     )}
@@ -158,7 +180,7 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
           })}
         </ul>
       )}
-      <p className="text-xs text-gray-400 mt-3">Planilla: tarifa en pesos por 100 kg por km (como la de siempre). En la cotización se elige el convenio; si no, se usa el predeterminado.</p>
+      <p className="text-xs text-gray-400 mt-3">Planilla: tarifa en pesos por 100 kg por km (como la de siempre). En la cotización se elige entre los convenios vigentes; si no, se usa el predeterminado. Los que se dan de baja no se ofrecen más, pero las cotizaciones que ya los usan los conservan y Recotizar las pasa al predeterminado.</p>
 
       {form && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={ocupado ? undefined : () => setForm(null)}>

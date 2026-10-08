@@ -6,7 +6,7 @@ import ErrorCarga from '@/components/ErrorCarga';
 import { buscarProductos, costoDeLista, fleteConsulta } from '@/lib/consulta';
 import { formatUSD, formatDate, parseNumberInput } from '@/lib/format';
 import type { ConvenioFlete, ListaCostos, ProductoConCosto, TarifaFlete, TipoCambioBNA } from '@/types';
-import { elegirConvenio, nombreConvenio } from '@/lib/convenios';
+import { elegirConvenioVigente, conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 
 /** Consulta rápida: costo de lista de un insumo y flete por km (en $/tn y USD/tn al TC comprador divisa BNA). */
 export default function ConsultaCostos() {
@@ -48,7 +48,7 @@ export default function ConsultaCostos() {
   // Para el flete se usa el TC comprador divisa BNA; si no responde, el TC de respaldo de la configuración
   const tc = tcBna?.compra || tcRespaldo;
   const km = parseNumberInput(kmTxt);
-  const convenio = useMemo(() => elegirConvenio(convenios, convenioId), [convenios, convenioId]);
+  const convenio = useMemo(() => elegirConvenioVigente(convenios, convenioId), [convenios, convenioId]);
   const tarifas = useMemo<TarifaFlete[]>(() => convenio?.tarifas ?? [], [convenio]);
   const flete = useMemo(() => fleteConsulta(km, tarifas, tc), [km, tarifas, tc]);
   const kmMax = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
@@ -143,7 +143,7 @@ export default function ConsultaCostos() {
           <select id="consulta-convenio" value={convenio?.id ?? ''} onChange={(e) => setConvenioId(e.target.value)} disabled={convenios.length === 0}
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white mb-3">
             {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
-            {convenios.map((c) => <option key={c.id} value={c.id}>{nombreConvenio(c)}{c.predeterminado ? ' (predet.)' : ''}</option>)}
+            {conveniosParaElegir(convenios).map((c) => <option key={c.id} value={c.id}>{etiquetaConvenio(c)}</option>)}
           </select>
           <label htmlFor="consulta-km" className="block text-sm font-medium text-gray-700 mb-1">Distancia (km)</label>
           <input id="consulta-km" type="text" inputMode="decimal" value={kmTxt} onChange={(e) => setKmTxt(e.target.value)} placeholder="Ej.: 120"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elegirConvenio, nombreConvenio, resumenTarifas, validarConvenio } from './convenios';
+import { conveniosParaElegir, elegirConvenio, elegirConvenioVigente, etiquetaConvenio, nombreConvenio, ordenarConvenios, resumenTarifas, validarConvenio } from './convenios';
 
 const existentes = [{ id: 'a', numero: 625 }, { id: 'b', numero: 700 }];
 
@@ -33,5 +33,30 @@ describe('nombreConvenio / resumenTarifas', () => {
     expect(nombreConvenio({ numero: 625, descripcion: 'Autodescargable' })).toBe('625 · Autodescargable');
     expect(resumenTarifas([{ km: 3, tarifa: 1 }, { km: 1, tarifa: 1 }, { km: 300, tarifa: 2 }])).toEqual({ cantidad: 3, desde: 1, hasta: 300 });
     expect(resumenTarifas([])).toEqual({ cantidad: 0, desde: 0, hasta: 0 });
+  });
+});
+
+describe('vigencia', () => {
+  const cs = [
+    { id: 'a', numero: 700, predeterminado: false, vigente: false, descripcion: 'Viejo' },
+    { id: 'b', numero: 678, predeterminado: true, vigente: true, descripcion: 'Chasis' },
+    { id: 'c', numero: 695, predeterminado: false, vigente: true, descripcion: 'Batea' },
+  ];
+  it('para cotizar: el pedido si está vigente, si no el predeterminado', () => {
+    expect(elegirConvenioVigente(cs, 'c')?.id).toBe('c');
+    expect(elegirConvenioVigente(cs, 'a')?.id).toBe('b');
+    expect(elegirConvenioVigente(cs, null)?.id).toBe('b');
+  });
+  it('si no queda ninguno vigente, no deja sin flete', () => {
+    expect(elegirConvenioVigente([{ id: 'a', predeterminado: false, vigente: false }], 'a')?.id).toBe('a');
+  });
+  it('el selector muestra vigentes y el no vigente ya elegido', () => {
+    expect(conveniosParaElegir(cs).map((c) => c.id)).toEqual(['b', 'c']);
+    expect(conveniosParaElegir(cs, 'a').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+  });
+  it('ordena vigentes primero y etiqueta', () => {
+    expect(ordenarConvenios(cs).map((c) => c.numero)).toEqual([678, 695, 700]);
+    expect(etiquetaConvenio(cs[0])).toBe('700 · Viejo (no vigente)');
+    expect(etiquetaConvenio(cs[1])).toBe('678 · Chasis (predet.)');
   });
 });

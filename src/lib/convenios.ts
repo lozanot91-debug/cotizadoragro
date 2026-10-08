@@ -21,9 +21,29 @@ export function elegirConvenio<T extends Pick<ConvenioFlete, 'id' | 'predetermin
   return convenios.find((c) => c.id === id) ?? convenios.find((c) => c.predeterminado) ?? convenios[0] ?? null;
 }
 
+/** Para una cotización nueva o Recotizar: el pedido solo si sigue vigente; si no, el predeterminado. */
+export function elegirConvenioVigente<T extends Pick<ConvenioFlete, 'id' | 'predeterminado' | 'vigente'>>(convenios: T[], id?: string | null): T | null {
+  return elegirConvenio(convenios.filter((c) => c.vigente), id) ?? elegirConvenio(convenios, id);
+}
+
+/** Opciones del selector: los vigentes, más el elegido si dejó de estar vigente (cotizaciones viejas). */
+export function conveniosParaElegir<T extends Pick<ConvenioFlete, 'id' | 'vigente'>>(convenios: T[], elegidoId?: string | null): T[] {
+  return convenios.filter((c) => c.vigente || c.id === elegidoId);
+}
+
+/** Vigentes primero (por número), después los no vigentes. */
+export function ordenarConvenios<T extends Pick<ConvenioFlete, 'numero' | 'vigente'>>(convenios: T[]): T[] {
+  return [...convenios].sort((a, b) => Number(b.vigente) - Number(a.vigente) || a.numero - b.numero);
+}
+
 /** "625 · Autodescargable entre 8 y 12 tn" */
 export function nombreConvenio(c: Pick<ConvenioFlete, 'numero' | 'descripcion'>): string {
   return `${c.numero} · ${c.descripcion}`;
+}
+
+/** Texto de la opción en los selectores: marca predeterminado y no vigente. */
+export function etiquetaConvenio(c: Pick<ConvenioFlete, 'numero' | 'descripcion' | 'predeterminado' | 'vigente'>): string {
+  return `${nombreConvenio(c)}${c.predeterminado ? ' (predet.)' : ''}${c.vigente ? '' : ' (no vigente)'}`;
 }
 
 export function resumenTarifas(tarifas: TarifaFlete[]): { cantidad: number; desde: number; hasta: number } {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { elegirConvenio } from '@/lib/convenios';
+import { elegirConvenioVigente } from '@/lib/convenios';
 import { RefreshCw, Loader2, AlertTriangle, ArrowUp, ArrowDown, CheckCircle2 } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useToast } from '@/components/Toast';
@@ -20,6 +20,8 @@ const estadoColors: Record<string, string> = {
 interface Fila {
   cotiz: Cotizacion;
   fechaLista: string | null;
+  /** Convenio con el que se recalcula el flete */
+  convenio: ConvenioFlete | null;
   r: ResultadoRecotizar;
 }
 
@@ -66,7 +68,8 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
         return {
           cotiz,
           fechaLista: cotiz.lista_id ? fechaDe.get(cotiz.lista_id) || null : null,
-          r: recotizar({ cotiz, lineas: ls, productos, tarifas: elegirConvenio(convenios, cotiz.convenio_flete_id)?.tarifas ?? [], config }),
+          convenio: elegirConvenioVigente(convenios, cotiz.convenio_flete_id),
+          r: recotizar({ cotiz, lineas: ls, productos, tarifas: elegirConvenioVigente(convenios, cotiz.convenio_flete_id)?.tarifas ?? [], config }),
         };
       })
       .sort((a, b) => b.cotiz.numero - a.cotiz.numero);
@@ -76,7 +79,7 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
 
   async function crear(f: Fila): Promise<Cotizacion> {
     if (!vigente || !config) throw new Error('No hay lista vigente');
-    const cabecera = cabeceraRecotizada(f.cotiz, f.r, { fecha: hoyAR(), vigenciaDias: config.vigencia_default, listaId: vigente.id });
+    const cabecera = cabeceraRecotizada(f.cotiz, f.r, { fecha: hoyAR(), vigenciaDias: config.vigencia_default, listaId: vigente.id, convenioFleteId: f.convenio?.id ?? null });
     const nueva = await data.saveCotizacion(cabecera, f.r.lineas);
     await registrarCambio({
       tipo: 'cotizacion', cotizacion_id: nueva.id, campo: 'creación', valor_nuevo: `N° ${nueva.numero}`,

@@ -101,5 +101,12 @@ describe('recotizar', () => {
     expect(h.fecha).toBe('2026-10-08');
     expect(h.canje_precio_usd).toBe(400);
     expect(h.subtotal_usd).toBeCloseTo(r.totales.subtotal, 6);
+    expect(h.convenio_flete_id).toBeNull();
+  });
+
+  it('guarda el convenio con el que se recalculó el flete', () => {
+    const c = cotiz({});
+    const r = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, config });
+    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v', convenioFleteId: 'conv-678' }).convenio_flete_id).toBe('conv-678');
   });
 });

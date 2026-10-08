@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { elegirConvenio, nombreConvenio } from '@/lib/convenios';
+import { elegirConvenio, elegirConvenioVigente, conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
@@ -132,9 +132,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     ]);
     setConvenios(convs);
     // Nueva: el predeterminado. Editar / Recotizar: el de la cotización (si se borró, el predeterminado)
-    let convSel = elegirConvenio(convs, null)?.id ?? null;
+    // Una cotización guardada conserva su convenio aunque ya no esté vigente; nueva o Recotizar usan uno vigente
+    let convSel = elegirConvenioVigente(convs, null)?.id ?? null;
     const conConvenio = editId || duplicateFromId ? await data.fetchCotizacion((editId || duplicateFromId)!) : null;
-    if (conConvenio?.convenio_flete_id) convSel = elegirConvenio(convs, conConvenio.convenio_flete_id)?.id ?? convSel;
+    if (conConvenio?.convenio_flete_id) {
+      convSel = (editId ? elegirConvenio(convs, conConvenio.convenio_flete_id) : elegirConvenioVigente(convs, conConvenio.convenio_flete_id))?.id ?? convSel;
+    }
     setConvenioId(convSel);
     const tars = elegirConvenio(convs, convSel)?.tarifas ?? [];
     setConfig(cfg);
@@ -875,8 +878,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             <select id="cotiz-convenio" value={convenio?.id ?? ''} disabled={esReadOnly || convenios.length === 0} onChange={(e) => setConvenioId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50 bg-white">
               {convenios.length === 0 && <option value="">Sin convenios cargados</option>}
-              {convenios.map((c) => <option key={c.id} value={c.id}>{nombreConvenio(c)}{c.predeterminado ? ' (predet.)' : ''}</option>)}
+              {conveniosParaElegir(convenios, convenio?.id).map((c) => <option key={c.id} value={c.id}>{etiquetaConvenio(c)}</option>)}
             </select>
+            {convenio && !convenio.vigente && <p className="text-xs text-amber-700 mt-1">Este convenio ya no está vigente.{!esReadOnly && ' Si cambiás a otro, no vas a poder volver a elegirlo.'}</p>}
           </div>
 
           

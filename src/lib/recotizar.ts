@@ -102,7 +102,7 @@ export function recotizar(input: {
 export function cabeceraRecotizada(
   cotiz: Cotizacion,
   r: ResultadoRecotizar,
-  datos: { fecha: string; vigenciaDias: number; listaId: string }
+  datos: { fecha: string; vigenciaDias: number; listaId: string; convenioFleteId?: string | null }
 ): Partial<Cotizacion> {
   return {
     cliente_id: cotiz.cliente_id,
@@ -127,5 +127,7 @@ export function cabeceraRecotizada(
     total_ars: r.totales.totalARS,
     notas: cotiz.notas,
     cotizacion_origen_id: cotiz.id,
+    // El convenio con el que se calculó el flete (si el original dejó de estar vigente, el predeterminado)
+    convenio_flete_id: datos.convenioFleteId ?? null,
   };
 }
