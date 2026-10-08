@@ -29,12 +29,13 @@ import type {
   FichaProducto,
   ComentarioFicha,
   CanjeGuardado,
+  PrecioGrano,
 } from '@/types';
 import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
 import { hoyAR } from '@/lib/fechas';
-import { paramsDesdeConfig } from '@/lib/canje';
+import { paramsDesdeConfig, type ParamsCanje } from '@/lib/canje';
 import { usuarioActual } from '@/lib/usuarioActual';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
 import { validarCambioEstado } from '@/lib/estados';
@@ -333,6 +334,50 @@ export function useData() {
 
   async function eliminarCanje(id: string) {
     await ok(supabase.from('canjes').delete().eq('id', id));
+  }
+
+  // ---- Alertas de recompra ----
+  async function fetchRecomprasPospuestas(): Promise<Map<string, string>> {
+    const data = await ok(supabase.from('recompras_pospuestas').select('clave, hasta'));
+    return new Map(((data || []) as { clave: string; hasta: string }[]).map((r) => [r.clave, r.hasta]));
+  }
+
+  async function posponerRecompra(clave: string, clienteId: string | null, hasta: string, motivo: string | null) {
+    await ok(supabase.from('recompras_pospuestas').upsert({ clave, cliente_id: clienteId, hasta, motivo, usuario_nombre: usuarioActual(), updated_at: new Date().toISOString() }));
+  }
+
+  /** Productos (nombres) de varias cotizaciones, para mostrar qué se compró. */
+  async function fetchProductosDeCotizaciones(ids: string[]): Promise<Record<string, string[]>> {
+    if (!ids.length) return {};
+    const data = await ok(supabase.from('cotizacion_lineas').select('cotizacion_id, producto, orden').in('cotizacion_id', ids).order('orden'));
+    const r: Record<string, string[]> = {};
+    for (const l of (data || []) as { cotizacion_id: string; producto: string }[]) (r[l.cotizacion_id] ||= []).push(l.producto);
+    return r;
+  }
+
+  // ---- Precio del grano del día ----
+  async function fetchPreciosGrano(limite = 2000): Promise<PrecioGrano[]> {
+    const data = await ok(supabase.from('precios_grano').select('*').order('fecha', { ascending: false }).limit(limite));
+    return ((data || []) as PrecioGrano[]).map((p) => ({ ...p, precio_usd: Number(p.precio_usd) }));
+  }
+
+  async function cargarPrecioGrano(fecha: string, cultivo: string, precio: number, destino: string | null): Promise<PrecioGrano> {
+    const r = await ok(supabase.rpc('cargar_precio_grano', { p_fecha: fecha, p_cultivo: cultivo, p_precio: precio, p_destino: destino, p_usuario: usuarioActual() }));
+    return r as unknown as PrecioGrano;
+  }
+
+  async function eliminarPrecioGrano(id: string) {
+    await ok(supabase.from('precios_grano').delete().eq('id', id));
+  }
+
+  /** Guarda el canje (cultivo, precio y liquidación) en una cotización existente. Devuelve la cotización actualizada. */
+  async function aplicarCanjeACotizacion(id: string, canje: { cultivo: string; precio: number; params: ParamsCanje }): Promise<Cotizacion> {
+    const actual = (await ok(supabase.from('cotizaciones').select('estado').eq('id', id).maybeSingle())) as { estado: string } | null;
+    if (!actual) throw new ErrorApp('La cotización ya no existe.');
+    if (actual.estado === 'Ganada' || actual.estado === 'Perdida') throw new ErrorApp(`La cotización está ${actual.estado}: no se puede cambiar. Reabrila o duplicala.`);
+    return (await ok(supabase.from('cotizaciones')
+      .update({ canje_cultivo: canje.cultivo, canje_precio_usd: canje.precio, canje_params: canje.params, updated_at: new Date().toISOString() })
+      .eq('id', id).select('*').single())) as Cotizacion;
   }
 
   /** Cotizaciones del cliente que tienen canje (para mostrarlas junto al historial de la calculadora). */
@@ -1039,6 +1084,13 @@ export function useData() {
     guardarCanje,
     eliminarCanje,
     fetchCotizacionesConCanje,
+    aplicarCanjeACotizacion,
+    fetchRecomprasPospuestas,
+    posponerRecompra,
+    fetchProductosDeCotizaciones,
+    fetchPreciosGrano,
+    cargarPrecioGrano,
+    eliminarPrecioGrano,
     fetchCampos,
     fetchPlantas,
     fetchPlantasFlete,

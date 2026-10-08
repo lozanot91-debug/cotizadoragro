@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { montoGanado } from '@/lib/ganadaParcial';
 import AvisosPush from '@/components/AvisosPush';
+import RecomprasInicio from '@/components/RecomprasInicio';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formatUSD, formatDate } from '@/lib/format';
@@ -17,11 +18,13 @@ import { nombreCotizacion } from '@/lib/nombreCotizacion';
 interface Props {
   onNavigate: (s: Screen) => void;
   onEditCotiz: (id: string) => void;
+  /** Nueva cotización copiando otra (Recotizar desde las alertas de recompra) */
+  onDuplicateCotiz?: (id: string) => void;
   /** Pedidos a mesa de insumos con costos para revisar. */
   pedidoBadge?: number;
 }
 
-export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Props) {
+export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedidoBadge = 0 }: Props) {
   const data = useData();
   const { usuario } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -232,6 +235,9 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
       )}
 
       <AvisosPush compacto />
+
+      {/* ===== Recompras: compraron el año pasado en esta época y todavía no se les cotizó ===== */}
+      <RecomprasInicio cotizaciones={cotizaciones} onDuplicar={onDuplicateCotiz} onEditCotiz={onEditCotiz} />
 
       {/* ===== Alert bar: tareas de hoy + vencidas ===== */}
       {tareasHoy.length + tareasVencidas.length > 0 && (

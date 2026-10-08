@@ -485,3 +485,15 @@ export interface CanjeGuardado {
   autor_nombre: string | null;
   created_at: string;
 }
+
+/** Precio del grano que pasa el acopio, uno por cultivo y día. */
+export interface PrecioGrano {
+  id: string;
+  fecha: string;
+  cultivo: string;
+  precio_usd: number;
+  destino: string | null;
+  usuario_nombre: string | null;
+  created_at: string;
+  updated_at: string;
+}

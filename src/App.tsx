@@ -20,6 +20,7 @@ import Vencimientos from '@/screens/Vencimientos';
 import Cobranzas from '@/screens/Cobranzas';
 import ConsultaCostos from '@/screens/ConsultaCostos';
 import CalculadoraCanje from '@/screens/CalculadoraCanje';
+import RelacionInsumoGrano from '@/screens/RelacionInsumoGrano';
 import EvolucionCostos from '@/screens/EvolucionCostos';
 import PedidosMesa from '@/screens/PedidosMesa';
 import PublicoMesa from '@/screens/PublicoMesa';
@@ -140,7 +141,7 @@ function AppContent() {
 
   return (
     <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge} facturaBadge={facturaBadge}>
-      {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} pedidoBadge={pedidoBadge} />}
+      {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} onDuplicateCotiz={handleDuplicateCotiz} pedidoBadge={pedidoBadge} />}
       {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} onAbrirGuardada={handleEditCotiz} />}
       {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
       {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
@@ -153,6 +154,7 @@ function AppContent() {
       {screen === 'consulta' && <ConsultaCostos />}
       {screen === 'canje' && <CalculadoraCanje key={canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} onEditCotiz={handleEditCotiz} />}
       {screen === 'catalogo' && <Catalogo />}
+      {screen === 'relacion' && <RelacionInsumoGrano />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}

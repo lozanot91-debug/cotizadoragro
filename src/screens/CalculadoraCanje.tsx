@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye } from 'lucide-react';
+import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye, Check } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
@@ -12,8 +12,11 @@ import {
 } from '@/lib/canje';
 import { montoCanjeDeCotizacion } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { precioDelDia } from '@/lib/relacion';
+import { hoyAR } from '@/lib/fechas';
+import { registrarCambio } from '@/lib/historial';
 import { formatDate, formatUSD } from '@/lib/format';
-import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, TipoCambioBNA } from '@/types';
+import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, PrecioGrano, TipoCambioBNA } from '@/types';
 import VistaPreviaCotizacion from '@/components/VistaPreviaCotizacion';
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
@@ -39,6 +42,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const [tcRespaldo, setTcRespaldo] = useState(0);
   const [historial, setHistorial] = useState<CanjeGuardado[]>([]);
   const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
+  const [preciosGrano, setPreciosGrano] = useState<PrecioGrano[]>([]);
   const [camposCliente, setCamposCliente] = useState<Campo[]>([]);
 
   // Formulario
@@ -58,11 +62,13 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   // Vista previa de la cotización traída
   const [previa, setPrevia] = useState<{ cotizacion: Cotizacion; lineas: CotizacionLinea[] } | null>(null);
   const [verPrevia, setVerPrevia] = useState(false);
+  const [aplicando, setAplicando] = useState(false);
   const [filtro, setFiltro] = useState('');
 
   const cargar = useCallback(async () => {
     const [cls, cots, cfg, hist, convs] = await Promise.all([data.fetchClientes(), data.fetchCotizaciones(), data.fetchConfig(), data.fetchCanjes(), data.fetchConvenios()]);
     setConvenios(convs);
+    data.fetchPreciosGrano(300).then(setPreciosGrano).catch(() => setPreciosGrano([]));
     setClientes(cls);
     setCotizaciones(cots);
     setDefaults(cfg.canje_parametros);
@@ -89,6 +95,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   );
 
   const tcCompra = tcBna?.compra || tcRespaldo || null;
+  const cotizSel = cotizacionId ? cotizaciones.find((x) => x.id === cotizacionId) ?? null : null;
 
   // Campos del cliente elegido: sus km a puerto sirven para precargar el flete del grano
   useEffect(() => {
@@ -99,6 +106,12 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente?.id]);
   const cultivoNombre = cultivo === 'Otro' ? cultivoOtro.trim() : cultivo;
+  // Precio del grano del día (Relación insumo/grano): se sugiere y, si el precio está vacío, se carga solo
+  const precioDia = cultivoNombre ? precioDelDia(preciosGrano, cultivoNombre) : null;
+  useEffect(() => {
+    if (precioDia && precio === 0) setPrecio(precioDia.precio_usd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precioDia?.id]);
   const neto = netoPorTn(precio, params);
   const montoConIva = modo === 'monto' ? conIvaInsumos(monto, ivaInsumos ?? 0) : montoPorToneladas(tnIngresadas, neto);
   const tn = modo === 'monto' ? toneladasPorMonto(montoConIva, neto) : tnIngresadas;
@@ -158,6 +171,31 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
       setHistorial((h) => [g, ...h]);
       toast.exito('Canje guardado en el historial');
     } catch (e) { toast.error(e); } finally { setGuardando(false); }
+  }
+
+  /** Pasa el canje calculado a la cotización traída (cultivo, precio y liquidación) y lo deja en el historial. */
+  async function aplicarACotizacion() {
+    const c = cotizaciones.find((x) => x.id === cotizacionId);
+    if (!c) return;
+    if (!cultivoNombre || !(precio > 0) || !(neto > 0)) { toast.aviso(errores[0] || 'Completá el cultivo y el precio.'); return; }
+    const antes = c.canje_precio_usd > 0 ? `${c.canje_cultivo} a USD ${fmt(c.canje_precio_usd)}/tn` : 'Sin canje';
+    setAplicando(true);
+    try {
+      const act = await data.aplicarCanjeACotizacion(c.id, { cultivo: cultivoNombre, precio, params });
+      setCotizaciones((cs) => cs.map((x) => (x.id === act.id ? { ...x, ...act } : x)));
+      setPrevia((p) => (p && p.cotizacion.id === act.id ? { ...p, cotizacion: { ...p.cotizacion, ...act } } : p));
+      await registrarCambio({ tipo: 'cotizacion', cotizacion_id: c.id, campo: 'canje', valor_anterior: antes, valor_nuevo: `${cultivoNombre} a USD ${fmt(precio)}/tn (neto ${fmt(neto)}) desde la calculadora` });
+      if (modo === 'monto' && montoConIva > 0) {
+        const g = await data.guardarCanje({
+          cliente_id: cliente?.id ?? c.cliente_id, cliente_nombre: cliente?.nombre ?? c.cliente_nombre, cotizacion_id: c.id,
+          cultivo: cultivoNombre, precio_usd: precio, params, neto_usd: Math.round(neto * 1e6) / 1e6,
+          monto_usd: Math.round(montoConIva * 100) / 100, iva_insumos_pct: ivaInsumos, tn: Math.round(tn * 1e4) / 1e4,
+          tc_compra: tcCompra, notas: notas.trim() || 'Aplicado a la cotización',
+        });
+        setHistorial((h) => [g, ...h]);
+      }
+      toast.exito(`Canje aplicado a ${nombreCotizacion(c)}: el PDF y el WhatsApp ya salen con las toneladas`);
+    } catch (e) { toast.error(e); } finally { setAplicando(false); }
   }
 
   async function copiar() {
@@ -250,6 +288,19 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                       className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:text-emerald-700 hover:border-emerald-400 flex-shrink-0"><Eye className="w-4 h-4" /></button>
                   )}
                 </div>
+                {cotizSel && (
+                  <span className="block mt-1.5">
+                    {cotizSel.estado === 'Ganada' || cotizSel.estado === 'Perdida' ? (
+                      <span className="text-[11px] text-gray-400">Está {cotizSel.estado}: el canje no se puede aplicar.</span>
+                    ) : (
+                      <button type="button" onClick={() => void aplicarACotizacion()} disabled={aplicando || !(precio > 0) || !(neto > 0)}
+                        className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:text-gray-400 flex items-center gap-1">
+                        {aplicando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        {cotizSel.canje_precio_usd > 0 ? 'Actualizar el canje de la cotización' : 'Aplicar este canje a la cotización'}
+                      </button>
+                    )}
+                  </span>
+                )}
               </label>
             </div>
 
@@ -264,7 +315,15 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                   {cultivo === 'Otro' && <input value={cultivoOtro} onChange={(e) => setCultivoOtro(e.target.value)} placeholder="Cultivo" aria-label="Otro cultivo" className={inputCls} />}
                 </div>
               </label>
-              <CampoNumero label="Precio del grano" sufijo="USD/tn" value={precio} onChange={setPrecio} ayuda="El que pasa el acopio" />
+              <div>
+              <CampoNumero label="Precio del grano" sufijo="USD/tn" value={precio} onChange={setPrecio} ayuda={precioDia ? undefined : 'El que pasa el acopio'} />
+              {precioDia && (
+                <span className="block text-[11px] text-gray-400 mt-0.5">
+                  Precio {precioDia.fecha === hoyAR() ? 'de hoy' : `del ${formatDate(precioDia.fecha)}`}: USD {fmt(precioDia.precio_usd)}
+                  {Math.abs(precioDia.precio_usd - precio) > 0.001 && <button type="button" onClick={() => setPrecio(precioDia.precio_usd)} className="ml-1.5 text-emerald-700 font-medium hover:underline">Usar</button>}
+                </span>
+              )}
+            </div>
             </div>
 
             <div className="pt-4 border-t border-gray-100">
