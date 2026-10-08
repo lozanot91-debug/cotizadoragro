@@ -4,7 +4,7 @@ import { calcularLinea, calcularTotalesIva, recargoPorcentaje, resolverMargen, t
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
-import type { ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
+import type { TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
@@ -63,6 +63,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
   const [fecha, setFecha] = useState(hoyAR());
   const [tc, setTc] = useState('');
+  // TC sugerido: dólar divisa BNA vendedor. Si el vendedor lo cambia a mano, no se pisa.
+  const [tcBna, setTcBna] = useState<TipoCambioBNA | null>(null);
+  const tcTocadoRef = useRef(false);
   const [km, setKm] = useState('');
   const [vigencia, setVigencia] = useState('');
   const [conIva, setConIva] = useState(false);
@@ -121,6 +124,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     ]);
     setConfig(cfg);
     setTc(String(cfg.tipo_cambio_default));
+    tcTocadoRef.current = false;
+    // Cotización nueva o Recotizar: se usa el TC del BNA de hoy (sin frenar la carga de la pantalla)
+    void data.fetchTipoCambioBNA().then((bna) => {
+      setTcBna(bna);
+      if (bna && !editId && !tcTocadoRef.current) setTc(String(bna.venta));
+    });
     setVigencia(String(cfg.vigencia_default));
     setTarifas(tars);
     setClientes(cls);
@@ -214,7 +223,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         setTasaMensual(formatInputNumber(cotiz.tasa_mensual || 0, 2));
         cargarCanje(cotiz);
         setNotas(cotiz.notas || '');
-        setTc(String(cotiz.tc));
+        // Recotizar: se mantiene el TC viejo solo hasta que llegue el del BNA de hoy
+        if (!tcTocadoRef.current) setTc((actual) => (actual && actual !== String(cfg.tipo_cambio_default) ? actual : String(cotiz.tc)));
         setVigencia(String(cfg.vigencia_default));
 
         const origLineas = await data.fetchLineas(duplicateFromId);
@@ -829,7 +839,16 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             )}
           </div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" value={fecha} disabled={esReadOnly} onChange={(e) => setFecha(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de cambio ($/USD)</label><input type="text" value={tc} disabled={esReadOnly} onChange={(e) => setTc(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipo de cambio ($/USD)</label><input type="text" inputMode="decimal" value={tc} disabled={esReadOnly} onChange={(e) => { tcTocadoRef.current = true; setTc(e.target.value); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" />
+            {tcBna && (
+              <p title="Dólar divisa BNA, vendedor" className={`text-xs mt-1 ${tcBna.desactualizado ? 'text-amber-700' : 'text-gray-500'}`}>
+                BNA divisa {formatDate(tcBna.fecha).slice(0, 5)}: <span className="whitespace-nowrap">$ {formatUSD(tcBna.venta, 2)}</span>{tcBna.desactualizado && ' (no se pudo actualizar)'}
+                {!esReadOnly && Math.abs(tcNum - tcBna.venta) > 0.004 && (
+                  <button type="button" onClick={() => { tcTocadoRef.current = false; setTc(String(tcBna.venta)); }} className="ml-1.5 font-medium text-emerald-700 hover:text-emerald-800 underline">Usar</button>
+                )}
+              </p>
+            )}
+          </div>
           <div><label className="block text-sm font-medium text-gray-700 mb-1">KM destino</label><input type="number" value={km} disabled={esReadOnly} onChange={(e) => setKm(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" />{kmWarning && <p className="text-xs text-red-500 mt-1">Fuera de tabla (máx. 1200 km)</p>}</div>
           
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Vigencia (días)</label><input type="number" value={vigencia} disabled={esReadOnly} onChange={(e) => setVigencia(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></div>

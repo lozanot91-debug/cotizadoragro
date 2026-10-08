@@ -293,3 +293,12 @@ export interface PedidoPrecio {
   cotizacion?: Pick<Cotizacion, 'numero' | 'cliente_nombre'> | null;
   lineas?: PedidoPrecioLinea[];
 }
+
+/** Dólar divisa del Banco Nación (lo guarda la edge function tc-bna). */
+export interface TipoCambioBNA {
+  fecha: string;
+  compra: number;
+  venta: number;
+  /** true si el BNA no respondió y es la última lectura guardada */
+  desactualizado: boolean;
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AvisosPush from '@/components/AvisosPush';
 import { ClipboardList, Loader2, Pencil } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -48,6 +49,8 @@ export default function PedidosMesa({ onEdit }: { onEdit: (id: string) => void }
         <h1 className="titulo text-3xl text-emerald-900 flex items-center gap-2"><ClipboardList className="w-7 h-7" /> Pedidos a mesa de insumos</h1>
         <p className="text-sm text-gray-500 mt-1">Pedidos de costos que mandaste por link. Para pedir uno nuevo, abrí una cotización y tocá “Pedir precios a mesa”.</p>
       </div>
+
+      <AvisosPush />
 
       {nada && <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">Todavía no pediste precios a la mesa de insumos.</div>}
 

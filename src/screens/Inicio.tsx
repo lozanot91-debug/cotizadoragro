@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import AvisosPush from '@/components/AvisosPush';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formatUSD, formatDate } from '@/lib/format';
@@ -227,6 +228,8 @@ export default function Inicio({ onNavigate, onEditCotiz, pedidoBadge = 0 }: Pro
           <ChevronRight className="w-4 h-4 text-emerald-700" />
         </button>
       )}
+
+      <AvisosPush compacto />
 
       {/* ===== Alert bar: tareas de hoy + vencidas ===== */}
       {tareasHoy.length + tareasVencidas.length > 0 && (

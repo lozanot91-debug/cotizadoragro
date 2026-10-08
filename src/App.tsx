@@ -85,6 +85,28 @@ function AppContent() {
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver); };
   }, [loadPedidoBadge]);
 
+  // Al tocar una notificación: llega ?abrir=<id> (app cerrada) o un mensaje del service worker (app abierta)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('abrir');
+    if (id && /^[0-9a-f-]{36}$/i.test(id)) {
+      setEditCotizId(id); setDuplicateFromId(undefined); setScreen('nueva');
+      params.delete('abrir');
+      const q = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${q ? `?${q}` : ''}${window.location.hash}`);
+    }
+    if (!('serviceWorker' in navigator)) return;
+    const alMensaje = (e: MessageEvent) => {
+      const d = e.data as { tipo?: string; cotizacionId?: string } | null;
+      if (d?.tipo === 'abrir-cotizacion' && d.cotizacionId) {
+        setEditCotizId(d.cotizacionId); setDuplicateFromId(undefined); setScreen('nueva');
+        void loadPedidoBadge();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', alMensaje);
+    return () => navigator.serviceWorker.removeEventListener('message', alMensaje);
+  }, [loadPedidoBadge]);
+
   function handleNavigate(s: Screen) {
     setScreen(s);
     if (s === 'nueva') { setEditCotizId(undefined); setDuplicateFromId(undefined); }

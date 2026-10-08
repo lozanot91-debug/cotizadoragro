@@ -18,6 +18,7 @@ import type {
   PedidoPrecio,
   Visita,
   VisitaFoto,
+  TipoCambioBNA,
 } from '@/types';
 import { hoyAR } from '@/lib/fechas';
 import { usuarioActual } from '@/lib/usuarioActual';
@@ -77,6 +78,20 @@ export function useData() {
       seguimiento_dias: parseFloat(map.seguimiento_dias || '3'),
       ultimo_contacto_dias: parseFloat(map.ultimo_contacto_dias || '60'),
     };
+  }
+
+  /**
+   * Dólar divisa BNA (vendedor). Lo trae la edge function `tc-bna`, que guarda una lectura cada 30 min.
+   * Si falla, devuelve null y la app usa el TC de respaldo de la configuración.
+   */
+  async function fetchTipoCambioBNA(): Promise<TipoCambioBNA | null> {
+    try {
+      const { data, error } = await supabase.functions.invoke('tc-bna', { body: {} });
+      if (error || !data || !(Number(data.venta) > 0)) return null;
+      return { fecha: data.fecha, compra: Number(data.compra), venta: Number(data.venta), desactualizado: !!data.desactualizado };
+    } catch {
+      return null;
+    }
   }
 
   async function updateConfig(clave: string, valor: string) {
@@ -689,6 +704,7 @@ export function useData() {
 
   return {
     fetchConfig,
+    fetchTipoCambioBNA,
     updateConfig,
     fetchFamiliasConfig,
     upsertFamiliaConfig,
