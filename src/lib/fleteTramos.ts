@@ -106,3 +106,16 @@ export function validarPlanta(nombre: string, kmTxt: string, existentes: Pick<Pl
   if (!(km >= 0)) return { ok: false, error: 'Los km tienen que ser un número.' };
   return { ok: true, nombre: n, km_puerto: km };
 }
+
+/**
+ * Resumen en una línea para el bloque de flete cerrado:
+ * "Largo + corto · 165 + 25 km · USD 28,96/tn". Sin km: solo la modalidad y "sin km".
+ */
+export function resumenFlete(r: { modalidad: ModalidadFlete; km: number; kmCorto: number; usdTn: number | null; formato: (n: number) => string }): string {
+  const partes = [nombreModalidad(r.modalidad)];
+  const fmtKm = (n: number) => r.formato(n).replace(/,00$/, '');
+  if (r.km > 0) partes.push(tieneCorto(r.modalidad) && r.kmCorto > 0 ? `${fmtKm(r.km)} + ${fmtKm(r.kmCorto)} km` : `${fmtKm(r.km)} km`);
+  else partes.push('sin km');
+  if (r.usdTn !== null && r.usdTn > 0) partes.push(`USD ${r.formato(r.usdTn)}/tn`);
+  return partes.join(' · ');
+}

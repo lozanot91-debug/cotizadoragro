@@ -1,7 +1,8 @@
-import { Truck, MapPin } from 'lucide-react';
+import { useState } from 'react';
+import { Truck, MapPin, ChevronDown } from 'lucide-react';
 import { fleteDeTramos } from '@/lib/calculations';
 import { conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
-import { MODALIDADES, nombreTramoPrincipal, tieneCorto, type KmSugerido } from '@/lib/fleteTramos';
+import { MODALIDADES, nombreTramoPrincipal, resumenFlete, tieneCorto, type KmSugerido } from '@/lib/fleteTramos';
 import { formatDate, formatUSD, parseNumberInput } from '@/lib/format';
 import type { Campo, ConvenioFlete, ModalidadFlete, TipoCambioBNA } from '@/types';
 
@@ -20,8 +21,10 @@ export interface PropsFlete {
   convenios: ConvenioFlete[];
   principal: { km: string; onKm: (v: string) => void; convenio: ConvenioFlete | null; onConvenio: (id: string) => void; sugerido: KmSugerido | null };
   corto: { km: string; onKm: (v: string) => void; convenio: ConvenioFlete | null; onConvenio: (id: string) => void; sugerido: KmSugerido | null };
-  /** Hay fertilizantes con flete tildado (si no, el bloque se ve más tenue) */
+  /** Hay fertilizantes con flete tildado: el bloque arranca abierto (si no, cerrado) */
   enUso: boolean;
+  /** Falta algún dato del flete: se abre aunque no haya fertilizantes */
+  conAviso?: boolean;
 }
 
 function Tramo({ id, titulo, esReadOnly, tc, convenios, t }: {
@@ -71,14 +74,27 @@ export default function FleteCotizacion(p: PropsFlete) {
     conCorto ? [{ km: kmP, tarifas: p.principal.convenio?.tarifas ?? [] }, { km: kmC, tarifas: p.corto.convenio?.tarifas ?? [] }] : [{ km: kmP, tarifas: p.principal.convenio?.tarifas ?? [] }],
     p.tc,
   );
+  // null = automático: abierto si hay fertilizantes con flete (o falta algo); si no, cerrado. Un clic lo fija.
+  const [manual, setManual] = useState<boolean | null>(null);
+  const abierto = manual ?? (p.enUso || !!p.conAviso);
+  const usdOk = kmP > 0 && (!conCorto || kmC > 0) && !total.tarifaFaltante && p.tc > 0;
+  const resumen = resumenFlete({ modalidad: p.modalidad, km: kmP, kmCorto: kmC, usdTn: usdOk ? total.usdTn : null, formato: (n) => formatUSD(n, 2) });
   return (
-    <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 ${p.enUso ? '' : 'opacity-90'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h3 className="font-semibold text-gray-700 flex items-center gap-2"><Truck className="w-5 h-5 text-gray-400" /> Flete de fertilizantes</h3>
-        {conCorto && kmP > 0 && kmC > 0 && !total.tarifaFaltante && p.tc > 0 && (
-          <span className="text-sm text-gray-600">Total flete: <span className="font-semibold text-gray-800">USD {formatUSD(total.usdTn, 2)}/tn</span></span>
-        )}
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <button type="button" onClick={() => setManual(!abierto)} aria-expanded={abierto} aria-controls="flete-detalle"
+        className={`w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-left ${abierto ? 'mb-3' : ''}`}>
+        <span className="font-semibold text-gray-700 flex items-center gap-2">
+          <Truck className="w-5 h-5 text-gray-400" /> Flete de fertilizantes
+          {!p.enUso && <span className="text-xs font-normal text-gray-400">(sin fertilizantes con flete)</span>}
+        </span>
+        <span className="flex items-center gap-2 text-sm text-gray-600 ml-auto">
+          {!abierto && <span className="truncate">{resumen}</span>}
+          {abierto && conCorto && usdOk && <span>Total flete: <span className="font-semibold text-gray-800">USD {formatUSD(total.usdTn, 2)}/tn</span></span>}
+          <ChevronDown className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {abierto && (<div id="flete-detalle">
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_9.5rem]">
         <div className="min-w-0">
@@ -119,6 +135,7 @@ export default function FleteCotizacion(p: PropsFlete) {
         {conCorto && <Tramo id="flete-corto" titulo="Corto (planta → campo)" esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.corto} />}
       </div>
       <p className="text-xs text-gray-400 mt-2">Se aplica a los fertilizantes con flete tildado. La planilla está en pesos y se pasa a dólares con el TC comprador. Los km se precargan del campo y la planta, pero siempre los podés cambiar.</p>
+      </div>)}
     </div>
   );
 }

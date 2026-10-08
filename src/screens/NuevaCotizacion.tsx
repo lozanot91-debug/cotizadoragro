@@ -1029,7 +1029,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         esReadOnly={esReadOnly} tc={tcFleteNum}
         tcFlete={{ valor: tcFlete, onChange: (v) => { tcFleteTocadoRef.current = true; setTcFlete(v); }, bna: tcBna, usarBna: () => { tcFleteTocadoRef.current = false; if (tcBna) setTcFlete(String(tcBna.compra)); } }}
         modalidad={modalidad} onModalidad={cambiarModalidad}
-        campos={camposCliente} campoId={campoId} onCampo={cambiarCampo} convenios={convenios} enUso={hayFertConFlete}
+        campos={camposCliente} campoId={campoId} onCampo={cambiarCampo} convenios={convenios} enUso={hayFertConFlete} conAviso={kmFaltante || tarifaFaltante}
         principal={{ km, onKm: setKm, convenio, onConvenio: setConvenioId, sugerido: sugeridos.principal }}
         corto={{ km: kmCorto, onKm: setKmCorto, convenio: convenioCorto, onConvenio: setConvenioCortoId, sugerido: sugeridos.corto }}
       />

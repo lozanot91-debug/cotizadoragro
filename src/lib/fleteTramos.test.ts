@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calcularLinea, fleteDeTramos } from './calculations';
-import { kmFaltantes, kmSugeridos, plantaDeCampo, textoFlete, validarPlanta, tramosDeCotizacion } from './fleteTramos';
+import { kmFaltantes, kmSugeridos, plantaDeCampo, resumenFlete, textoFlete, validarPlanta, tramosDeCotizacion } from './fleteTramos';
 import type { ProductoConCosto } from '@/types';
 
 const tarifaA = [{ km: 100, tarifa: 2000 }, { km: 150, tarifa: 2600 }];
@@ -103,5 +103,14 @@ describe('validarPlanta', () => {
     expect(validarPlanta('tandil', '10', ex, 'a').ok).toBe(true);
     expect(validarPlanta('', '10', ex).ok).toBe(false);
     expect(validarPlanta('X', 'cien', ex).ok).toBe(false);
+  });
+});
+
+describe('resumenFlete', () => {
+  const formato = (n: number) => n.toFixed(2).replace('.', ',');
+  it('arma la línea del bloque cerrado', () => {
+    expect(resumenFlete({ modalidad: 'largo_corto', km: 165, kmCorto: 25.4, usdTn: 28.96, formato })).toBe('Largo + corto · 165 + 25,40 km · USD 28,96/tn');
+    expect(resumenFlete({ modalidad: 'directo', km: 180, kmCorto: 0, usdTn: 25.1, formato })).toBe('Directo · 180 km · USD 25,10/tn');
+    expect(resumenFlete({ modalidad: 'directo', km: 0, kmCorto: 0, usdTn: null, formato })).toBe('Directo · sin km');
   });
 });
