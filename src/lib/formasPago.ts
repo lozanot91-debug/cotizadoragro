@@ -100,6 +100,13 @@ export interface OpcionPago {
   valorHoyUSD: number;
   /** % de diferencia del valor hoy contra contado (positivo = más caro) */
   difVsContadoPct: number;
+  /** Solo tarjetas: ND de la empresa en la moneda de la opción (redondeado igual que `monto`) */
+  ndMonto?: number;
+  /**
+   * Solo tarjetas: `monto - ndMonto` (base + todo el interés TNA). La TNA se sigue calculando sobre base+ND,
+   * así que el interés sobre el ND queda dentro de este costo.
+   */
+  costoConTasa?: number;
   /** Canje: toneladas a entregar */
   toneladas?: number;
   /** Dólar estimado al vencimiento usado (opciones en pesos) */
@@ -161,6 +168,7 @@ export function compararFormasPago(e: EntradaComparador): OpcionPago[] {
     if (t.moneda === 'USD') {
       crudas.push({
         clave: `tarjeta-${t.id}`, nombre: t.nombre, moneda: 'USD', monto: r2(totalUSD), dias: t.dias, fecha: sumarDias(hoy, t.dias),
+        ndMonto: r2(totalContado * t.nd_pct / 100), costoConTasa: r2(r2(totalUSD) - r2(totalContado * t.nd_pct / 100)),
         detalle: partes, usdAlVencimiento: totalUSD, valorHoyUSD: valorHoy(totalUSD, t.dias, p.tasa_ref_anual_pct),
       });
     } else if (e.tcHoy && e.tcHoy > 0) {
@@ -170,6 +178,8 @@ export function compararFormasPago(e: EntradaComparador): OpcionPago[] {
       const usd = pesos / tcv;
       crudas.push({
         clave: `tarjeta-${t.id}`, nombre: t.nombre, moneda: 'ARS', monto: Math.round(pesos), dias: t.dias, fecha: sumarDias(hoy, t.dias),
+        ndMonto: Math.round(totalContado * t.nd_pct / 100 * e.tcHoy),
+        costoConTasa: Math.round(pesos) - Math.round(totalContado * t.nd_pct / 100 * e.tcHoy),
         detalle: `${partes} · en pesos al dólar ${r2(e.tcHoy)}`, usdAlVencimiento: usd, tcVencimiento: r2(tcv),
         valorHoyUSD: valorHoy(usd, t.dias, p.tasa_ref_anual_pct),
       });

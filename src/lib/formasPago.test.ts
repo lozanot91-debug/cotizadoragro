@@ -69,4 +69,24 @@ describe('formas de pago', () => {
     expect(t).toContain('*Contado*: USD 11050.00 hoy');
     expect(t).toMatch(/\*Agro \$\*: \$ \d+ al 2027-04-07/);
   });
+  it('tarjetas: desglose ND / costo con tasa sin tocar el total', () => {
+    const tarjetas: ParamsFormasPago['tarjetas'] = [
+      { id: 'a', nombre: 'A', moneda: 'USD', nd_pct: 2.5, tna_pct: 0, dias: 30 },
+      { id: 'b', nombre: 'B', moneda: 'USD', nd_pct: 3, tna_pct: 24, dias: 90 },
+      { id: 'c', nombre: 'C', moneda: 'ARS', nd_pct: 1.75, tna_pct: 36, dias: 180 },
+    ];
+    const por = Object.fromEntries(compararFormasPago({ ...base, params: { ...params, tarjetas }, plazo: null, canje: null }).map((o) => [o.clave, o]));
+    expect(por['tarjeta-a'].ndMonto).toBe(276.25);
+    expect(por['tarjeta-a'].costoConTasa! + por['tarjeta-a'].ndMonto!).toBeCloseTo(por['tarjeta-a'].monto, 2);
+    expect(por.contado.ndMonto).toBeUndefined();
+    const b = por['tarjeta-b'];
+    expect(b.monto).toBeCloseTo(11050 * 1.03 * (1 + 0.24 * 90 / 365), 2);
+    expect(b.ndMonto).toBeCloseTo(11050 * 0.03, 2);
+    expect(Math.abs(b.costoConTasa! + b.ndMonto! - b.monto)).toBeLessThanOrEqual(0.01);
+    const c = por['tarjeta-c'];
+    expect(Number.isInteger(c.ndMonto)).toBe(true);
+    expect(Number.isInteger(c.costoConTasa)).toBe(true);
+    expect(c.ndMonto).toBe(Math.round(11050 * 0.0175 * 1500));
+    expect(Math.abs(c.costoConTasa! + c.ndMonto! - c.monto)).toBeLessThanOrEqual(1);
+  });
 });

@@ -7,7 +7,7 @@ import { formatearFecha, hoyAR } from '@/lib/fechas';
 import { CULTIVOS_CANJE, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
 import { PLAZA_DEFECTO, ultimaPizarra } from '@/lib/relacion';
 import {
-  PARAMS_FORMAS_PAGO_BASE, compararFormasPago, mejorOpcion, textoWhatsAppFormasPago, type ParamsFormasPago, type TarjetaPago,
+  PARAMS_FORMAS_PAGO_BASE, compararFormasPago, mejorOpcion, textoWhatsAppFormasPago, type OpcionPago, type ParamsFormasPago, type TarjetaPago,
 } from '@/lib/formasPago';
 import type { PizarraGrano } from '@/types';
 
@@ -25,12 +25,18 @@ const num = (s: string) => { const n = Number(String(s).replace(',', '.')); retu
 const fmt = (n: number, d = 2) => formatUSD(n, d);
 const inputCls = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm tabular-nums outline-none focus:ring-2 focus:ring-emerald-500';
 
+const monedaTxt = (o: OpcionPago, n: number) => (o.moneda === 'ARS' ? `$ ${formatUSD(n, 0)}` : `USD ${fmt(n)}`);
+const desgloseND = (o: OpcionPago) => `Costo con tasa: ${monedaTxt(o, o.costoConTasa ?? 0)} · ND: ${monedaTxt(o, o.ndMonto ?? 0)}`;
+
 function Campo({ label, valor, onChange, sufijo, ancho = 'w-24' }: { label: string; valor: string; onChange: (v: string) => void; sufijo?: string; ancho?: string }) {
+  // Borrador local: conserva "2," o "2." mientras se tipea; solo se resincroniza si el valor externo cambia de verdad
+  const [borrador, setBorrador] = useState(valor);
+  if (num(valor) !== num(borrador)) setBorrador(valor);
   return (
     <label className={`block ${ancho}`}>
       <span className="block text-[11px] text-gray-500 mb-0.5">{label}</span>
       <span className="relative block">
-        <input value={valor} onChange={(e) => onChange(e.target.value)} inputMode="decimal" className={`${inputCls} ${sufijo ? 'pr-7' : ''}`} />
+        <input value={borrador} onChange={(e) => { setBorrador(e.target.value); onChange(e.target.value); }} inputMode="decimal" className={`${inputCls} ${sufijo ? 'pr-7' : ''}`} />
         {sufijo && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">{sufijo}</span>}
       </span>
     </label>
@@ -164,6 +170,7 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-400 mt-0.5">{o.detalle}</p>
+                  {o.ndMonto !== undefined && o.costoConTasa !== undefined && <p className="text-[11px] text-gray-400">{desgloseND(o)}</p>}
                 </li>
               );
             })}
@@ -189,6 +196,7 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
                         {esMejor && <Trophy className="w-3.5 h-3.5 text-emerald-600" />}{o.nombre}
                       </span>
                       <span className="block text-[11px] text-gray-500">{o.detalle}</span>
+                      {o.ndMonto !== undefined && o.costoConTasa !== undefined && <span className="block text-[11px] text-gray-400">{desgloseND(o)}</span>}
                     </td>
                     <td className="py-2 px-1 text-right tabular-nums whitespace-nowrap">
                       {o.moneda === 'ARS' ? `$ ${formatUSD(o.monto, 0)}` : `USD ${fmt(o.monto)}`}

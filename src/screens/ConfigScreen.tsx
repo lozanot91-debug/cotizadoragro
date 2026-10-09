@@ -460,11 +460,11 @@ export default function ConfigScreen() {
                 </label>
                 <label className="block w-24">
                   <span className="block text-[11px] text-gray-500 mb-0.5">ND empresa %</span>
-                  <input type="number" step="0.1" value={t.nd_pct} onChange={(e) => setTarjeta(t.id, { nd_pct: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input type="number" step="any" value={t.nd_pct} onChange={(e) => setTarjeta(t.id, { nd_pct: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
                 </label>
                 <label className="block w-24">
                   <span className="block text-[11px] text-gray-500 mb-0.5">TNA %</span>
-                  <input type="number" step="0.1" value={t.tna_pct} onChange={(e) => setTarjeta(t.id, { tna_pct: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input type="number" step="any" value={t.tna_pct} onChange={(e) => setTarjeta(t.id, { tna_pct: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
                 </label>
                 <label className="block w-24">
                   <span className="block text-[11px] text-gray-500 mb-0.5">Días</span>
