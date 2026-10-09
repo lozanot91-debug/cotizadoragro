@@ -2,6 +2,7 @@
 import type { TramoFlete } from '@/lib/calculations';
 import type { Campo, ModalidadFlete, Planta, TarifaFlete } from '@/types';
 import { parseNumberInput } from '@/lib/format';
+import { factorAforo } from '@/lib/fleteAforo';
 
 export const MODALIDADES: { valor: ModalidadFlete; nombre: string; detalle: string }[] = [
   { valor: 'directo', nombre: 'Directo', detalle: 'Origen → campo' },
@@ -31,9 +32,20 @@ export function tramosDeCotizacion(input: {
   tarifas: TarifaFlete[];
   kmCorto: number;
   tarifasCorto: TarifaFlete[];
+  /** Aforo (tn) de cada tramo y tn cargadas con flete. El aforo corto solo cuenta en largo_corto. */
+  aforoTn?: number | null;
+  aforoCortoTn?: number | null;
+  tnCargadas?: number;
 }): TramoFlete[] {
-  const principal = { km: input.km, tarifas: input.tarifas };
-  return tieneCorto(input.modalidad) ? [principal, { km: input.kmCorto, tarifas: input.tarifasCorto }] : [principal];
+  const tn = input.tnCargadas ?? 0;
+  const conFactor = (aforo: number | null | undefined) => {
+    const f = factorAforo(tn, aforo);
+    return f > 1 ? { factorAforo: f } : {};
+  };
+  const principal = { km: input.km, tarifas: input.tarifas, ...conFactor(input.aforoTn) };
+  return tieneCorto(input.modalidad)
+    ? [principal, { km: input.kmCorto, tarifas: input.tarifasCorto, ...conFactor(input.aforoCortoTn) }]
+    : [principal];
 }
 
 /** Km del tramo que todavía falta cargar (para avisar). */

@@ -50,11 +50,18 @@ describe('calcularLinea con tramos', () => {
 });
 
 describe('modalidades', () => {
+  const base = { km: 100, tarifas: tarifaA, kmCorto: 20, tarifasCorto: tarifaB };
   it('arma uno o dos tramos', () => {
-    const base = { km: 100, tarifas: tarifaA, kmCorto: 20, tarifasCorto: tarifaB };
     expect(tramosDeCotizacion({ ...base, modalidad: 'directo' })).toHaveLength(1);
     expect(tramosDeCotizacion({ ...base, modalidad: 'largo' })).toHaveLength(1);
     expect(tramosDeCotizacion({ ...base, modalidad: 'largo_corto' })).toEqual([{ km: 100, tarifas: tarifaA }, { km: 20, tarifas: tarifaB }]);
+  });
+  it('aforo por tramo: factor propio en cada uno, el corto se ignora fuera de largo_corto', () => {
+    const a = { aforoTn: 8, aforoCortoTn: 6, tnCargadas: 4 };
+    expect(tramosDeCotizacion({ ...base, modalidad: 'largo_corto', ...a }).map((t) => t.factorAforo)).toEqual([2, 1.5]);
+    expect(tramosDeCotizacion({ ...base, modalidad: 'largo', ...a })).toEqual([{ km: 100, tarifas: tarifaA, factorAforo: 2 }]);
+    expect(tramosDeCotizacion({ ...base, modalidad: 'largo_corto', aforoCortoTn: 6, tnCargadas: 4 }).map((t) => t.factorAforo)).toEqual([undefined, 1.5]);
+    expect(tramosDeCotizacion({ ...base, modalidad: 'largo_corto', aforoTn: 3, aforoCortoTn: NaN, tnCargadas: 4 }).map((t) => t.factorAforo)).toEqual([undefined, undefined]);
   });
   it('avisa los km que faltan', () => {
     expect(kmFaltantes('directo', 0, 0)).toEqual(['km del directo']);

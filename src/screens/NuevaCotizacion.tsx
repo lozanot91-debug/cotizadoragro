@@ -14,7 +14,7 @@ import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import FleteCotizacion from '@/components/FleteCotizacion';
 import EnviarAFacturar from '@/components/EnviarAFacturar';
 import { BotonFicha } from '@/components/FichaProducto';
-import { factorAforo, tnCargadasConFlete } from '@/lib/fleteAforo';
+import { tnCargadasConFlete } from '@/lib/fleteAforo';
 import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizacion } from '@/lib/fleteTramos';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
@@ -99,6 +99,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const tcFleteTocadoRef = useRef(false);
   // Aforo del flete (tn), a mano en cada cotización; texto crudo, vacío = sin aforo
   const [aforoTn, setAforoTn] = useState('');
+  const [aforoCortoTn, setAforoCortoTn] = useState('');
   const [km, setKm] = useState('');
   const [vigencia, setVigencia] = useState('');
   const [conIva, setConIva] = useState(false);
@@ -222,6 +223,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         // Las cotizaciones de antes del TC de flete se calcularon con tc: se respeta
         setTcFlete(String(cotiz.tc_flete || cotiz.tc));
         setAforoTn(cotiz.aforo_tn ? String(cotiz.aforo_tn).replace('.', ',') : '');
+        setAforoCortoTn(cotiz.aforo_corto_tn ? String(cotiz.aforo_corto_tn).replace('.', ',') : '');
         setKm(String(cotiz.km));
         setVigencia(String(cotiz.vigencia_dias));
         setConIva(!!cotiz.con_iva);
@@ -371,9 +373,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const kmNum = Math.ceil(parseNumberInput(km) || 0);
   const kmCortoNum = modalidad === 'largo_corto' ? Math.ceil(parseNumberInput(kmCorto) || 0) : 0;
   // El aviso de km fuera de planilla lo muestra cada tramo en FleteCotizacion
+  const aforoNum = parseNumberInput(aforoTn) || 0;
+  const aforoCortoNum = modalidad === 'largo_corto' ? parseNumberInput(aforoCortoTn) || 0 : 0;
+  const tnCargadas = tnCargadasConFlete(lineas);
   const tramos = useMemo(
-    () => tramosDeCotizacion({ modalidad, km: kmNum, tarifas, kmCorto: kmCortoNum, tarifasCorto }),
-    [modalidad, kmNum, tarifas, kmCortoNum, tarifasCorto],
+    () => tramosDeCotizacion({ modalidad, km: kmNum, tarifas, kmCorto: kmCortoNum, tarifasCorto, aforoTn: aforoNum, aforoCortoTn: aforoCortoNum, tnCargadas }),
+    [modalidad, kmNum, tarifas, kmCortoNum, tarifasCorto, aforoNum, aforoCortoNum, tnCargadas],
   );
 
   // Campos del cliente, para precargar los km. Si se acaba de elegir un cliente con un solo campo, se usa ese.
@@ -451,10 +456,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   /** Plazo por defecto (botones rápidos): se aplica a las líneas nuevas y a todas al tocarlo. */
   const plazoNum = Math.max(0, parseInt(plazo) || 0);
 
-  const aforoNum = parseNumberInput(aforoTn) || 0;
-  const tnCargadas = tnCargadasConFlete(lineas);
-  const factor = factorAforo(tnCargadas, aforoNum);
-
   const lineasCalc = useMemo(() => {
     return lineas.map((l) => {
       const costoListaTn = l.producto.es_fertilizante
@@ -462,11 +463,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         : (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo);
       const calc = calcularLinea({
         producto: l.producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
-        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD, factorAforo: factor,
+        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD,
       });
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
-  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum, factor]);
+  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum]);
 
   useEffect(() => {
     let vivo = true;
@@ -631,7 +632,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
       km: kmNum, convenio_flete_id: convenio?.id ?? null,
-      flete_modalidad: modalidad, km_corto: kmCortoNum, tc_flete: tcFleteNum || null, aforo_tn: aforoNum > 0 ? aforoNum : null,
+      flete_modalidad: modalidad, km_corto: kmCortoNum, tc_flete: tcFleteNum || null, aforo_tn: aforoNum > 0 ? aforoNum : null, aforo_corto_tn: aforoCortoNum > 0 ? aforoCortoNum : null,
       convenio_corto_id: modalidad === 'largo_corto' ? convenioCorto?.id ?? null : null, campo_id: campoId,
       con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
@@ -699,6 +700,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'convenio de flete', valor_anterior: ant ? String(ant.numero) : 'predeterminado', valor_nuevo: convenio ? String(convenio.numero) : null });
       }
       if ((editData.tc_flete || editData.tc) !== tcFleteNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'TC flete', valor_anterior: String(editData.tc_flete || editData.tc), valor_nuevo: String(tcFleteNum) });
+      if ((editData.aforo_corto_tn ?? 0) !== aforoCortoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'aforo tramo corto', valor_anterior: editData.aforo_corto_tn ? `${editData.aforo_corto_tn} tn` : 'Sin aforo', valor_nuevo: aforoCortoNum > 0 ? `${aforoCortoNum} tn` : 'Sin aforo' });
       if ((editData.aforo_tn ?? 0) !== aforoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'aforo', valor_anterior: editData.aforo_tn ? `${editData.aforo_tn} tn` : 'Sin aforo', valor_nuevo: aforoNum > 0 ? `${aforoNum} tn` : 'Sin aforo' });
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if ((editData.flete_modalidad ?? 'directo') !== modalidad) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'modalidad de flete', valor_anterior: nombreModalidad(editData.flete_modalidad), valor_nuevo: nombreModalidad(modalidad) });
@@ -1080,6 +1082,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         tcFlete={{ valor: tcFlete, onChange: (v) => { tcFleteTocadoRef.current = true; setTcFlete(v); }, bna: tcBna, usarBna: () => { tcFleteTocadoRef.current = false; if (tcBna) setTcFlete(String(tcBna.compra)); } }}
         modalidad={modalidad} onModalidad={cambiarModalidad}
         aforo={{ valor: aforoTn, onChange: setAforoTn, tnCargadas }}
+        aforoCorto={{ valor: aforoCortoTn, onChange: setAforoCortoTn, tnCargadas }}
         campos={camposCliente} campoId={campoId} onCampo={cambiarCampo} convenios={convenios} enUso={hayFertConFlete} conAviso={kmFaltante || tarifaFaltante}
         principal={{ km, onKm: setKm, convenio, onConvenio: setConvenioId, sugerido: sugeridos.principal }}
         corto={{ km: kmCorto, onKm: setKmCorto, convenio: convenioCorto, onConvenio: setConvenioCortoId, sugerido: sugeridos.corto }}

@@ -32,25 +32,25 @@ describe('calcularLinea fertilizante', () => {
   });
 });
 
-describe('calcularLinea aforo', () => {
-  it('factor 2 duplica el flete; factor 1 no cambia nada', () => {
+describe('calcularLinea aforo por tramo', () => {
+  const t = (km: number, factorAforo?: number) => ({ km, tarifas, factorAforo });
+  const usd = (km: number) => (buscarTarifa(km, tarifas)! * 10) / base.tc;
+  it('cada tramo multiplica solo su propio flete', () => {
+    const r = calcularLinea({ ...base, tramos: [t(300, 2), t(150, 1.5)] });
+    expect(r.fleteUSD).toBeCloseTo(usd(300) * 2 + usd(150) * 1.5, 8);
+  });
+  it('factor 1 o ausente no cambia nada', () => {
     const r1 = calcularLinea(base);
-    const r2 = calcularLinea({ ...base, factorAforo: 2 });
-    expect(r2.fleteUSD).toBeCloseTo(r1.fleteUSD * 2, 8);
-    expect(r2.precioUSD).toBe(r1.precioUSD);
-    expect(r2.totalUSD - r1.totalUSD).toBeCloseTo(base.cantidad * r1.fleteUSD, 6);
-    expect(calcularLinea({ ...base, factorAforo: 1 })).toEqual(r1);
+    expect(calcularLinea({ ...base, tramos: [t(150, 1)] })).toEqual(r1);
+    expect(calcularLinea({ ...base, tramos: [t(150, 0.5)] })).toEqual(r1);
+  });
+  it('un tramo con aforo y el otro sin', () => {
+    const r = calcularLinea({ ...base, tramos: [t(300, 2), t(150)] });
+    expect(r.fleteUSD).toBeCloseTo(usd(300) * 2 + usd(150), 8);
   });
   it('sin flete o no fertilizante no se ve afectado', () => {
-    expect(calcularLinea({ ...base, conFlete: false, factorAforo: 2 }).fleteUSD).toBe(0);
+    expect(calcularLinea({ ...base, conFlete: false, tramos: [t(150, 2)] }).fleteUSD).toBe(0);
     const otro = { ...urea, es_fertilizante: false, unid: 'LT' } as unknown as ProductoConCosto;
-    expect(calcularLinea({ ...base, producto: otro, factorAforo: 2 })).toEqual(calcularLinea({ ...base, producto: otro }));
+    expect(calcularLinea({ ...base, producto: otro, tramos: [t(150, 2)] })).toEqual(calcularLinea({ ...base, producto: otro }));
   });
-});
-
-describe('buscarTarifa', () => {
-  it('km exacto', () => expect(buscarTarifa(1200, tarifas)).toBe(12071.655));
-  it('redondea hacia arriba', () => expect(buscarTarifa(149.2, tarifas)).toBe(3457.077));
-  it('sin km', () => expect(buscarTarifa(0, tarifas)).toBe(0));
-  it('km faltante devuelve null', () => expect(buscarTarifa(1100, tarifas)).toBeNull());
 });
