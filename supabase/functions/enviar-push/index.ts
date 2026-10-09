@@ -75,8 +75,7 @@ Deno.serve(async (req) => {
       .select('id, creado_por_id, factura_numero, facturado_por, observacion, observado_por, cotizacion_id, cotizaciones(numero, numero_cliente, cliente_nombre, vendedor)')
       .eq('id', facturacionId).maybeSingle();
     if (!f) return respuesta({ error: 'No existe el pedido de facturación' }, 404);
-    // deno-lint-ignore no-explicit-any
-    const c = (f as any).cotizaciones as { numero: number; numero_cliente: number | null; cliente_nombre: string | null; vendedor: string | null } | null;
+    const c = (f as { cotizaciones?: unknown }).cotizaciones as { numero: number; numero_cliente: number | null; cliente_nombre: string | null; vendedor: string | null } | null;
     cotizacionId = f.cotizacion_id;
     const ref = c ? nombreCotizacion(c) : 'una cotización';
     if (tipo === 'facturado') {
@@ -94,8 +93,7 @@ Deno.serve(async (req) => {
       .select('id, respondido_por, correccion_mensaje, cotizacion_id, cotizaciones(numero, numero_cliente, cliente_nombre, vendedor)')
       .eq('id', pedidoId).maybeSingle();
     if (!p) return respuesta({ error: 'No existe el pedido' }, 404);
-    // deno-lint-ignore no-explicit-any
-    const c = (p as any).cotizaciones as { numero: number; numero_cliente: number | null; cliente_nombre: string | null; vendedor: string | null } | null;
+    const c = (p as { cotizaciones?: unknown }).cotizaciones as { numero: number; numero_cliente: number | null; cliente_nombre: string | null; vendedor: string | null } | null;
     cotizacionId = p.cotizacion_id;
     const ref = c ? nombreCotizacion(c) : 'una cotización';
     if (tipo === 'respondido') {

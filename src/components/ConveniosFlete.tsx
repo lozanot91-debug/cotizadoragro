@@ -33,7 +33,7 @@ export default function ConveniosFlete({ esAdmin }: { esAdmin: boolean }) {
 
   /** Lee la planilla y la carga en el convenio (solo ese convenio cambia). */
   async function subirPlanilla(c: Pick<ConvenioFlete, 'id' | 'numero' | 'descripcion'>, file: File): Promise<boolean> {
-    const filas = parsearTarifaFlete(await file.arrayBuffer());
+    const filas = await parsearTarifaFlete(await file.arrayBuffer());
     if (filas.length === 0) { toast.aviso('No se pudieron leer tarifas del archivo. Revisá que sea la planilla de flete.'); return false; }
     const n = await data.cargarTarifaConvenio(c.id, filas);
     const r = resumenTarifas(filas);

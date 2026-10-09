@@ -36,7 +36,7 @@ function SelectIva({ value, onChange, disabled, label }: { value: number; onChan
   return (
     <label className="block min-w-0">
       <span className="block text-xs font-medium text-gray-600 mb-1">{label}</span>
-      <select value={value} disabled={disabled} onChange={(e) => onChange(parseFloat(e.target.value))} aria-label={label} className={selectCls}>
+      <select value={value} disabled={disabled} onChange={(e) => { const n = parseFloat(e.target.value); if (!Number.isNaN(n)) onChange(n); }} aria-label={label} className={selectCls}>
         {opciones.map((v) => <option key={v} value={v}>{v === 0 ? 'Sin IVA' : `${formatInputNumber(v, 2)} %`}</option>)}
       </select>
     </label>

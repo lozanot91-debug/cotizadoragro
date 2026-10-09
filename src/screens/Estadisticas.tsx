@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { montoGanado, motivosDePerdida } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
-import { formatUSD, formatDate } from '@/lib/format';
+import { formatUSD } from '@/lib/format';
 import type { Cotizacion } from '@/types';
-import { BarChart3, TrendingUp, TrendingDown, DollarSign, Package, Trophy, AlertCircle, Loader2 } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, DollarSign, Trophy, Loader2 } from 'lucide-react';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 
@@ -11,7 +11,6 @@ export default function Estadisticas() {
   const data = useData();
   const [cotizaciones, setCotizaciones] = useState<(Cotizacion & { vendedor_email?: string })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState<'mes' | 'trimestre' | 'anio' | 'todo'>('todo');
 
   const cargar = useCallback(async () => {
     const cotizs = await data.fetchCotizaciones();

@@ -106,7 +106,7 @@ export default function Facturacion({ onEdit }: { onEdit: (cotizacionId: string)
                     <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre, notaVenta: p.nota_venta }), 'Texto para WhatsApp copiado')}
                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
                   )}
-                  <button onClick={() => facturacionPDF(docDePedido(p, ref))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
+                  <button onClick={() => void facturacionPDF(docDePedido(p, ref)).catch((e) => toast.error(e))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
                 </div>
               </div>
             );

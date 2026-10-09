@@ -3,7 +3,7 @@ import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
 import { formatUSD, formatDate } from '@/lib/format';
 import type { Cotizacion, EstadoCotizacion, Tarea, Configuracion } from '@/types';
-import { KanbanSquare, List, Search, TrendingUp, AlertCircle, Clock, X, Calendar, DollarSign, ChevronRight, GripVertical } from 'lucide-react';
+import { KanbanSquare, List, TrendingUp, AlertCircle, Calendar, GripVertical } from 'lucide-react';
 import { diasDesde, mesActualAR } from '@/lib/fechas';
 import { estaCerrada } from '@/lib/estados';
 import { useCambioEstado } from '@/hooks/useCambioEstado';
@@ -157,11 +157,6 @@ export default function Pipeline({ onEdit }: Props) {
   function destinosPosibles(c: Cotizacion): EstadoCotizacion[] {
     if (estaCerrada(c.estado)) return ['En negociación'];
     return ESTADOS.filter((e) => e !== c.estado);
-  }
-
-  async function setProbabilidad(c: Cotizacion, valor: number) {
-    await data.updateCotizacionProbabilidad(c.id, valor);
-    load();
   }
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;

@@ -3,7 +3,8 @@ import { useData } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
 import { parsearMargenesExcel } from '@/lib/excel';
 import type { FamiliaConfig, MargenProducto, Configuracion, ConvenioFlete } from '@/types';
-import { Settings, Save, Upload, Loader2, Check, Tag, Building2, Users, AlertCircle } from 'lucide-react';
+import { Save, Upload, Loader2, Check, AlertCircle } from 'lucide-react';
+import UsuariosAdmin from '@/components/UsuariosAdmin';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
@@ -117,7 +118,7 @@ export default function ConfigScreen() {
   async function handleImportMargenes(file: File) {
     try {
       const buffer = await file.arrayBuffer();
-      const margenes = parsearMargenesExcel(buffer);
+      const margenes = await parsearMargenesExcel(buffer);
       let actualizadas = 0;
       let creadas = 0;
       let noEncontrados = 0;
@@ -185,6 +186,8 @@ export default function ConfigScreen() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-gray-800">Márgenes y configuración</h1>
+
+      <UsuariosAdmin />
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">

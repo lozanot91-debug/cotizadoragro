@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DollarSign, Wheat, TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { PLAZAS_PIZARRA, PLAZA_DEFECTO, pizarraConVariacion } from '@/lib/relacion';
@@ -35,19 +35,28 @@ export default function MercadosInicio({ onAbrir }: { onAbrir?: () => void }) {
     try { const p = localStorage.getItem(PLAZA_KEY); return p && (PLAZAS_PIZARRA as readonly string[]).includes(p) ? p : PLAZA_DEFECTO; } catch { return PLAZA_DEFECTO; }
   });
 
+  const montadoRef = useRef(true);
   const cargar = useCallback(async () => {
     const [h, pz, fu] = await Promise.all([
       data.fetchHistoriaTC(5).catch(() => []),
       data.fetchPizarrasRecientes(30).catch(() => []),
       data.fetchFuturosRecientes(10).catch(() => []),
     ]);
+    if (!montadoRef.current) return;
     setTcHist(h); setPizarras(pz); setFuturos(fu);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    void cargar();
-    void data.fetchTipoCambioBNA().then((t) => { if (t) { setTc(t); void data.fetchHistoriaTC(5).then(setTcHist).catch(() => {}); } });
-    void data.actualizarPizarras().then((nuevas) => { if (nuevas) void cargar(); });
+    montadoRef.current = true;
+    void cargar().catch(() => {});
+    void data.fetchTipoCambioBNA().then((t) => {
+      if (t && montadoRef.current) {
+        setTc(t);
+        void data.fetchHistoriaTC(5).then((hh) => { if (montadoRef.current) setTcHist(hh); }).catch(() => {});
+      }
+    }).catch(() => {});
+    void data.actualizarPizarras().then((nuevas) => { if (nuevas && montadoRef.current) void cargar().catch(() => {}); }).catch(() => {});
+    return () => { montadoRef.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

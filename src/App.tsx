@@ -1,39 +1,41 @@
 import { AuthProvider, useAuth, useSesion } from '@/context/AuthContext';
 import AuthScreen from '@/screens/AuthScreen';
+import CuentaPendiente from '@/components/CuentaPendiente';
 import { Loader2 } from 'lucide-react';
 import { ToastProvider } from '@/components/Toast';
 import Layout, { type Screen } from '@/components/Layout';
 import Inicio from '@/screens/Inicio';
-import NuevaCotizacion from '@/screens/NuevaCotizacion';
-import Cotizaciones from '@/screens/Cotizaciones';
-import Pipeline from '@/screens/Pipeline';
-import Tareas from '@/screens/Tareas';
-import Visitas from '@/screens/Visitas';
-import Clientes from '@/screens/Clientes';
-import Listas from '@/screens/Listas';
-import Estadisticas from '@/screens/Estadisticas';
-import ConfigScreen from '@/screens/ConfigScreen';
-import Historial from '@/screens/Historial';
-import Recotizar from '@/screens/Recotizar';
-import Rentabilidad from '@/screens/Rentabilidad';
-import Vencimientos from '@/screens/Vencimientos';
-import Cobranzas from '@/screens/Cobranzas';
-import ConsultaCostos from '@/screens/ConsultaCostos';
-import CalculadoraCanje from '@/screens/CalculadoraCanje';
-import RelacionInsumoGrano from '@/screens/RelacionInsumoGrano';
-import Competencia from '@/screens/Competencia';
-import ResumenSemanal from '@/screens/ResumenSemanal';
-import EvolucionCostos from '@/screens/EvolucionCostos';
-import PedidosMesa from '@/screens/PedidosMesa';
-import PublicoMesa from '@/screens/PublicoMesa';
-import PublicoFacturacion from '@/screens/PublicoFacturacion';
-import Facturacion from '@/screens/Facturacion';
-import Catalogo from '@/screens/Catalogo';
 import { vencimientos } from '@/lib/vencimientos';
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { lazyConRecarga } from '@/lib/lazy';
 import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
-const Mapa = lazy(() => import('@/screens/Mapa'));
+const Mapa = lazyConRecarga(() => import('@/screens/Mapa'));
+const NuevaCotizacion = lazyConRecarga(() => import('@/screens/NuevaCotizacion'));
+const Cotizaciones = lazyConRecarga(() => import('@/screens/Cotizaciones'));
+const Pipeline = lazyConRecarga(() => import('@/screens/Pipeline'));
+const Tareas = lazyConRecarga(() => import('@/screens/Tareas'));
+const Visitas = lazyConRecarga(() => import('@/screens/Visitas'));
+const Clientes = lazyConRecarga(() => import('@/screens/Clientes'));
+const Listas = lazyConRecarga(() => import('@/screens/Listas'));
+const Estadisticas = lazyConRecarga(() => import('@/screens/Estadisticas'));
+const ConfigScreen = lazyConRecarga(() => import('@/screens/ConfigScreen'));
+const Historial = lazyConRecarga(() => import('@/screens/Historial'));
+const Recotizar = lazyConRecarga(() => import('@/screens/Recotizar'));
+const Rentabilidad = lazyConRecarga(() => import('@/screens/Rentabilidad'));
+const Vencimientos = lazyConRecarga(() => import('@/screens/Vencimientos'));
+const Cobranzas = lazyConRecarga(() => import('@/screens/Cobranzas'));
+const ConsultaCostos = lazyConRecarga(() => import('@/screens/ConsultaCostos'));
+const CalculadoraCanje = lazyConRecarga(() => import('@/screens/CalculadoraCanje'));
+const RelacionInsumoGrano = lazyConRecarga(() => import('@/screens/RelacionInsumoGrano'));
+const Competencia = lazyConRecarga(() => import('@/screens/Competencia'));
+const ResumenSemanal = lazyConRecarga(() => import('@/screens/ResumenSemanal'));
+const EvolucionCostos = lazyConRecarga(() => import('@/screens/EvolucionCostos'));
+const PedidosMesa = lazyConRecarga(() => import('@/screens/PedidosMesa'));
+const PublicoMesa = lazyConRecarga(() => import('@/screens/PublicoMesa'));
+const PublicoFacturacion = lazyConRecarga(() => import('@/screens/PublicoFacturacion'));
+const Facturacion = lazyConRecarga(() => import('@/screens/Facturacion'));
+const Catalogo = lazyConRecarga(() => import('@/screens/Catalogo'));
 
 function AppContent() {
   const { usuario } = useAuth();
@@ -153,30 +155,32 @@ function AppContent() {
   return (
     <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge} facturaBadge={facturaBadge}>
       {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} onDuplicateCotiz={handleDuplicateCotiz} pedidoBadge={pedidoBadge} />}
-      {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} onAbrirGuardada={handleEditCotiz} />}
-      {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
-      {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
-      {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
-      {screen === 'vencimientos' && <Vencimientos onEdit={handleEditCotiz} />}
-      {screen === 'cobranzas' && <Cobranzas onEdit={handleEditCotiz} />}
-      {screen === 'pedidos' && <PedidosMesa onEdit={handleEditCotiz} />}
-      {screen === 'facturacion' && <Facturacion onEdit={handleEditCotiz} />}
-      {screen === 'costos' && <EvolucionCostos />}
-      {screen === 'consulta' && <ConsultaCostos />}
-      {screen === 'canje' && <CalculadoraCanje key={canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} onEditCotiz={handleEditCotiz} />}
-      {screen === 'catalogo' && <Catalogo />}
-      {screen === 'relacion' && <RelacionInsumoGrano />}
-      {screen === 'competencia' && <Competencia />}
-      {screen === 'resumen' && <ResumenSemanal onEditCotiz={handleEditCotiz} onNavigate={handleNavigate} />}
-      {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
-      {screen === 'tareas' && <Tareas />}
-      {screen === 'visitas' && <Visitas />}
-      {screen === 'mapa' && <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>}><Mapa /></Suspense>}
-      {screen === 'clientes' && <Clientes onCalcularCanje={(id) => { setCanjeClienteId(id); setScreen('canje'); }} onEditCotiz={handleEditCotiz} />}
-      {screen === 'listas' && <Listas />}
-      {screen === 'estadisticas' && <Estadisticas />}
-      {screen === 'config' && usuario.rol === 'admin' && <ConfigScreen />}
-      {screen === 'historial' && <Historial />}
+      <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>}>
+        {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} onAbrirGuardada={handleEditCotiz} />}
+        {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
+        {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
+        {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
+        {screen === 'vencimientos' && <Vencimientos onEdit={handleEditCotiz} />}
+        {screen === 'cobranzas' && <Cobranzas onEdit={handleEditCotiz} />}
+        {screen === 'pedidos' && <PedidosMesa onEdit={handleEditCotiz} />}
+        {screen === 'facturacion' && <Facturacion onEdit={handleEditCotiz} />}
+        {screen === 'costos' && <EvolucionCostos />}
+        {screen === 'consulta' && <ConsultaCostos />}
+        {screen === 'canje' && <CalculadoraCanje key={canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} onEditCotiz={handleEditCotiz} />}
+        {screen === 'catalogo' && <Catalogo />}
+        {screen === 'relacion' && <RelacionInsumoGrano />}
+        {screen === 'competencia' && <Competencia />}
+        {screen === 'resumen' && <ResumenSemanal onEditCotiz={handleEditCotiz} onNavigate={handleNavigate} />}
+        {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
+        {screen === 'tareas' && <Tareas />}
+        {screen === 'visitas' && <Visitas />}
+        {screen === 'mapa' && <Mapa />}
+        {screen === 'clientes' && <Clientes onCalcularCanje={(id) => { setCanjeClienteId(id); setScreen('canje'); }} onEditCotiz={handleEditCotiz} />}
+        {screen === 'listas' && <Listas />}
+        {screen === 'estadisticas' && <Estadisticas />}
+        {screen === 'config' && usuario.rol === 'admin' && <ConfigScreen />}
+        {screen === 'historial' && <Historial />}
+      </Suspense>
     </Layout>
   );
 }
@@ -189,6 +193,7 @@ function Puerta() {
   }
   if (!usuario) return <AuthScreen />;
   if (recuperando) return <AuthScreen modoInicial="nueva" />;
+  if (!usuario.activo) return <CuentaPendiente />;
   return <AppContent />;
 }
 
@@ -201,11 +206,11 @@ function codigoPublico(param: 'mesa' | 'facturar'): string | null {
 export default function App() {
   const mesa = codigoPublico('mesa');
   if (mesa) {
-    return <ToastProvider><PublicoMesa token={mesa} /></ToastProvider>;
+    return <ToastProvider><Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>}><PublicoMesa token={mesa} /></Suspense></ToastProvider>;
   }
   const facturar = codigoPublico('facturar');
   if (facturar) {
-    return <ToastProvider><PublicoFacturacion token={facturar} /></ToastProvider>;
+    return <ToastProvider><Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>}><PublicoFacturacion token={facturar} /></Suspense></ToastProvider>;
   }
   return (
     <AuthProvider>

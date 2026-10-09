@@ -150,8 +150,8 @@ export default function PublicoMesa({ token }: { token: string }) {
         </div>
         {pedido.nota_respuesta && <p className="text-sm text-gray-600 bg-white rounded-xl border border-gray-200 p-4"><strong>Tu nota:</strong> {pedido.nota_respuesta}</p>}
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => comprobanteExcel(comprobante)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileSpreadsheet className="w-4 h-4" /> Bajar Excel</button>
-          <button onClick={() => comprobantePDF(comprobante)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileDown className="w-4 h-4" /> Bajar PDF</button>
+          <button onClick={() => void comprobanteExcel(comprobante).catch(console.error)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileSpreadsheet className="w-4 h-4" /> Bajar Excel</button>
+          <button onClick={() => void comprobantePDF(comprobante).catch(console.error)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileDown className="w-4 h-4" /> Bajar PDF</button>
         </div>
         {pedido.correccion_solicitada ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 flex gap-3">

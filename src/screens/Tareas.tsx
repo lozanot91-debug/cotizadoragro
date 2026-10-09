@@ -4,8 +4,8 @@ import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
 import type { Tarea, Cliente, Cotizacion } from '@/types';
-import { CheckSquare, Plus, X, Check, Clock, Calendar, Trash2, Edit2, AlertCircle, ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react';
-import { diasDesde, hoyAR, sumarDias } from '@/lib/fechas';
+import { CheckSquare, Plus, X, Check, Clock, Calendar, Trash2, Edit2, AlertCircle, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { hoyAR, sumarDias } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -160,12 +160,6 @@ export default function Tareas() {
     }
     setModalCompletar(null);
     setCompletarForm({ resultado: '', agendarProxima: false, proximaFecha: addDays(3) });
-    load();
-  }
-
-  async function reprogramar(id: string, nuevaFecha: string) {
-    await data.updateTarea(id, { fecha_vencimiento: nuevaFecha });
-    await registrarCambio({ tipo: 'tarea', entidad: tareas.find((t) => t.id === id)?.titulo, campo: 'reprogramación', valor_nuevo: nuevaFecha });
     load();
   }
 

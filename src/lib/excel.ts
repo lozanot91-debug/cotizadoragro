@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 
 export interface FilaCosto {
   proveedor: string;
@@ -42,21 +41,24 @@ function extraerFechaDeNombre(nombre: string): string | null {
   // Formato: lista_de_costos_2-10-26.xlsx => 2/10/2026
   const match = nombre.match(/(\d{1,2})-(\d{1,2})-(\d{2,4})/);
   if (match) {
-    let [, dia, mes, anio] = match;
+    const [, dia, mes] = match;
+    let anio = match[3];
     if (anio.length === 2) anio = '20' + anio;
     return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
   }
   // También probar formato dd_mm_yyyy
   const match2 = nombre.match(/(\d{1,2})_(\d{1,2})_(\d{2,4})/);
   if (match2) {
-    let [, dia, mes, anio] = match2;
+    const [, dia, mes] = match2;
+    let anio = match2[3];
     if (anio.length === 2) anio = '20' + anio;
     return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
   }
   return null;
 }
 
-export function parsearListaCostos(archivo: ArrayBuffer, nombreArchivo: string): ResultadoCostos {
+export async function parsearListaCostos(archivo: ArrayBuffer, nombreArchivo: string): Promise<ResultadoCostos> {
+  const XLSX = await import('xlsx');
   const wb = XLSX.read(archivo, { type: 'array' });
   const hoja = wb.Sheets[wb.SheetNames[0]];
   const json: Record<string, unknown>[] = XLSX.utils.sheet_to_json(hoja, { raw: false });
@@ -98,10 +100,10 @@ export interface FilaFlete {
   tarifa: number;
 }
 
-export function parsearTarifaFlete(archivo: ArrayBuffer): FilaFlete[] {
+export async function parsearTarifaFlete(archivo: ArrayBuffer): Promise<FilaFlete[]> {
+  const XLSX = await import('xlsx');
   const wb = XLSX.read(archivo, { type: 'array' });
   const hoja = wb.Sheets[wb.SheetNames[0]];
-  const json: Record<string, unknown>[] = XLSX.utils.sheet_to_json(hoja, { raw: false, header: 1 }) as unknown as Record<string, unknown>[];
 
   // La tarifa de flete tiene bloques de columnas: Km., Tarifa, Tierra repetidos
   // Leemos como array de arrays para procesar las columnas
@@ -132,7 +134,8 @@ export function parsearTarifaFlete(archivo: ArrayBuffer): FilaFlete[] {
   return Array.from(mapa.entries()).map(([km, tarifa]) => ({ km, tarifa }));
 }
 
-export function parsearMargenesExcel(archivo: ArrayBuffer): { cod?: string; familia?: string; margen: number }[] {
+export async function parsearMargenesExcel(archivo: ArrayBuffer): Promise<{ cod?: string; familia?: string; margen: number }[]> {
+  const XLSX = await import('xlsx');
   const wb = XLSX.read(archivo, { type: 'array' });
   const hoja = wb.Sheets[wb.SheetNames[0]];
   const json: Record<string, unknown>[] = XLSX.utils.sheet_to_json(hoja, { raw: false });

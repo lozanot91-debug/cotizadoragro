@@ -1,6 +1,5 @@
-import { jsPDF } from 'jspdf';
+import type { jsPDF } from 'jspdf';
 import { nombreModalidad, textoFlete } from '@/lib/fleteTramos';
-import * as XLSX from 'xlsx';
 import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/types';
 import { formatUSD, formatDate } from '@/lib/format';
 import { calcularTotalesIva, recargoPorcentaje, type TotalesIva } from '@/lib/calculations';
@@ -107,13 +106,14 @@ function recortar(doc: jsPDF, texto: string, anchoMm: number): string {
 }
 
 /** Arma el PDF de la cotización (sin descargarlo). `logo` es la imagen en data URL; sin logo se escribe el nombre. */
-export function construirPDF(
+export async function construirPDF(
   cotiz: Cotizacion,
   lineas: CotizacionLinea[],
   cliente: Cliente | null,
   config: Configuracion,
   logo?: string
-): jsPDF {
+): Promise<jsPDF> {
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = 210;
   const margin = 15;
@@ -305,16 +305,17 @@ export function construirPDF(
   return doc;
 }
 
-export function generarPDF(
+export async function generarPDF(
   cotiz: Cotizacion,
   lineas: CotizacionLinea[],
   cliente: Cliente | null,
   config: Configuracion
-) {
-  construirPDF(cotiz, lineas, cliente, config, LOGO_CERES_TOLVAS).save(`Cotizacion_${archivoCotizacion(cotiz)}.pdf`);
+): Promise<void> {
+  (await construirPDF(cotiz, lineas, cliente, config, LOGO_CERES_TOLVAS)).save(`Cotizacion_${archivoCotizacion(cotiz)}.pdf`);
 }
 
-export function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]) {
+export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]): Promise<void> {
+  const XLSX = await import('xlsx');
   const t = totalesDeCotizacion(cotiz, lineas);
   const data = lineas.map((l) => ({
     'Código': l.cod,

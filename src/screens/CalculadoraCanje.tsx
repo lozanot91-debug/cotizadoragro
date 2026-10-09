@@ -73,18 +73,19 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const [aplicando, setAplicando] = useState(false);
   const [filtro, setFiltro] = useState('');
 
+  const montado = useRef(true);
   const cargar = useCallback(async () => {
     const [cls, cots, cfg, hist, convs] = await Promise.all([data.fetchClientes(), data.fetchCotizaciones(), data.fetchConfig(), data.fetchCanjes(), data.fetchConvenios()]);
     setConvenios(convs);
-    data.fetchPreciosGrano(300).then(setPreciosGrano).catch(() => setPreciosGrano([]));
+    data.fetchPreciosGrano(300).then((r) => { if (montado.current) setPreciosGrano(r); }).catch(() => { if (montado.current) setPreciosGrano([]); });
     // Pizarras: se muestran las guardadas y, si tienen más de 4 h, se piden de nuevo
-    data.fetchPizarrasRecientes().then(setPizarras).catch(() => setPizarras([]));
-    data.fetchFuturosRecientes().then(setFuturos).catch(() => setFuturos([]));
+    data.fetchPizarrasRecientes().then((r) => { if (montado.current) setPizarras(r); }).catch(() => { if (montado.current) setPizarras([]); });
+    data.fetchFuturosRecientes().then((r) => { if (montado.current) setFuturos(r); }).catch(() => { if (montado.current) setFuturos([]); });
     void data.actualizarPizarras().then((nuevas) => {
       if (!nuevas) return;
-      data.fetchPizarrasRecientes().then(setPizarras).catch(() => {});
-      data.fetchFuturosRecientes().then(setFuturos).catch(() => {});
-    });
+      data.fetchPizarrasRecientes().then((r) => { if (montado.current) setPizarras(r); }).catch(() => {});
+      data.fetchFuturosRecientes().then((r) => { if (montado.current) setFuturos(r); }).catch(() => {});
+    }).catch(() => {});
     setClientes(cls);
     setCotizaciones(cots);
     setDefaults(cfg.canje_parametros);
@@ -95,11 +96,12 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
       const c = cls.find((x) => x.id === clienteInicial);
       if (c) { setClienteTxt(c.nombre); setFiltro(c.nombre); }
     }
-    void data.fetchTipoCambioBNA().then(setTcBna);
+    void data.fetchTipoCambioBNA().then((b) => { if (montado.current) setTcBna(b); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteInicial]);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
 
   const cliente = useMemo(() => {
     const t = clienteTxt.trim().toLowerCase();
@@ -445,7 +447,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                     ayuda={ivaInsumos !== null && monto > 0 ? `Con IVA: USD ${fmt(montoConIva)}` : undefined} />
                   <label className="block">
                     <span className="block text-xs font-medium text-gray-600 mb-1">IVA de los insumos</span>
-                    <select value={ivaInsumos ?? ''} onChange={(e) => setIvaInsumos(e.target.value ? (parseFloat(e.target.value) as 10.5 | 21) : null)} className={inputCls}>
+                    <select value={ivaInsumos ?? ''} onChange={(e) => setIvaInsumos(e.target.value ? (Number(e.target.value) === 21 ? 21 : 10.5) : null)} className={inputCls}>
                       <option value="">El monto ya incluye IVA</option>
                       <option value="10.5">Sumar IVA 10,5 %</option>
                       <option value="21">Sumar IVA 21 %</option>

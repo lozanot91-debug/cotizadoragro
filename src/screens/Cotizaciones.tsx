@@ -138,7 +138,6 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
         <div className="space-y-2">
           {filtradas.map((c) => {
             const vencida = estaVencida(c);
-            const dias = diasDesde(c.fecha);
             const readOnly = esReadOnly(c);
             return (
               <div key={c.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"

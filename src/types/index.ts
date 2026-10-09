@@ -6,6 +6,7 @@ export interface Usuario {
   email: string;
   nombre: string | null;
   rol: Rol;
+  activo: boolean;
 }
 
 export interface Configuracion {

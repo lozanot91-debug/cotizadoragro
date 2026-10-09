@@ -124,8 +124,8 @@ export default function EnviarAFacturar({ cotizacion }: { cotizacion: Cotizacion
                 </button>
               </>
             )}
-            <button onClick={() => facturacionPDF(docDePedido(pedido, cotizacion))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
-            <button onClick={() => facturacionExcel(docDePedido(pedido, cotizacion))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
+            <button onClick={() => void facturacionPDF(docDePedido(pedido, cotizacion)).catch((e) => toast.error(e))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
+            <button onClick={() => void facturacionExcel(docDePedido(pedido, cotizacion)).catch((e) => toast.error(e))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
             {pedido.estado !== 'Facturado' && (
               <button onClick={() => void cancelar()} disabled={ocupado} className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1.5 disabled:opacity-50"><XCircle className="w-4 h-4" /> Cancelar</button>
             )}

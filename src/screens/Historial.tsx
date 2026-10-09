@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { HistorialCambio } from '@/types';
 import { History, Search, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { formatearFechaHora } from '@/lib/fechas';
 import { fetchAllPaged, type AnyFilter } from '@/hooks/useData';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
@@ -114,6 +113,7 @@ export default function Historial() {
         'Nuevo': r.valor_nuevo || '',
         'Detalle': r.detalle || '',
       }));
+      const XLSX = await import('xlsx');
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Historial');

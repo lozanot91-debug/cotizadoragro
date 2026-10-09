@@ -6,8 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import { parsearListaCostos } from '@/lib/excel';
 import { formatDate, formatUSD } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
-import type { ListaCostos, ProductoConCosto, Cotizacion } from '@/types';
-import { Upload, ListChecks, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp, X } from 'lucide-react';
+import type { ListaCostos, ProductoConCosto } from '@/types';
+import { Upload, ListChecks, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp } from 'lucide-react';
 import { hoyAR } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -41,7 +41,7 @@ export default function Listas() {
     setMensaje(null);
     try {
       const buffer = await file.arrayBuffer();
-      const { filas, fecha } = parsearListaCostos(buffer, file.name);
+      const { filas, fecha } = await parsearListaCostos(buffer, file.name);
       const fechaFinal = fecha || hoyAR();
 
       // Validate

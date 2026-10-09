@@ -1,6 +1,4 @@
 /** Excel y PDF del pedido de facturación: lo que necesita quien factura. */
-import { jsPDF } from 'jspdf';
-import * as XLSX from 'xlsx';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { describirCondicion, precioFinal, totalLinea, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
 import { nombreCotizacion, limpiarParaArchivo, type DatosNombre } from '@/lib/nombreCotizacion';
@@ -63,7 +61,8 @@ function cabecera(d: DocFacturacion): [string, string][] {
   ];
 }
 
-export function facturacionExcel(d: DocFacturacion) {
+export async function facturacionExcel(d: DocFacturacion): Promise<void> {
+  const XLSX = await import('xlsx');
   const filas: (string | number)[][] = [['Pedido de facturación'], ...cabecera(d)];
   if (d.observaciones) filas.push(['Observaciones', d.observaciones]);
   filas.push([]);
@@ -90,7 +89,8 @@ export function facturacionExcel(d: DocFacturacion) {
   XLSX.writeFile(wb, nombreArchivo(d, 'xlsx'));
 }
 
-export function facturacionPDF(d: DocFacturacion) {
+export async function facturacionPDF(d: DocFacturacion): Promise<void> {
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
   const ancho = doc.internal.pageSize.getWidth();
   const alto = doc.internal.pageSize.getHeight();

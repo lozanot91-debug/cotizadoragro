@@ -193,8 +193,8 @@ export default function PublicoFacturacion({ token }: { token: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => facturacionExcel(doc)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileSpreadsheet className="w-4 h-4" /> Bajar Excel</button>
-        <button onClick={() => facturacionPDF(doc)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileDown className="w-4 h-4" /> Bajar PDF</button>
+        <button onClick={() => void facturacionExcel(doc).catch(console.error)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileSpreadsheet className="w-4 h-4" /> Bajar Excel</button>
+        <button onClick={() => void facturacionPDF(doc).catch(console.error)} className="py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 flex items-center justify-center gap-2"><FileDown className="w-4 h-4" /> Bajar PDF</button>
       </div>
 
       {p.estado === 'Pendiente' && (

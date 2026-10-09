@@ -76,7 +76,7 @@ export async function fetchAllPaged<T>(
   return all;
 }
 
-export function useData() {
+function crearApi() {
   async function fetchConfig() {
     const data = await ok(supabase.from('configuracion').select('clave, valor'));
     const map: Record<string, string> = {};
@@ -550,8 +550,13 @@ export function useData() {
 
   /** Usuarios de la app (para asignar vendedor). */
   async function fetchUsuarios(): Promise<Usuario[]> {
-    const data = await ok(supabase.from('usuarios').select('id, email, nombre, rol').order('nombre'));
+    const data = await ok(supabase.from('usuarios').select('id, email, nombre, rol, activo').order('nombre'));
     return ((data || []) as Usuario[]).map((u) => ({ ...u, nombre: u.nombre || u.email.split('@')[0] }));
+  }
+
+  /** Admin: aprobar/desactivar usuarios y cambiar rol. */
+  async function actualizarUsuario(id: string, cambios: { activo?: boolean; rol?: 'admin' | 'vendedor' }) {
+    await ok(supabase.from('usuarios').update(cambios).eq('id', id));
   }
 
   async function updateConfig(clave: string, valor: string) {
@@ -1260,6 +1265,7 @@ export function useData() {
     eliminarContacto,
     fetchResumenClientes,
     fetchUsuarios,
+    actualizarUsuario,
     updateConfig,
     fetchFamiliasConfig,
     upsertFamiliaConfig,
@@ -1335,4 +1341,15 @@ export function useData() {
     updateCotizacionFechaCierre,
     deleteCotizacion,
   };
+}
+
+/**
+ * Las funciones de datos no dependen de ningún estado de React: se crean una sola vez y useData() devuelve
+ * siempre el mismo objeto. Así es estable entre renders (sirve como dependencia de useEffect/useCallback sin
+ * disparar recargas) y no se recrean ~100 funciones en cada render de cada pantalla.
+ */
+const api = crearApi();
+export type ApiDatos = typeof api;
+export function useData(): ApiDatos {
+  return api;
 }

@@ -106,7 +106,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   /** Último precio conocido de la competencia por código (últimos 6 meses) */
   const [compPorCod, setCompPorCod] = useState<Map<string, PrecioCompetencia>>(new Map());
   useEffect(() => {
-    data.fetchPreciosCompetencia(sumarDias(hoyAR(), -180)).then((r) => setCompPorCod(ultimoPorCod(r))).catch(() => {});
+    let vivo = true;
+    data.fetchPreciosCompetencia(sumarDias(hoyAR(), -180)).then((r) => { if (vivo) setCompPorCod(ultimoPorCod(r)); }).catch(() => {});
+    return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [conCanje, setConCanje] = useState(false);
@@ -193,7 +195,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       setTcBna(bna);
       if (bna && !editId && !tcTocadoRef.current) setTc(String(bna.venta));
       if (bna?.compra && !editId && !tcFleteTocadoRef.current) setTcFlete(String(bna.compra));
-    });
+    }).catch(() => {});
     setVigencia(String(cfg.vigencia_default));
     setClientes(cls);
     listaIdRef.current = lista?.id || null;
@@ -427,13 +429,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   >([]);
 
   useEffect(() => {
+    let vivo = true;
     if (clienteId) {
       data.fetchMargenesCliente(clienteId).then((ms) => {
-        setMargenesClienteState(ms.map((m) => ({ producto_id: m.producto_id, familia: m.familia, margen: m.margen })));
-      });
+        if (vivo) setMargenesClienteState(ms.map((m) => ({ producto_id: m.producto_id, familia: m.familia, margen: m.margen })));
+      }).catch(() => { if (vivo) setMargenesClienteState([]); });
     } else {
       setMargenesClienteState([]);
     }
+    return () => { vivo = false; };
   }, [clienteId]);
 
   const tcNum = parseNumberInput(tc);
@@ -836,17 +840,17 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       avisarExport('error', 'No se pudo copiar el texto. Probá de nuevo.');
     }
   }
-  function handleDescargarPDF() {
+  async function handleDescargarPDF() {
     try {
-      generarPDF(cotizParaExport(), lineasParaExport(), clienteSeleccionado, config!);
+      await generarPDF(cotizParaExport(), lineasParaExport(), clienteSeleccionado, config!);
     } catch (e) {
       console.error('Error al generar el PDF:', e);
       avisarExport('error', 'No se pudo generar el PDF. Probá de nuevo.');
     }
   }
-  function handleDescargarExcel() {
+  async function handleDescargarExcel() {
     try {
-      generarExcel(cotizParaExport(), lineasParaExport());
+      await generarExcel(cotizParaExport(), lineasParaExport());
     } catch (e) {
       console.error('Error al generar el Excel:', e);
       avisarExport('error', 'No se pudo generar el Excel. Probá de nuevo.');

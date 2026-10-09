@@ -8,6 +8,7 @@ export interface Usuario {
   email: string;
   nombre: string;
   rol: 'admin' | 'vendedor';
+  activo: boolean;
 }
 
 interface SesionCtx {
@@ -22,6 +23,10 @@ interface SesionCtx {
   cambiarPassword: (password: string) => Promise<{ error: string | null }>;
   /** Cambia el nombre del usuario logueado (solo el propio). */
   actualizarNombre: (nombre: string) => Promise<{ error: string | null }>;
+  /** Mensaje si no se pudo leer el perfil (la cuenta queda como pendiente). */
+  errorPerfil: string | null;
+  /** Vuelve a leer el perfil (ej: después de que un admin aprobó la cuenta). */
+  reintentarPerfil: () => void;
 }
 
 const Ctx = createContext<SesionCtx | undefined>(undefined);
@@ -52,6 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [cargandoPerfil, setCargandoPerfil] = useState(false);
   const [recuperando, setRecuperando] = useState(llegoPorRecuperacion);
+  const [errorPerfil, setErrorPerfil] = useState<string | null>(null);
+  const [intento, setIntento] = useState(0);
+  const reintentarPerfil = useCallback(() => setIntento((n) => n + 1), []);
 
   useEffect(() => {
     let vivo = true;
@@ -75,27 +83,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const email = sesion?.user.email ?? '';
 
   useEffect(() => {
-    if (!userId) { setPerfil(null); setCargandoPerfil(false); return; }
+    if (!userId) { setPerfil(null); setErrorPerfil(null); setCargandoPerfil(false); return; }
     let vivo = true;
     setCargandoPerfil(true);
     (async () => {
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, email, nombre, rol')
+        .select('id, email, nombre, rol, activo')
         .eq('id', userId)
         .maybeSingle();
       if (!vivo) return;
       if (error) console.error('No se pudo leer el perfil del usuario:', error);
-      // Sin perfil (o error): se entra con permisos de vendedor; el admin lo corrige en Supabase
+      setErrorPerfil(error ? 'No se pudo leer tu perfil. Revisá la conexión y probá de nuevo.' : null);
+      // Sin perfil (o error): la cuenta queda pendiente hasta que se pueda leer
+      const u = data as Usuario | null;
       setPerfil(
-        data
-          ? { ...(data as Usuario), nombre: (data as Usuario).nombre || email.split('@')[0] }
-          : { id: userId, email, nombre: email.split('@')[0] || 'Usuario', rol: 'vendedor' }
+        u && !error
+          ? { ...u, nombre: u.nombre || email.split('@')[0], activo: u.activo !== false }
+          : { id: userId, email, nombre: email.split('@')[0] || 'Usuario', rol: 'vendedor', activo: false }
       );
       setCargandoPerfil(false);
     })();
     return () => { vivo = false; };
-  }, [userId, email]);
+  }, [userId, email, intento]);
 
   useEffect(() => { fijarUsuarioActual(perfil?.nombre || 'Admin'); }, [perfil]);
 
@@ -138,7 +148,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     pedirRecuperacion,
     cambiarPassword,
     actualizarNombre,
-  }), [cargandoSesion, cargandoPerfil, userId, perfil, signIn, signOut, recuperando, pedirRecuperacion, cambiarPassword, actualizarNombre]);
+    errorPerfil,
+    reintentarPerfil,
+  }), [cargandoSesion, cargandoPerfil, userId, perfil, signIn, signOut, recuperando, pedirRecuperacion, cambiarPassword, actualizarNombre, errorPerfil, reintentarPerfil]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

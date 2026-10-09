@@ -3,8 +3,7 @@ import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
 import { registrarCambio } from '@/lib/historial';
-import { supabase } from '@/lib/supabase';
-import type { Visita, VisitaFoto, Cliente, Cotizacion } from '@/types';
+import type { Visita, VisitaFoto, Cliente } from '@/types';
 import { MapPin, Plus, X, Calendar, Clock, Check, Trash2, Edit2, AlertCircle, ChevronLeft, ChevronRight, Camera, MapPinned, Loader2, Image as ImageIcon } from 'lucide-react';
 import { armarFecha, diaDeLaSemana, diasDelMes, hoyAR, partesFecha, sumarDias } from '@/lib/fechas';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -47,7 +46,6 @@ export default function Visitas() {
   const { usuario } = useAuth();
   const [visitas, setVisitas] = useState<(Visita & { cliente?: { nombre: string } | null })[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [vista, setVista] = useState<'agenda' | 'calendario' | 'pasadas'>('agenda');
   const [filtroResponsable, setFiltroResponsable] = useState('');
@@ -90,10 +88,9 @@ export default function Visitas() {
   const en14dias = addDays(14);
 
   const cargar = useCallback(async () => {
-    const [vs, cls, cotizs] = await Promise.all([data.fetchVisitas(), data.fetchClientes(), data.fetchCotizaciones()]);
+    const [vs, cls] = await Promise.all([data.fetchVisitas(), data.fetchClientes()]);
     setVisitas(vs);
     setClientes(cls);
-    setCotizaciones(cotizs);
   }, []);
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
@@ -131,13 +128,15 @@ export default function Visitas() {
 
   async function crearVisita() {
     if (!form.fecha) return;
+    const lat = parseFloat(form.latitud);
+    const lng = parseFloat(form.longitud);
     const visita: Partial<Visita> = {
       fecha: form.fecha, hora: form.hora || null, tipo: form.tipo, estado: 'Programada',
       cliente_id: form.cliente_id || null, cotizacion_id: form.cotizacion_id || null,
       establecimiento: form.establecimiento || null, lote: form.lote || null,
       ubicacion_texto: form.ubicacion_texto || null,
-      latitud: form.latitud ? parseFloat(form.latitud) : null,
-      longitud: form.longitud ? parseFloat(form.longitud) : null,
+      latitud: Number.isFinite(lat) ? lat : null,
+      longitud: Number.isFinite(lng) ? lng : null,
       cultivo: form.cultivo, estadio: form.estadio || null, objetivo: form.objetivo || null,
       responsable: form.responsable || usuario.nombre, creada_por: usuario.nombre,
     };

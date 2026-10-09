@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Loader2, Truck, Package, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
@@ -36,6 +36,7 @@ export default function ConsultaCostos() {
   const [plantas, setPlantas] = useState<Planta[]>([]);
   const [plantaId, setPlantaId] = useState('');
 
+  const montado = useRef(true);
   const cargar = useCallback(async () => {
     const [listas, convs, cfg] = await Promise.all([data.fetchListas(), data.fetchConvenios(), data.fetchConfig()]);
     setConvenios(convs);
@@ -50,12 +51,13 @@ export default function ConsultaCostos() {
       setProductos(act);
       setAnteriores(new Map(ant.map((p) => [p.cod, p.costo])));
     }
-    void data.fetchTipoCambioBNA().then(setTcBna);
-    data.fetchPlantasFlete().then(setPlantas).catch((e) => console.error('No se pudieron cargar las plantas:', e));
+    void data.fetchTipoCambioBNA().then((b) => { if (montado.current) setTcBna(b); }).catch(() => {});
+    data.fetchPlantasFlete().then((p) => { if (montado.current) setPlantas(p); }).catch((e) => console.error('No se pudieron cargar las plantas:', e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
 
   const resultados = useMemo(() => (sel ? [] : buscarProductos(productos, busqueda)), [productos, busqueda, sel]);
 

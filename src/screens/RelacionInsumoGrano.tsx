@@ -111,18 +111,22 @@ export default function RelacionInsumoGrano() {
   const [baseGrano, setBaseGrano] = useState<'lleno' | 'neto'>('lleno');
   const [historiaInsumo, setHistoriaInsumo] = useState<{ fecha: string; costo: number }[] | null>(null);
 
+  const montado = useRef(true);
   const cargar = useCallback(async () => {
     const [ps, listas, cfg] = await Promise.all([data.fetchPreciosGrano(), data.fetchListas(), data.fetchConfig()]);
     setPrecios(ps);
     setConfig(cfg);
     if (listas[0]) setProductos(await data.fetchProductosConCosto(listas[0].id));
-    void data.fetchTipoCambioBNA().then(setTcBna);
+    void data.fetchTipoCambioBNA().then((b) => { if (montado.current) setTcBna(b); }).catch(() => {});
     setPizarras(await data.fetchPizarrasRecientes());
-    void data.actualizarPizarras().then((nuevas) => { if (nuevas) data.fetchPizarrasRecientes().then(setPizarras).catch(() => {}); });
+    void data.actualizarPizarras().then((nuevas) => {
+      if (nuevas) data.fetchPizarrasRecientes().then((r) => { if (montado.current) setPizarras(r); }).catch(() => {});
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
 
   // Al elegir un insumo, se trae la historia de su costo
   useEffect(() => {

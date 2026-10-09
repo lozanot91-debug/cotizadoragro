@@ -1,5 +1,3 @@
-import { jsPDF } from 'jspdf';
-import * as XLSX from 'xlsx';
 import { formatUSD, formatNumber } from '@/lib/format';
 import { unidadCosto } from '@/lib/pedidosPrecio';
 import { limpiarParaArchivo } from '@/lib/nombreCotizacion';
@@ -24,7 +22,8 @@ function nombreArchivo(c: ComprobanteMesa, ext: string): string {
   return `Costos_${limpiarParaArchivo(c.nombre)}.${ext}`;
 }
 
-export function comprobanteExcel(c: ComprobanteMesa) {
+export async function comprobanteExcel(c: ComprobanteMesa): Promise<void> {
+  const XLSX = await import('xlsx');
   const filas: (string | number)[][] = [
     ['Costos cargados por la mesa de insumos'],
     ['Cotización', c.nombre],
@@ -43,7 +42,8 @@ export function comprobanteExcel(c: ComprobanteMesa) {
   XLSX.writeFile(wb, nombreArchivo(c, 'xlsx'));
 }
 
-export function comprobantePDF(c: ComprobanteMesa) {
+export async function comprobantePDF(c: ComprobanteMesa): Promise<void> {
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const ancho = doc.internal.pageSize.getWidth();
   let y = 18;
