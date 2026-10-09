@@ -45,6 +45,7 @@ export default function Mapa() {
   const [zoom, setZoom] = useState(11);
   const [base, setBase] = useState<Base>('satelite');
   const [catastro, setCatastro] = useState(true);
+  const [opacidad, setOpacidad] = useState(0.9);
   const [busqueda, setBusqueda] = useState('');
   const [agregando, setAgregando] = useState(false);
 
@@ -83,6 +84,10 @@ export default function Mapa() {
     catastroRef.current = L.tileLayer.wms(ARBA_WMS, {
       layers: ARBA_CAPA, format: 'image/png', transparent: true, minZoom: ZOOM_CATASTRO, maxZoom: 20, attribution: 'Catastro © ARBA',
     }).addTo(map);
+    // ARBA pinta las parcelas con un relleno verde claro opaco: en modo "multiplicar" el relleno casi blanco
+    // deja ver la imagen de fondo y las líneas y números (oscuros) siguen bien marcados.
+    const cont = catastroRef.current.getContainer();
+    if (cont) cont.style.mixBlendMode = 'multiply';
     guardadasRef.current = L.featureGroup().addTo(map);
     seleccionRef.current = L.featureGroup().addTo(map);
     map.on('click', (e: L.LeafletMouseEvent) => consultarPunto.current(e.latlng.lat, e.latlng.lng));
@@ -109,6 +114,7 @@ export default function Mapa() {
     if (catastro && !map.hasLayer(capa)) capa.addTo(map);
     if (!catastro && map.hasLayer(capa)) map.removeLayer(capa);
   }, [catastro]);
+  useEffect(() => { catastroRef.current?.setOpacity(opacidad); }, [opacidad]);
 
   // Parcelas guardadas (verde)
   useEffect(() => {
@@ -233,6 +239,10 @@ export default function Mapa() {
             ))}
           </div>
           <label className="flex items-center gap-1.5 text-gray-700"><input type="checkbox" checked={catastro} onChange={(e) => setCatastro(e.target.checked)} className="accent-emerald-600" /> Catastro ARBA</label>
+          {catastro && (
+            <input type="range" min={0.2} max={1} step={0.1} value={opacidad} onChange={(e) => setOpacidad(Number(e.target.value))}
+              aria-label="Intensidad del catastro" title="Intensidad de las líneas del catastro" className="w-full accent-emerald-600" />
+          )}
           <p className="flex items-center gap-1.5 text-gray-500"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500/40 border-2 border-emerald-500" /> Campos de clientes</p>
         </div>
 
