@@ -2,8 +2,8 @@
 // Guarda la "cáscara" de la app para que abra rápido y se pueda instalar en el celular.
 // NO guarda datos: todo lo que va a Supabase (otro dominio) pasa directo por la red,
 // así que nunca se muestran cotizaciones o precios viejos.
-const VERSION = 'cotizador-v3';
-const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+const VERSION = 'cotizador-v4';
+const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/favicon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
