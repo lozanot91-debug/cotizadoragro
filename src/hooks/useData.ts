@@ -43,6 +43,7 @@ import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
 import { hoyAR } from '@/lib/fechas';
 import { paramsDesdeConfig, type ParamsCanje } from '@/lib/canje';
+import { paramsFormasPagoDesdeConfig, type ParamsFormasPago } from '@/lib/formasPago';
 import { usuarioActual } from '@/lib/usuarioActual';
 import { ErrorApp, ok, traducirError } from '@/lib/errores';
 import { validarCambioEstado } from '@/lib/estados';
@@ -100,7 +101,13 @@ function crearApi() {
       seguimiento_dias: parseFloat(map.seguimiento_dias || '3'),
       ultimo_contacto_dias: parseFloat(map.ultimo_contacto_dias || '60'),
       canje_parametros: paramsDesdeConfig(map.canje_parametros),
+      formas_pago_parametros: paramsFormasPagoDesdeConfig(map.formas_pago_parametros),
     };
+  }
+
+  async function fetchConfigFormasPago(): Promise<{ formas: ParamsFormasPago; canje: ParamsCanje }> {
+    const c = await fetchConfig();
+    return { formas: c.formas_pago_parametros, canje: c.canje_parametros };
   }
 
   /**
@@ -1203,6 +1210,7 @@ function crearApi() {
 
   return {
     fetchConfig,
+    fetchConfigFormasPago,
     fetchTipoCambioBNA,
     fetchHistoriaTC,
     fetchCanjes,

@@ -17,11 +17,12 @@ import { BotonFicha } from '@/components/FichaProducto';
 import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizacion } from '@/lib/fleteTramos';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
-import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2, ClipboardList } from 'lucide-react';
+import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2, ClipboardList, CreditCard } from 'lucide-react';
 import { hoyAR, formatearFechaHora, sumarDias } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import ComparadorFormasPago from '@/components/ComparadorFormasPago';
 import { ultimaCotizacion, type LineaDeCliente } from '@/lib/historialCliente';
 import { ultimoPorCod } from '@/lib/competencia';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -130,6 +131,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [historial, setHistorial] = useState<HistorialCambio[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
   const [modalEliminar, setModalEliminar] = useState(false);
+  const [verFormasPago, setVerFormasPago] = useState(false);
   const [showInsumoManual, setShowInsumoManual] = useState(false);
   // Pedido de precios a la mesa de insumos
   const [pedido, setPedido] = useState<PedidoPrecio | null>(null);
@@ -487,6 +489,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const canjeMonto = useMemo(() => calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: l.iva, recargoPct: l.recargoPct })), tcNum).total, [lineasFin, tcNum]);
   const canjeNeto = conCanje ? netoPorTn(canjePrecioNum, canjeParamsEf) : 0;
   const canjeTn = conCanje ? toneladasPorMonto(canjeMonto, canjeNeto) : 0;
+
+  // Comparador de formas de pago: neto e IVA de contado (sin financiación)
+  const baseContado = useMemo(() => calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: 0 })), tcNum), [lineasCalc, tcNum, conIva]);
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
@@ -1226,6 +1231,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <div key={d.tasa} className="flex justify-between"><span>IVA {formatInputNumber(d.tasa, 2) || '0'}% sobre {formatUSD(d.base)}</span><span>{formatUSD(d.iva)}</span></div>
             ))}
           </div>
+          <button onClick={() => setVerFormasPago(true)} disabled={lineas.length === 0} className="mt-4 w-full px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50">
+            <CreditCard className="w-4 h-4" /> Comparar formas de pago
+          </button>
         </div>
       </div>
 
@@ -1291,6 +1299,25 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal comparador de formas de pago */}
+      {verFormasPago && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setVerFormasPago(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><CreditCard className="w-5 h-5 text-emerald-600" /> Formas de pago</h3>
+              <button onClick={() => setVerFormasPago(false)} aria-label="Cerrar" className="p-1 text-gray-400 hover:text-gray-700"><X className="w-5 h-5" /></button>
+            </div>
+            <ComparadorFormasPago
+              netoUSD={baseContado.subtotal}
+              ivaUSD={baseContado.iva}
+              plazoInicial={plazoMax > 0 ? { dias: plazoMax, tasa_mensual_pct: tasaNum } : null}
+              canjeInicial={conCanje && canjePrecioNum > 0 ? { cultivo: canjeNombre, precioUSD: canjePrecioNum } : null}
+              titulo={editData ? nombreCotizacion(editData) : undefined}
+            />
+          </div>
         </div>
       )}
 

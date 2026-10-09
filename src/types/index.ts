@@ -1,4 +1,5 @@
 import type { ParamsCanje } from '@/lib/canje';
+import type { ParamsFormasPago } from '@/lib/formasPago';
 export type Rol = 'admin' | 'vendedor';
 
 export interface Usuario {
@@ -29,6 +30,7 @@ export interface Configuracion {
   ultimo_contacto_dias: number;
   /** Canje: parámetros de liquidación por defecto */
   canje_parametros: ParamsCanje;
+  formas_pago_parametros: ParamsFormasPago;
 }
 
 export interface FamiliaConfig {

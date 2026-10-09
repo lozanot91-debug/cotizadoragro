@@ -3,13 +3,14 @@ import { useData } from '@/hooks/useData';
 import { supabase } from '@/lib/supabase';
 import { parsearMargenesExcel } from '@/lib/excel';
 import type { FamiliaConfig, MargenProducto, Configuracion, ConvenioFlete } from '@/types';
-import { Save, Upload, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Save, Upload, Loader2, Check, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import UsuariosAdmin from '@/components/UsuariosAdmin';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { normalizarParams, PARAMS_CANJE_BASE } from '@/lib/canje';
+import { normalizarFormasPago, type TarjetaPago } from '@/lib/formasPago';
 
 const canjeEjemplo = 300;
 
@@ -22,7 +23,7 @@ export default function ConfigScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [tab, setTab] = useState<'empresa' | 'familias' | 'margenes' | 'crm' | 'canje'>('empresa');
+  const [tab, setTab] = useState<'empresa' | 'familias' | 'margenes' | 'crm' | 'canje' | 'formasPago'>('empresa');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
@@ -62,6 +63,7 @@ export default function ConfigScreen() {
       { clave: 'seguimiento_dias', valor: String(config.seguimiento_dias) },
       { clave: 'ultimo_contacto_dias', valor: String(config.ultimo_contacto_dias) },
       { clave: 'canje_parametros', valor: JSON.stringify(normalizarParams(config.canje_parametros)) },
+      { clave: 'formas_pago_parametros', valor: JSON.stringify(normalizarFormasPago(config.formas_pago_parametros)) },
     ];
     const cambios: CambioHistorial[] = [];
     for (const u of updates) {
@@ -80,6 +82,9 @@ export default function ConfigScreen() {
       }
       if (u.clave === 'canje_parametros' && JSON.stringify(prev.canje_parametros) !== u.valor) {
         cambios.push({ tipo: 'config', campo: 'parámetros de canje', valor_anterior: JSON.stringify(prev.canje_parametros), valor_nuevo: u.valor });
+      }
+      if (u.clave === 'formas_pago_parametros' && JSON.stringify(prev.formas_pago_parametros) !== u.valor) {
+        cambios.push({ tipo: 'config', campo: 'parámetros de formas de pago', valor_anterior: JSON.stringify(prev.formas_pago_parametros), valor_nuevo: u.valor });
       }
       if (u.clave === 'vigencia_default' && prev.vigencia_default !== config.vigencia_default) {
         cambios.push({ tipo: 'config', campo: 'vigencia default', valor_anterior: `${prev.vigencia_default} días`, valor_nuevo: `${config.vigencia_default} días` });
@@ -196,6 +201,7 @@ export default function ConfigScreen() {
         <button onClick={() => setTab('margenes')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'margenes' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Márgenes por producto</button>
         <button onClick={() => setTab('crm')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'crm' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>CRM</button>
         <button onClick={() => setTab('canje')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'canje' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Canje</button>
+        <button onClick={() => setTab('formasPago')} className={`px-4 py-2 rounded-md text-sm font-medium ${tab === 'formasPago' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Formas de pago</button>
       </div>
 
       {/* Tab: Empresa */}
@@ -412,6 +418,71 @@ export default function ConfigScreen() {
           </button>
         </div>
       )}
+
+      {/* Tab: Formas de pago */}
+      {tab === 'formasPago' && (() => {
+        const fp = config.formas_pago_parametros;
+        const setFp = (c: Partial<typeof fp>) => setConfig({ ...config, formas_pago_parametros: { ...fp, ...c } });
+        const setTarjeta = (id: string, c: Partial<TarjetaPago>) => setFp({ tarjetas: fp.tarjetas.map((t) => (t.id === id ? { ...t, ...c } : t)) });
+        return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4 max-w-3xl">
+          <div>
+            <h3 className="font-semibold text-gray-700">Formas de pago</h3>
+            <p className="text-xs text-gray-500 mt-1">Se usan como valores por defecto en el comparador de formas de pago.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tasa de referencia anual USD (%)</label>
+              <input type="number" step="0.1" value={fp.tasa_ref_anual_pct} onChange={(e) => setFp({ tasa_ref_anual_pct: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Devaluación estimada mensual (%)</label>
+              <input type="number" step="0.1" value={fp.devaluacion_mensual_pct} onChange={(e) => setFp({ devaluacion_mensual_pct: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descuento contado (%)</label>
+              <input type="number" step="0.1" value={fp.descuento_contado_pct} onChange={(e) => setFp({ descuento_contado_pct: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-gray-700">Tarjetas</h4>
+            {fp.tarjetas.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-end gap-2">
+                <label className="block w-44">
+                  <span className="block text-[11px] text-gray-500 mb-0.5">Nombre</span>
+                  <input value={t.nombre} onChange={(e) => setTarjeta(t.id, { nombre: e.target.value })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                </label>
+                <label className="block w-20">
+                  <span className="block text-[11px] text-gray-500 mb-0.5">Moneda</span>
+                  <select value={t.moneda} onChange={(e) => setTarjeta(t.id, { moneda: e.target.value === 'ARS' ? 'ARS' : 'USD' })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none bg-white">
+                    <option value="USD">USD</option><option value="ARS">$</option>
+                  </select>
+                </label>
+                <label className="block w-24">
+                  <span className="block text-[11px] text-gray-500 mb-0.5">ND empresa %</span>
+                  <input type="number" step="0.1" value={t.nd_pct} onChange={(e) => setTarjeta(t.id, { nd_pct: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                </label>
+                <label className="block w-24">
+                  <span className="block text-[11px] text-gray-500 mb-0.5">TNA %</span>
+                  <input type="number" step="0.1" value={t.tna_pct} onChange={(e) => setTarjeta(t.id, { tna_pct: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                </label>
+                <label className="block w-24">
+                  <span className="block text-[11px] text-gray-500 mb-0.5">Días</span>
+                  <input type="number" step="0.1" value={t.dias} onChange={(e) => setTarjeta(t.id, { dias: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+                </label>
+                <button onClick={() => setFp({ tarjetas: fp.tarjetas.filter((x) => x.id !== t.id) })} aria-label="Quitar tarjeta" className="p-2 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+            <button onClick={() => setFp({ tarjetas: [...fp.tarjetas, { id: `t-${Date.now()}`, nombre: 'Tarjeta nueva', moneda: 'USD', nd_pct: 0, tna_pct: 0, dias: 180 }] })} className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800">
+              <Plus className="w-4 h-4" /> Agregar tarjeta
+            </button>
+          </div>
+          <button onClick={guardarConfig} disabled={saving} className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+          </button>
+        </div>
+        );
+      })()}
 
       {/* Mensaje */}
       {msg && (

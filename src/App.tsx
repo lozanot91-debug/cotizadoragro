@@ -27,6 +27,7 @@ const Vencimientos = lazyConRecarga(() => import('@/screens/Vencimientos'));
 const Cobranzas = lazyConRecarga(() => import('@/screens/Cobranzas'));
 const ConsultaCostos = lazyConRecarga(() => import('@/screens/ConsultaCostos'));
 const CalculadoraCanje = lazyConRecarga(() => import('@/screens/CalculadoraCanje'));
+const FormasPago = lazyConRecarga(() => import('@/screens/FormasPago'));
 const RelacionInsumoGrano = lazyConRecarga(() => import('@/screens/RelacionInsumoGrano'));
 const Competencia = lazyConRecarga(() => import('@/screens/Competencia'));
 const ResumenSemanal = lazyConRecarga(() => import('@/screens/ResumenSemanal'));
@@ -169,6 +170,7 @@ function AppContent() {
         {screen === 'canje' && <CalculadoraCanje key={canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} onEditCotiz={handleEditCotiz} />}
         {screen === 'catalogo' && <Catalogo />}
         {screen === 'relacion' && <RelacionInsumoGrano />}
+        {screen === 'formasPago' && <FormasPago />}
         {screen === 'competencia' && <Competencia />}
         {screen === 'resumen' && <ResumenSemanal onEditCotiz={handleEditCotiz} onNavigate={handleNavigate} />}
         {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
