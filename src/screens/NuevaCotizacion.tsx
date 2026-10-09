@@ -14,6 +14,7 @@ import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import FleteCotizacion from '@/components/FleteCotizacion';
 import EnviarAFacturar from '@/components/EnviarAFacturar';
 import { BotonFicha } from '@/components/FichaProducto';
+import { factorAforo, tnCargadasConFlete } from '@/lib/fleteAforo';
 import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizacion } from '@/lib/fleteTramos';
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
@@ -96,6 +97,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   // TC del flete: la planilla está en pesos y se pasa a dólares con el comprador divisa BNA
   const [tcFlete, setTcFlete] = useState('');
   const tcFleteTocadoRef = useRef(false);
+  // Aforo del flete (tn), a mano en cada cotización; texto crudo, vacío = sin aforo
+  const [aforoTn, setAforoTn] = useState('');
   const [km, setKm] = useState('');
   const [vigencia, setVigencia] = useState('');
   const [conIva, setConIva] = useState(false);
@@ -218,6 +221,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         setTc(String(cotiz.tc));
         // Las cotizaciones de antes del TC de flete se calcularon con tc: se respeta
         setTcFlete(String(cotiz.tc_flete || cotiz.tc));
+        setAforoTn(cotiz.aforo_tn ? String(cotiz.aforo_tn).replace('.', ',') : '');
         setKm(String(cotiz.km));
         setVigencia(String(cotiz.vigencia_dias));
         setConIva(!!cotiz.con_iva);
@@ -447,6 +451,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   /** Plazo por defecto (botones rápidos): se aplica a las líneas nuevas y a todas al tocarlo. */
   const plazoNum = Math.max(0, parseInt(plazo) || 0);
 
+  const aforoNum = parseNumberInput(aforoTn) || 0;
+  const tnCargadas = tnCargadasConFlete(lineas);
+  const factor = factorAforo(tnCargadas, aforoNum);
+
   const lineasCalc = useMemo(() => {
     return lineas.map((l) => {
       const costoListaTn = l.producto.es_fertilizante
@@ -454,11 +462,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         : (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo);
       const calc = calcularLinea({
         producto: l.producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
-        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD,
+        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD, factorAforo: factor,
       });
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
-  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum]);
+  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum, factor]);
 
   useEffect(() => {
     let vivo = true;
@@ -623,7 +631,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
       km: kmNum, convenio_flete_id: convenio?.id ?? null,
-      flete_modalidad: modalidad, km_corto: kmCortoNum, tc_flete: tcFleteNum || null,
+      flete_modalidad: modalidad, km_corto: kmCortoNum, tc_flete: tcFleteNum || null, aforo_tn: aforoNum > 0 ? aforoNum : null,
       convenio_corto_id: modalidad === 'largo_corto' ? convenioCorto?.id ?? null : null, campo_id: campoId,
       con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
@@ -691,6 +699,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'convenio de flete', valor_anterior: ant ? String(ant.numero) : 'predeterminado', valor_nuevo: convenio ? String(convenio.numero) : null });
       }
       if ((editData.tc_flete || editData.tc) !== tcFleteNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'TC flete', valor_anterior: String(editData.tc_flete || editData.tc), valor_nuevo: String(tcFleteNum) });
+      if ((editData.aforo_tn ?? 0) !== aforoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'aforo', valor_anterior: editData.aforo_tn ? `${editData.aforo_tn} tn` : 'Sin aforo', valor_nuevo: aforoNum > 0 ? `${aforoNum} tn` : 'Sin aforo' });
       if (editData.tc !== tcNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'tipo de cambio', valor_anterior: String(editData.tc), valor_nuevo: String(tcNum) });
       if ((editData.flete_modalidad ?? 'directo') !== modalidad) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'modalidad de flete', valor_anterior: nombreModalidad(editData.flete_modalidad), valor_nuevo: nombreModalidad(modalidad) });
       if ((Number(editData.km_corto) || 0) !== kmCortoNum) cambiosHist.push({ tipo: 'cotizacion', cotizacion_id: editId, campo: 'km corto', valor_anterior: String(Number(editData.km_corto) || 0), valor_nuevo: String(kmCortoNum) });
@@ -1070,6 +1079,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         esReadOnly={esReadOnly} tc={tcFleteNum}
         tcFlete={{ valor: tcFlete, onChange: (v) => { tcFleteTocadoRef.current = true; setTcFlete(v); }, bna: tcBna, usarBna: () => { tcFleteTocadoRef.current = false; if (tcBna) setTcFlete(String(tcBna.compra)); } }}
         modalidad={modalidad} onModalidad={cambiarModalidad}
+        aforo={{ valor: aforoTn, onChange: setAforoTn, tnCargadas }}
         campos={camposCliente} campoId={campoId} onCampo={cambiarCampo} convenios={convenios} enUso={hayFertConFlete} conAviso={kmFaltante || tarifaFaltante}
         principal={{ km, onKm: setKm, convenio, onConvenio: setConvenioId, sugerido: sugeridos.principal }}
         corto={{ km: kmCorto, onKm: setKmCorto, convenio: convenioCorto, onConvenio: setConvenioCortoId, sugerido: sugeridos.corto }}
@@ -1188,7 +1198,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
                     <td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
-                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.precioUSD)}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">+ flete {formatUSD(l.fleteUSD)}</span>}</td>
+                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD)}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">producto {formatUSD(l.precioUSD)} + flete {formatUSD(l.fleteUSD)}</span>}</td>
                     <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmFaltante && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" inputMode="numeric" value={l.plazoStr} disabled={esReadOnly} aria-label={`Plazo en días de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-14 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} />{l.plazo === 0 && <span className="block text-xs text-gray-400">contado</span>}</td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}

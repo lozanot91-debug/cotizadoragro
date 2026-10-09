@@ -1,4 +1,5 @@
 import { calcularLinea, calcularTotalesIva, ivaDeLinea, recargoPorcentaje, type TotalesIva } from '@/lib/calculations';
+import { factorAforo, tnCargadasConFlete } from '@/lib/fleteAforo';
 import { tramosDeCotizacion } from '@/lib/fleteTramos';
 import type { Configuracion, Cotizacion, CotizacionLinea, ProductoConCosto, TarifaFlete } from '@/types';
 
@@ -43,6 +44,10 @@ export function recotizar(input: {
     modalidad: cotiz.flete_modalidad ?? 'directo', km: cotiz.km, tarifas,
     kmCorto: Number(cotiz.km_corto) || 0, tarifasCorto: input.tarifasCorto ?? [],
   });
+  const factor = factorAforo(
+    tnCargadasConFlete(lineas.map((l) => ({ cantidad: l.cantidad, conFlete: l.con_flete, producto: { es_fertilizante: l.es_fertilizante } }))),
+    cotiz.aforo_tn,
+  );
   const porId = new Map(productos.map((p) => [p.id, p]));
   const porCod = new Map(productos.map((p) => [p.cod, p]));
 
@@ -69,7 +74,7 @@ export function recotizar(input: {
 
     const calc = calcularLinea({
       producto: prod, cantidad: l.cantidad, margen: l.margen, conFlete: l.con_flete,
-      tc: cotiz.tc, km: cotiz.km, tarifaFlete: tarifas, tramos, tcFlete: cotiz.tc_flete,
+      tc: cotiz.tc, km: cotiz.km, tarifaFlete: tarifas, tramos, tcFlete: cotiz.tc_flete, factorAforo: factor,
       costoOverrideUSD: l.costo_editado ? l.costo_usd : null,
     });
     if (calc.tarifaFaltante && !bloqueada) {
@@ -146,5 +151,6 @@ export function cabeceraRecotizada(
     convenio_corto_id: cotiz.flete_modalidad === 'largo_corto' ? datos.convenioCortoId ?? null : null,
     campo_id: cotiz.campo_id ?? null,
     tc_flete: cotiz.tc_flete ?? null,
+    aforo_tn: cotiz.aforo_tn ?? null,
   };
 }

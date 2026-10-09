@@ -61,6 +61,15 @@ describe('recotizar', () => {
     expect(vieja.lineas[0].flete_usd).toBeCloseTo(3457.077 * 10 / 1400, 6);
   });
 
+  it('aforo: multiplica el flete por max(1, aforo / tn con flete) y se copia a la cabecera', () => {
+    const c = cotiz({ aforo_tn: 40 });
+    const r = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, config });
+    expect(r.lineas[0].flete_usd).toBeCloseTo((3457.077 * 10 / 1400) * 2, 6);
+    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v' }).aforo_tn).toBe(40);
+    const menor = recotizar({ cotiz: cotiz({ aforo_tn: 10 }), lineas: [linea({})], productos: [prod({})], tarifas, config });
+    expect(menor.lineas[0].flete_usd).toBeCloseTo(3457.077 * 10 / 1400, 6);
+  });
+
   it('mantiene el costo editado a mano y lo avisa', () => {
     const l = linea({ costo_usd: 700, costo_editado: true });
     const r = recotizar({ cotiz: cotiz(), lineas: [l], productos: [prod({ costo: 0.9 })], tarifas, config });

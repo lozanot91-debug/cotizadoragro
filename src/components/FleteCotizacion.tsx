@@ -3,6 +3,7 @@ import { Truck, MapPin, ChevronDown } from 'lucide-react';
 import { fleteDeTramos } from '@/lib/calculations';
 import { conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 import { MODALIDADES, nombreTramoPrincipal, resumenFlete, tieneCorto, type KmSugerido } from '@/lib/fleteTramos';
+import { resumenAforo } from '@/lib/fleteAforo';
 import { formatDate, formatUSD, parseNumberInput } from '@/lib/format';
 import type { Campo, ConvenioFlete, ModalidadFlete, TipoCambioBNA } from '@/types';
 
@@ -21,6 +22,8 @@ export interface PropsFlete {
   convenios: ConvenioFlete[];
   principal: { km: string; onKm: (v: string) => void; convenio: ConvenioFlete | null; onConvenio: (id: string) => void; sugerido: KmSugerido | null };
   corto: { km: string; onKm: (v: string) => void; convenio: ConvenioFlete | null; onConvenio: (id: string) => void; sugerido: KmSugerido | null };
+  /** Aforo en tn (texto) y toneladas cargadas con flete */
+  aforo: { valor: string; onChange: (v: string) => void; tnCargadas: number };
   /** Hay fertilizantes con flete tildado: el bloque arranca abierto (si no, cerrado) */
   enUso: boolean;
   /** Falta algún dato del flete: se abre aunque no haya fertilizantes */
@@ -78,6 +81,8 @@ export default function FleteCotizacion(p: PropsFlete) {
   const [manual, setManual] = useState<boolean | null>(null);
   const abierto = manual ?? (p.enUso || !!p.conAviso);
   const usdOk = kmP > 0 && (!conCorto || kmC > 0) && !total.tarifaFaltante && p.tc > 0;
+  const aforoNum = parseNumberInput(p.aforo.valor) || 0;
+  const ra = resumenAforo(p.aforo.tnCargadas, aforoNum, usdOk ? total.usdTn : 0);
   const resumen = resumenFlete({ modalidad: p.modalidad, km: kmP, kmCorto: kmC, usdTn: usdOk ? total.usdTn : null, formato: (n) => formatUSD(n, 2) });
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -133,6 +138,20 @@ export default function FleteCotizacion(p: PropsFlete) {
       <div className={`grid gap-3 mt-3 ${conCorto ? 'md:grid-cols-2' : ''}`}>
         <Tramo id="flete-principal" titulo={nombreTramoPrincipal(p.modalidad)} esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.principal} />
         {conCorto && <Tramo id="flete-corto" titulo="Corto (planta → campo)" esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.corto} />}
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-[9.5rem_1fr] items-start">
+        <div>
+          <label htmlFor="flete-aforo" className="block text-xs text-gray-500 mb-1">Aforo (tn)</label>
+          <input id="flete-aforo" inputMode="decimal" value={p.aforo.valor} placeholder="Sin aforo" disabled={p.esReadOnly} onChange={(e) => p.aforo.onChange(e.target.value)} className={inputCls} />
+        </div>
+        <div className="text-[11px] md:pt-5">
+          {aforoNum > 0 && p.aforo.tnCargadas > 0 && (ra.aplica ? (
+            <p className="text-amber-700">
+              Carga {formatUSD(p.aforo.tnCargadas, 2)} tn · aforo {formatUSD(aforoNum, 2)} tn → se cobra el flete por {formatUSD(ra.tnFacturadas, 2)} tn ({formatUSD(ra.tnVacias, 2)} tn de espacio vacío = USD {formatUSD(ra.costoVacioUSD, 2)}, repartido: +USD {formatUSD(usdOk ? total.usdTn * (ra.factor - 1) : 0, 2)}/tn)
+            </p>
+          ) : <p className="text-gray-500">El aforo no supera la carga: se cobra la carga real.</p>)}
+          {!(aforoNum > 0) && <p className="text-gray-400">Opcional. Si el camión se cobra por más toneladas de las que lleva, el espacio vacío se reparte en el flete de los fertilizantes.</p>}
+        </div>
       </div>
       <p className="text-xs text-gray-400 mt-2">Se aplica a los fertilizantes con flete tildado. La planilla está en pesos y se pasa a dólares con el TC comprador. Los km se precargan del campo y la planta, pero siempre los podés cambiar.</p>
       </div>)}

@@ -32,6 +32,22 @@ describe('calcularLinea fertilizante', () => {
   });
 });
 
+describe('calcularLinea aforo', () => {
+  it('factor 2 duplica el flete; factor 1 no cambia nada', () => {
+    const r1 = calcularLinea(base);
+    const r2 = calcularLinea({ ...base, factorAforo: 2 });
+    expect(r2.fleteUSD).toBeCloseTo(r1.fleteUSD * 2, 8);
+    expect(r2.precioUSD).toBe(r1.precioUSD);
+    expect(r2.totalUSD - r1.totalUSD).toBeCloseTo(base.cantidad * r1.fleteUSD, 6);
+    expect(calcularLinea({ ...base, factorAforo: 1 })).toEqual(r1);
+  });
+  it('sin flete o no fertilizante no se ve afectado', () => {
+    expect(calcularLinea({ ...base, conFlete: false, factorAforo: 2 }).fleteUSD).toBe(0);
+    const otro = { ...urea, es_fertilizante: false, unid: 'LT' } as unknown as ProductoConCosto;
+    expect(calcularLinea({ ...base, producto: otro, factorAforo: 2 })).toEqual(calcularLinea({ ...base, producto: otro }));
+  });
+});
+
 describe('buscarTarifa', () => {
   it('km exacto', () => expect(buscarTarifa(1200, tarifas)).toBe(12071.655));
   it('redondea hacia arriba', () => expect(buscarTarifa(149.2, tarifas)).toBe(3457.077));

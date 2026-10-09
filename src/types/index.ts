@@ -210,6 +210,8 @@ export interface Cotizacion {
   campo_id?: string | null;
   /** TC con el que se pasó el flete a dólares (comprador divisa BNA). null = cotización vieja: se usó tc. */
   tc_flete?: number | null;
+  /** Aforo del flete en tn (a mano en cada cotización). null = sin aforo: se cobra la carga real. */
+  aforo_tn?: number | null;
   cantidades_reales: Record<string, { cantidad: number; precio: number; motivo?: string | null }> | null;
   /** Ganada: subtotal realmente ganado (sin IVA ni financiación). Null si no está Ganada. */
   ganado_usd?: number | null;

@@ -345,6 +345,7 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     'TC flete': cotiz.tc_flete || cotiz.tc,
     'KM': cotiz.km,
     'Modalidad de flete': nombreModalidad(cotiz.flete_modalidad),
+    ...(cotiz.aforo_tn ? { 'Aforo (tn)': cotiz.aforo_tn } : {}),
     ...(cotiz.flete_modalidad === 'largo_corto' ? { 'KM corto': Number(cotiz.km_corto) || 0 } : {}),
     ...(t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
     ...(cotiz.con_iva
