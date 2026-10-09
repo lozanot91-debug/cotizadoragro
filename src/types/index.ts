@@ -429,6 +429,26 @@ export interface ParcelaMapa extends CampoParcela {
   cliente_nombre: string;
 }
 
+/** Datos que carga el equipo sobre una parcela (por partida), sea de un cliente o un prospecto. */
+export interface ParcelaInfo {
+  partida: string;
+  /** Titular registral (dueño) */
+  titular: string | null;
+  /** Quién la trabaja (arrendatario, contratista, el mismo dueño) */
+  trabaja: string | null;
+  notas: string | null;
+  nomenclatura: string | null;
+  tipo: string | null;
+  superficie_m2: number | null;
+  geom: GeoPoligono;
+  min_lng: number | null;
+  min_lat: number | null;
+  max_lng: number | null;
+  max_lat: number | null;
+  usuario_nombre: string | null;
+  updated_at: string;
+}
+
 /** Ficha de un producto comercial (agrupa los códigos de sus envases). */
 export interface FichaProducto {
   id: string;

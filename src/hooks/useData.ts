@@ -23,6 +23,7 @@ import type {
   Campo,
   CampoParcela,
   ParcelaMapa,
+  ParcelaInfo,
   ConvenioFlete,
   Contacto,
   Usuario,
@@ -186,6 +187,23 @@ export function useData() {
 
   async function eliminarParcela(id: string) {
     await ok(supabase.from('campos_parcelas').delete().eq('id', id));
+  }
+
+  async function fetchParcelasInfo(): Promise<ParcelaInfo[]> {
+    return ((await ok(supabase.from('parcelas_info').select('*'))) || []) as ParcelaInfo[];
+  }
+
+  /** Guarda titular / quién la trabaja / notas de una partida; si quedan todos vacíos, borra la ficha. */
+  async function guardarParcelaInfo(info: Omit<ParcelaInfo, 'usuario_nombre' | 'updated_at'>): Promise<ParcelaInfo | null> {
+    if (!info.titular && !info.trabaja && !info.notas) {
+      await ok(supabase.from('parcelas_info').delete().eq('partida', info.partida));
+      return null;
+    }
+    const { data: u } = await supabase.auth.getUser();
+    const nombre = (u.user?.user_metadata?.nombre as string | undefined) ?? u.user?.email ?? null;
+    return (await ok(supabase.from('parcelas_info')
+      .upsert({ ...info, usuario_nombre: nombre, updated_at: new Date().toISOString() }, { onConflict: 'partida' })
+      .select('*').single())) as ParcelaInfo;
   }
 
   // ---- Catálogo: fichas de producto, marbetes y comentarios ----
@@ -1204,6 +1222,8 @@ export function useData() {
     fetchParcelasMapa,
     guardarParcela,
     eliminarParcela,
+    fetchParcelasInfo,
+    guardarParcelaInfo,
     fetchContactos,
     fetchPedidosFacturacion,
     fetchCatalogo,

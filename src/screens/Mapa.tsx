@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { GeoJsonObject } from 'geojson';
-import { Crosshair, Layers, Loader2, MapPin, Plus, Search, Trash2, X } from 'lucide-react';
+import { Crosshair, Layers, Loader2, MapPin, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useToast } from '@/components/Toast';
 import { formatUSD } from '@/lib/format';
@@ -10,10 +10,11 @@ import {
   ARBA_CAPA, ARBA_WMS, ZOOM_CATASTRO, centro, formatoPartida, haDe, parcelaEnPunto, parcelaPorPartida, recuadro,
   type ParcelaArba,
 } from '@/lib/arba';
-import type { Campo, Cliente, GeoPoligono, ParcelaMapa } from '@/types';
+import type { Campo, Cliente, GeoPoligono, ParcelaInfo, ParcelaMapa } from '@/types';
 
 const INICIO: L.LatLngTuple = [-37.32, -59.13]; // Tandil
 const ESTILO_GUARDADA: L.PathOptions = { color: '#10b981', weight: 2, fillColor: '#10b981', fillOpacity: 0.25 };
+const ESTILO_PROSPECTO: L.PathOptions = { color: '#f97316', weight: 2, fillColor: '#f97316', fillOpacity: 0.2, dashArray: '5 4' };
 const ESTILO_SELECCION: L.PathOptions = { color: '#facc15', weight: 3, fillColor: '#facc15', fillOpacity: 0.2 };
 const geo = (g: GeoPoligono) => g as unknown as GeoJsonObject;
 const ha = (m2: number | null) => `${formatUSD(haDe(m2), 2)} ha`;
@@ -33,12 +34,15 @@ export default function Mapa() {
   const basesRef = useRef<Record<Base, L.Layer[]>>({ satelite: [], calles: [] });
   const catastroRef = useRef<L.TileLayer.WMS | null>(null);
   const guardadasRef = useRef<L.FeatureGroup | null>(null);
+  const prospectosRef = useRef<L.FeatureGroup | null>(null);
   const seleccionRef = useRef<L.FeatureGroup | null>(null);
   const ubicacionRef = useRef<L.CircleMarker | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const encuadreInicial = useRef(false);
 
   const [parcelas, setParcelas] = useState<ParcelaMapa[]>([]);
+  const [infos, setInfos] = useState<ParcelaInfo[]>([]);
+  const [cargado, setCargado] = useState(false);
   const [seleccion, setSeleccion] = useState<ParcelaArba | null>(null);
   const [consultando, setConsultando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -50,7 +54,10 @@ export default function Mapa() {
   const [agregando, setAgregando] = useState(false);
 
   const cargarParcelas = useCallback(async () => {
-    try { setParcelas(await data.fetchParcelasMapa()); } catch (e) { toast.error(e); }
+    try {
+      const [ps, is] = await Promise.all([data.fetchParcelasMapa(), data.fetchParcelasInfo()]);
+      setParcelas(ps); setInfos(is); setCargado(true);
+    } catch (e) { toast.error(e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,6 +95,7 @@ export default function Mapa() {
     // deja ver la imagen de fondo y las líneas y números (oscuros) siguen bien marcados.
     const cont = catastroRef.current.getContainer();
     if (cont) cont.style.mixBlendMode = 'multiply';
+    prospectosRef.current = L.featureGroup().addTo(map);
     guardadasRef.current = L.featureGroup().addTo(map);
     seleccionRef.current = L.featureGroup().addTo(map);
     map.on('click', (e: L.LeafletMouseEvent) => consultarPunto.current(e.latlng.lat, e.latlng.lng));
@@ -131,11 +139,38 @@ export default function Mapa() {
         })
         .addTo(capa);
     }
-    if (!encuadreInicial.current && parcelas.length) {
-      encuadreInicial.current = true;
-      map.fitBounds(capa.getBounds(), { padding: [30, 30], maxZoom: 15 });
-    }
   }, [parcelas]);
+
+  const partidasClientes = useMemo(() => new Set(parcelas.map((p) => p.partida).filter(Boolean) as string[]), [parcelas]);
+  const infoPorPartida = useMemo(() => new Map(infos.map((i) => [i.partida, i])), [infos]);
+  const prospectos = useMemo(() => infos.filter((i) => !partidasClientes.has(i.partida)), [infos, partidasClientes]);
+
+  // Prospectos: parcelas con ficha que no son de ningún cliente (naranja, punteado)
+  useEffect(() => {
+    const capa = prospectosRef.current;
+    if (!capa) return;
+    capa.clearLayers();
+    for (const i of prospectos) {
+      L.geoJSON(geo(i.geom), { style: ESTILO_PROSPECTO })
+        .bindTooltip(`Prospecto · ${i.trabaja || i.titular || formatoPartida(i.partida)}`, { sticky: true })
+        .on('click', (ev) => {
+          L.DomEvent.stopPropagation(ev);
+          setAviso(null);
+          setSeleccion({ partida: i.partida, nomenclatura: i.nomenclatura, tipo: i.tipo, superficie_m2: i.superficie_m2, geom: i.geom });
+        })
+        .addTo(capa);
+    }
+  }, [prospectos]);
+
+  // Al abrir: encuadrar todo lo cargado
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !cargado || encuadreInicial.current) return;
+    encuadreInicial.current = true;
+    const b = L.latLngBounds([]);
+    [guardadasRef.current, prospectosRef.current].forEach((c) => { if (c && c.getLayers().length) b.extend(c.getBounds()); });
+    if (b.isValid()) map.fitBounds(b, { padding: [30, 30], maxZoom: 15 });
+  }, [cargado]);
 
   // Parcela elegida (amarillo)
   useEffect(() => {
@@ -216,11 +251,26 @@ export default function Mapa() {
               className="w-44 px-3 py-1.5 border border-gray-300 rounded-l-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
             <button type="submit" aria-label="Buscar" className="px-2.5 py-1.5 bg-emerald-600 text-white rounded-r-lg hover:bg-emerald-700"><Search className="w-4 h-4" /></button>
           </form>
-          {camposConParcelas.length > 0 && (
-            <select value="" onChange={(e) => { const c = camposConParcelas.find((x) => x.campo_id === e.target.value); if (c) encuadrar(c.geoms); }}
+          {(camposConParcelas.length > 0 || prospectos.length > 0) && (
+            <select value="" onChange={(e) => {
+                const v = e.target.value;
+                if (v.startsWith('p:')) {
+                  const i = infoPorPartida.get(v.slice(2));
+                  if (i) { encuadrar([i.geom]); setSeleccion({ partida: i.partida, nomenclatura: i.nomenclatura, tipo: i.tipo, superficie_m2: i.superficie_m2, geom: i.geom }); }
+                  return;
+                }
+                const c = camposConParcelas.find((x) => x.campo_id === v); if (c) encuadrar(c.geoms);
+              }}
               aria-label="Ir a un campo" className="max-w-[14rem] px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500">
               <option value="">Ir a un campo…</option>
-              {camposConParcelas.map((c) => <option key={c.campo_id} value={c.campo_id}>{c.cliente} · {c.campo} ({formatUSD(haDe(c.m2), 0)} ha)</option>)}
+              <optgroup label="Clientes">
+                {camposConParcelas.map((c) => <option key={c.campo_id} value={c.campo_id}>{c.cliente} · {c.campo} ({formatUSD(haDe(c.m2), 0)} ha)</option>)}
+              </optgroup>
+              {prospectos.length > 0 && (
+                <optgroup label="Prospectos">
+                  {prospectos.map((i) => <option key={i.partida} value={`p:${i.partida}`}>{i.trabaja || i.titular || 'Sin nombre'} · {formatoPartida(i.partida)}</option>)}
+                </optgroup>
+              )}
             </select>
           )}
           <button onClick={miUbicacion} className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50"><Crosshair className="w-4 h-4" /> Mi ubicación</button>
@@ -244,6 +294,7 @@ export default function Mapa() {
               aria-label="Intensidad del catastro" title="Intensidad de las líneas del catastro" className="w-full accent-emerald-600" />
           )}
           <p className="flex items-center gap-1.5 text-gray-500"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500/40 border-2 border-emerald-500" /> Campos de clientes</p>
+          <p className="flex items-center gap-1.5 text-gray-500"><span className="inline-block w-3 h-3 rounded-sm bg-orange-500/30 border-2 border-dashed border-orange-500" /> Prospectos</p>
         </div>
 
         {/* Estado */}
@@ -256,7 +307,7 @@ export default function Mapa() {
 
         {/* Parcela elegida */}
         {seleccion && (
-          <div className="absolute bottom-2 left-2 right-2 sm:right-auto sm:w-80 z-[1000] bg-white rounded-xl shadow-lg border border-gray-200 p-3 text-sm">
+          <div className="absolute bottom-2 left-2 right-2 sm:right-auto sm:w-80 max-h-[80%] overflow-y-auto z-[1000] bg-white rounded-xl shadow-lg border border-gray-200 p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] text-gray-500">Partida</p>
@@ -269,6 +320,10 @@ export default function Mapa() {
               <dt className="text-gray-500">Tipo</dt><dd className="text-gray-900">{seleccion.tipo ?? '—'}</dd>
               <dt className="text-gray-500">Nomenclatura</dt><dd className="text-gray-900 break-all">{seleccion.nomenclatura ?? '—'}</dd>
             </dl>
+            {seleccion.partida && (
+              <FichaParcela key={seleccion.partida} parcela={seleccion} info={infoPorPartida.get(seleccion.partida) ?? null} esCliente={asignaciones.length > 0}
+                onGuardado={(i) => setInfos((xs) => [...xs.filter((x) => x.partida !== seleccion.partida), ...(i ? [i] : [])])} />
+            )}
             {asignaciones.length > 0 && (
               <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
                 {asignaciones.map((a) => (
@@ -405,6 +460,70 @@ function AgregarACampo({ parcela, yaEn, onCerrar, onGuardado }: { parcela: Parce
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Titular / quién la trabaja / notas de una parcela. Sin ser de un cliente, queda como prospecto. */
+function FichaParcela({ parcela, info, esCliente, onGuardado }: { parcela: ParcelaArba; info: ParcelaInfo | null; esCliente: boolean; onGuardado: (i: ParcelaInfo | null) => void }) {
+  const data = useData();
+  const toast = useToast();
+  const [editando, setEditando] = useState(false);
+  const [titular, setTitular] = useState(info?.titular ?? '');
+  const [trabaja, setTrabaja] = useState(info?.trabaja ?? '');
+  const [notas, setNotas] = useState(info?.notas ?? '');
+  const [guardando, setGuardando] = useState(false);
+
+  function abrir() { setTitular(info?.titular ?? ''); setTrabaja(info?.trabaja ?? ''); setNotas(info?.notas ?? ''); setEditando(true); }
+
+  async function guardar() {
+    if (!parcela.partida) return;
+    setGuardando(true);
+    try {
+      const [minLng, minLat, maxLng, maxLat] = recuadro(parcela.geom);
+      const t = (v: string) => v.trim() || null;
+      const r = await data.guardarParcelaInfo({
+        partida: parcela.partida, titular: t(titular), trabaja: t(trabaja), notas: t(notas),
+        nomenclatura: parcela.nomenclatura, tipo: parcela.tipo, superficie_m2: parcela.superficie_m2, geom: parcela.geom,
+        min_lng: minLng, min_lat: minLat, max_lng: maxLng, max_lat: maxLat,
+      });
+      onGuardado(r);
+      setEditando(false);
+      toast.exito(r ? (esCliente ? 'Datos de la parcela guardados' : 'Guardada como prospecto') : 'Datos de la parcela borrados');
+    } catch (e) { toast.error(e); } finally { setGuardando(false); }
+  }
+
+  const campo = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500';
+
+  if (editando) return (
+    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+      <input value={titular} onChange={(e) => setTitular(e.target.value)} maxLength={120} placeholder="Titular (dueño)" aria-label="Titular" className={campo} autoFocus />
+      <input value={trabaja} onChange={(e) => setTrabaja(e.target.value)} maxLength={120} placeholder="Quién la trabaja" aria-label="Quién la trabaja" className={campo} />
+      <textarea value={notas} onChange={(e) => setNotas(e.target.value)} maxLength={500} rows={2} placeholder="Notas (cultivo, contrato, contacto…)" aria-label="Notas" className={campo} />
+      {!esCliente && <p className="text-[11px] text-orange-700">No está en ningún campo de cliente: queda marcada como prospecto.</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setEditando(false)} className="px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+        <button onClick={() => void guardar()} disabled={guardando} className="px-3 py-1 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1">
+          {guardando && <Loader2 className="w-3 h-3 animate-spin" />} Guardar
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        {info ? (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 flex-1">
+            <dt className="text-gray-500">Titular</dt><dd className="text-gray-900">{info.titular ?? '—'}</dd>
+            <dt className="text-gray-500">La trabaja</dt><dd className="text-gray-900">{info.trabaja ?? '—'}</dd>
+            {info.notas && <><dt className="text-gray-500">Notas</dt><dd className="text-gray-700 whitespace-pre-line">{info.notas}</dd></>}
+          </dl>
+        ) : <p className="text-gray-400 flex-1">Sin titular ni quién la trabaja</p>}
+        <button onClick={abrir} aria-label="Editar titular y quién la trabaja" className="p-1 text-gray-400 hover:text-emerald-700"><Pencil className="w-3.5 h-3.5" /></button>
+      </div>
+      {info && !esCliente && <p className="mt-1 inline-block px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 text-[11px]">Prospecto</p>}
+      {info?.usuario_nombre && <p className="mt-1 text-[10px] text-gray-400">Cargó {info.usuario_nombre} · {info.updated_at.slice(8, 10)}/{info.updated_at.slice(5, 7)}/{info.updated_at.slice(0, 4)}</p>}
     </div>
   );
 }
