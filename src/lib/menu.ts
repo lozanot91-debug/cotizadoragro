@@ -1,6 +1,6 @@
 /** Estructura del menú lateral: dos accesos sueltos arriba y grupos que se abren y cierran. */
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion' | 'catalogo' | 'canje' | 'relacion' | 'competencia' | 'resumen';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion' | 'catalogo' | 'canje' | 'relacion' | 'competencia' | 'resumen' | 'mapa';
 
 export type Badge = 'venc' | 'pedido' | 'cobro' | 'tarea' | 'factura';
 
@@ -35,6 +35,7 @@ export const GRUPOS: GrupoMenu[] = [
     { id: 'clientes', label: 'Clientes' },
     { id: 'tareas', label: 'Tareas', badge: 'tarea' },
     { id: 'visitas', label: 'Visitas' },
+    { id: 'mapa', label: 'Mapa de campos' },
     { id: 'cobranzas', label: 'Cobranzas', badge: 'cobro' },
   ] },
   { id: 'precios', label: 'Precios', items: [

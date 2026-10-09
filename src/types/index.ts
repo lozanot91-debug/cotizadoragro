@@ -392,8 +392,41 @@ export interface Campo {
   /** Planta asignada */
   planta: string | null;
   km_planta: number | null;
+  /** Punto del campo (centro de sus parcelas o marcado a mano) */
+  lat?: number | null;
+  lng?: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Contorno GeoJSON (EPSG:4326, [lng, lat]). */
+export interface GeoPoligono {
+  type: 'Polygon' | 'MultiPolygon';
+  coordinates: number[][][] | number[][][][];
+}
+
+/** Parcela (catastro) de un campo. */
+export interface CampoParcela {
+  id: string;
+  campo_id: string;
+  fuente: 'ARBA' | 'KML' | 'dibujo';
+  partida: string | null;
+  nomenclatura: string | null;
+  tipo: string | null;
+  superficie_m2: number | null;
+  geom: GeoPoligono;
+  min_lng: number | null;
+  min_lat: number | null;
+  max_lng: number | null;
+  max_lat: number | null;
+  created_at: string;
+}
+
+/** Parcela con su campo y cliente, para el mapa. */
+export interface ParcelaMapa extends CampoParcela {
+  campo_nombre: string;
+  cliente_id: string;
+  cliente_nombre: string;
 }
 
 /** Ficha de un producto comercial (agrupa los códigos de sus envases). */

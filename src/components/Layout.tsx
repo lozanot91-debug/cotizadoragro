@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat, Scale, Swords, CalendarDays } from 'lucide-react';
+import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat, Scale, Swords, CalendarDays, Map as MapIcon } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import MiPerfil from '@/components/MiPerfil';
@@ -12,7 +12,7 @@ export type { Screen };
 type Icono = React.ComponentType<{ className?: string }>;
 const ICONOS: Record<Screen, Icono> = {
   inicio: Home, nueva: FilePlus, cotizaciones: FileText, pipeline: KanbanSquare, vencimientos: CalendarClock,
-  recotizar: RefreshCw, pedidos: ClipboardList, facturacion: Receipt, catalogo: BookOpen, clientes: Users, tareas: CheckSquare, visitas: MapPin,
+  recotizar: RefreshCw, pedidos: ClipboardList, facturacion: Receipt, catalogo: BookOpen, clientes: Users, tareas: CheckSquare, visitas: MapPin, mapa: MapIcon,
   cobranzas: Wallet, consulta: SearchCheck, canje: Wheat, relacion: Scale, competencia: Swords, resumen: CalendarDays, listas: ListChecks, costos: LineChart, estadisticas: BarChart3,
   rentabilidad: TrendingUp, config: Settings, historial: History,
 };

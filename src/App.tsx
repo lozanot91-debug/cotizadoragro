@@ -30,9 +30,10 @@ import PublicoFacturacion from '@/screens/PublicoFacturacion';
 import Facturacion from '@/screens/Facturacion';
 import Catalogo from '@/screens/Catalogo';
 import { vencimientos } from '@/lib/vencimientos';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
+const Mapa = lazy(() => import('@/screens/Mapa'));
 
 function AppContent() {
   const { usuario } = useAuth();
@@ -170,6 +171,7 @@ function AppContent() {
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}
+      {screen === 'mapa' && <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>}><Mapa /></Suspense>}
       {screen === 'clientes' && <Clientes onCalcularCanje={(id) => { setCanjeClienteId(id); setScreen('canje'); }} onEditCotiz={handleEditCotiz} />}
       {screen === 'listas' && <Listas />}
       {screen === 'estadisticas' && <Estadisticas />}

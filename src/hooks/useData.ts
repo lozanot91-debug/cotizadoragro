@@ -21,6 +21,8 @@ import type {
   VisitaFoto,
   TipoCambioBNA,
   Campo,
+  CampoParcela,
+  ParcelaMapa,
   ConvenioFlete,
   Contacto,
   Usuario,
@@ -165,6 +167,25 @@ export function useData() {
 
   async function eliminarCampo(id: string) {
     await ok(supabase.from('campos').delete().eq('id', id));
+  }
+
+  async function actualizarCampo(id: string, cambios: Partial<Omit<Campo, 'id' | 'cliente_id' | 'created_at' | 'updated_at'>>): Promise<Campo> {
+    return (await ok(supabase.from('campos').update({ ...cambios, updated_at: new Date().toISOString() }).eq('id', id).select('*').single())) as Campo;
+  }
+
+  /** Todas las parcelas cargadas, con el campo y el cliente (para el mapa). */
+  async function fetchParcelasMapa(): Promise<ParcelaMapa[]> {
+    type Fila = CampoParcela & { campos: { nombre: string; cliente_id: string; clientes: { nombre: string } | null } | null };
+    const data = (await ok(supabase.from('campos_parcelas').select('*, campos(nombre, cliente_id, clientes(nombre))').order('created_at'))) as unknown as Fila[] | null;
+    return (data || []).map(({ campos, ...p }) => ({ ...p, campo_nombre: campos?.nombre ?? '', cliente_id: campos?.cliente_id ?? '', cliente_nombre: campos?.clientes?.nombre ?? '' }));
+  }
+
+  async function guardarParcela(p: Omit<CampoParcela, 'id' | 'created_at'>): Promise<CampoParcela> {
+    return (await ok(supabase.from('campos_parcelas').insert(p).select('*').single())) as CampoParcela;
+  }
+
+  async function eliminarParcela(id: string) {
+    await ok(supabase.from('campos_parcelas').delete().eq('id', id));
   }
 
   // ---- Catálogo: fichas de producto, marbetes y comentarios ----
@@ -1179,6 +1200,10 @@ export function useData() {
     eliminarPlanta,
     guardarCampo,
     eliminarCampo,
+    actualizarCampo,
+    fetchParcelasMapa,
+    guardarParcela,
+    eliminarParcela,
     fetchContactos,
     fetchPedidosFacturacion,
     fetchCatalogo,
