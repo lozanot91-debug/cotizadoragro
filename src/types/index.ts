@@ -49,12 +49,24 @@ export interface Producto {
   unid: string | null;
 }
 
+export interface FuenteLista {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  prefijo_cod: string | null;
+  orden: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ListaCostos {
   id: string;
   fecha: string;
   nombre_archivo: string | null;
   uploaded_by: string | null;
   created_at: string;
+  fuente_id: string;
+  descripcion: string | null;
 }
 
 export interface CostoHistorial {

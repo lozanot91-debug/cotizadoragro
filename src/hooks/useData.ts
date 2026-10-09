@@ -1,7 +1,9 @@
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { supabase } from '@/lib/supabase';
 import { esFertilizante } from '@/lib/calculations';
+import { fuentePrincipal, listasVigentes, vigentePorFuente } from '@/lib/fuentesLista';
 import type {
+  FuenteLista,
   Producto,
   ProductoConCosto,
   FamiliaConfig,
@@ -594,28 +596,95 @@ function crearApi() {
       .eq('familia', familia));
   }
 
-  async function fetchListas(): Promise<ListaCostos[]> {
-    const data = await ok(supabase.from('listas_costos').select('*').order('fecha', { ascending: false }));
+  // ---- Fuentes de lista (cada una con sus propias listas de costos) ----
+  async function fetchFuentes(): Promise<FuenteLista[]> {
+    const data = await ok(supabase.from('fuentes_lista').select('*').order('orden').order('created_at'));
+    return (data || []) as FuenteLista[];
+  }
+
+  async function idFuentePrincipal(): Promise<string | undefined> {
+    return fuentePrincipal(await fetchFuentes())?.id;
+  }
+
+  async function crearFuente(f: { nombre: string; descripcion?: string; prefijo_cod?: string }): Promise<FuenteLista> {
+    const fuentes = await fetchFuentes();
+    const orden = fuentes.reduce((m, x) => Math.max(m, x.orden), -1) + 1;
+    const q = supabase.from('fuentes_lista').insert({
+      nombre: f.nombre.trim(),
+      descripcion: f.descripcion?.trim() || null,
+      prefijo_cod: f.prefijo_cod?.trim() || null,
+      orden,
+    }).select('*').single();
+    return (await ok(q)) as FuenteLista;
+  }
+
+  async function actualizarFuente(
+    id: string,
+    patch: Partial<Pick<FuenteLista, 'nombre' | 'descripcion' | 'prefijo_cod'>>
+  ): Promise<FuenteLista> {
+    const q = supabase.from('fuentes_lista')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id).select('*').single();
+    return (await ok(q)) as FuenteLista;
+  }
+
+  async function fetchListas(fuenteId?: string): Promise<ListaCostos[]> {
+    let q = supabase.from('listas_costos').select('*');
+    if (fuenteId) q = q.eq('fuente_id', fuenteId);
+    const data = await ok(q.order('fecha', { ascending: false }));
     return (data || []) as ListaCostos[];
   }
 
-  async function fetchListaVigente(): Promise<ListaCostos | null> {
-    const data = await ok(supabase
-      .from('listas_costos')
-      .select('*')
-      .order('fecha', { ascending: false })
-      .limit(1)
-      .maybeSingle());
+  async function fetchListaVigente(fuenteId?: string): Promise<ListaCostos | null> {
+    const fid = fuenteId ?? (await idFuentePrincipal());
+    let q = supabase.from('listas_costos').select('*');
+    if (fid) q = q.eq('fuente_id', fid);
+    const data = await ok(q.order('fecha', { ascending: false }).limit(1).maybeSingle());
     return data as ListaCostos | null;
   }
 
-  async function fetchListaByFecha(fecha: string): Promise<ListaCostos | null> {
-    const data = await ok(supabase
-      .from('listas_costos')
-      .select('*')
-      .eq('fecha', fecha)
-      .maybeSingle());
+  async function fetchListaByFecha(fecha: string, fuenteId?: string): Promise<ListaCostos | null> {
+    const fid = fuenteId ?? (await idFuentePrincipal());
+    let q = supabase.from('listas_costos').select('*').eq('fecha', fecha);
+    if (fid) q = q.eq('fuente_id', fid);
+    const data = await ok(q.maybeSingle());
     return data as ListaCostos | null;
+  }
+
+  /** La lista vigente de cada fuente. */
+  async function fetchListasVigentes(): Promise<ListaCostos[]> {
+    return listasVigentes(await fetchListas());
+  }
+
+  /** Productos de la lista vigente de cada fuente (sin repetir). Con listaIdBase, esa lista reemplaza a la vigente de su fuente. */
+  async function fetchProductosVigentes(opts?: { listaIdBase?: string }): Promise<ProductoConCosto[]> {
+    const listas = await fetchListas();
+    const vigentes = vigentePorFuente(listas);
+    const base = opts?.listaIdBase ? listas.find((l) => l.id === opts.listaIdBase) : undefined;
+    if (base) vigentes.set(base.fuente_id, base);
+    const grupos = await Promise.all([...vigentes.values()].map((l) => fetchProductosConCosto(l.id)));
+    const vistos = new Set<string>();
+    const resultado: ProductoConCosto[] = [];
+    for (const p of grupos.flat()) {
+      const clave = p.id || p.cod;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      resultado.push(p);
+    }
+    return resultado;
+  }
+
+  async function contarProductosDeLista(listaId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('costos_historial')
+      .select('id', { count: 'exact', head: true })
+      .eq('lista_id', listaId);
+    if (error) throw error;
+    return count ?? 0;
+  }
+
+  async function actualizarDescripcionLista(listaId: string, descripcion: string | null) {
+    await ok(supabase.from('listas_costos').update({ descripcion }).eq('id', listaId));
   }
 
   async function fetchProductosConCosto(listaId: string): Promise<ProductoConCosto[]> {
@@ -862,8 +931,24 @@ function crearApi() {
     fecha: string,
     nombre: string,
     filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[],
-    reemplazar: boolean
+    reemplazar: boolean,
+    opts?: { fuenteId?: string; descripcion?: string | null }
   ): Promise<{ lista_id: string; productos_nuevos: number; productos_actualizados: number }> {
+    if (opts && (opts.fuenteId || opts.descripcion)) {
+      const fid = opts.fuenteId ?? (await idFuentePrincipal());
+      if (!fid) throw new Error('No hay fuentes de lista');
+      const r = await ok(
+        supabase.rpc('cargar_lista_fuente', {
+          p_fuente_id: fid,
+          p_fecha: fecha,
+          p_nombre: nombre,
+          p_filas: filas as unknown as Record<string, unknown>[],
+          p_reemplazar: reemplazar,
+          p_descripcion: opts.descripcion ?? null,
+        })
+      );
+      return r as unknown as { lista_id: string; productos_nuevos: number; productos_actualizados: number };
+    }
     const data = await ok(
       supabase.rpc('cargar_lista', {
         p_fecha: fecha,
@@ -876,8 +961,12 @@ function crearApi() {
   }
 
   /** Cuántas cotizaciones usan la lista de esa fecha (y cuántas siguen abiertas). */
-  async function cotizacionesAfectadas(fecha: string): Promise<{ total: number; abiertas: number }> {
-    const data = await ok(supabase.rpc('cotizaciones_afectadas', { p_fecha: fecha }));
+  async function cotizacionesAfectadas(fecha: string, fuenteId?: string): Promise<{ total: number; abiertas: number }> {
+    const data = await ok(
+      fuenteId
+        ? supabase.rpc('cotizaciones_afectadas_fuente', { p_fuente_id: fuenteId, p_fecha: fecha })
+        : supabase.rpc('cotizaciones_afectadas', { p_fecha: fecha })
+    );
     const d = (data || {}) as { total?: number; abiertas?: number };
     return { total: d.total ?? 0, abiertas: d.abiertas ?? 0 };
   }
@@ -942,16 +1031,11 @@ function crearApi() {
   }
 
   /** La lista inmediatamente anterior a una fecha (para comparar precios). */
-  async function fetchListaAnteriorA(fecha: string): Promise<ListaCostos | null> {
-    const data = await ok(
-      supabase
-        .from('listas_costos')
-        .select('*')
-        .lt('fecha', fecha)
-        .order('fecha', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    );
+  async function fetchListaAnteriorA(fecha: string, fuenteId?: string): Promise<ListaCostos | null> {
+    const fid = fuenteId ?? (await idFuentePrincipal());
+    let q = supabase.from('listas_costos').select('*').lt('fecha', fecha);
+    if (fid) q = q.eq('fuente_id', fid);
+    const data = await ok(q.order('fecha', { ascending: false }).limit(1).maybeSingle());
     return data as ListaCostos | null;
   }
 
@@ -1278,9 +1362,16 @@ function crearApi() {
     fetchFamiliasConfig,
     upsertFamiliaConfig,
     updateFamiliaMargen,
+    fetchFuentes,
+    crearFuente,
+    actualizarFuente,
     fetchListas,
     fetchListaVigente,
     fetchListaByFecha,
+    fetchListasVigentes,
+    fetchProductosVigentes,
+    contarProductosDeLista,
+    actualizarDescripcionLista,
     fetchProductosConCosto,
     fetchTarifasFlete,
     fetchConvenios,
