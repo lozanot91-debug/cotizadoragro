@@ -25,15 +25,18 @@ describe('fleteAforo', () => {
     // tc 10 => USD/tn = tarifa
     const input = { km: 100, tarifas: [{ id: 'a', km: 100, tarifa: 20 }], kmCorto: 20, tarifasCorto: [{ id: 'b', km: 20, tarifa: 10 }], tnCargadas: 4 };
     const flete = (o: object) => fleteDeTramos(tramosDeCotizacion({ ...input, ...o } as Parameters<typeof tramosDeCotizacion>[0]), 10).usdTn;
-    it('largo 20 aforo 8 + corto 10 aforo 6, carga 4 -> 20*2 + 10*1,5 = 55', () => {
-      expect(flete({ modalidad: 'largo_corto', aforoTn: 8, aforoCortoTn: 6 })).toBeCloseTo(55, 8);
+    it('largo 20 aforo 8 (ignorado) + corto 10 aforo 6, carga 4 -> 20 + 10*1,5 = 35', () => {
+      expect(flete({ modalidad: 'largo_corto', aforoTn: 8, aforoCortoTn: 6 })).toBeCloseTo(35, 8);
+    });
+    it('directo con aforo 8 y 4 tn -> factor 2 en el único tramo', () => {
+      expect(flete({ modalidad: 'directo', aforoTn: 8 })).toBeCloseTo(40, 8);
     });
     it('el aforo corto se ignora si la modalidad no es largo_corto', () => {
       expect(flete({ modalidad: 'largo', aforoTn: 8, aforoCortoTn: 6 })).toBeCloseTo(40, 8);
       expect(flete({ modalidad: 'directo', aforoCortoTn: 6 })).toBeCloseTo(20, 8);
     });
-    it('un tramo con aforo y el otro sin', () => {
-      expect(flete({ modalidad: 'largo_corto', aforoTn: 8 })).toBeCloseTo(50, 8);
+    it('largo_corto: solo aforo_tn no tiene efecto; solo aforo corto multiplica el corto', () => {
+      expect(flete({ modalidad: 'largo_corto', aforoTn: 8 })).toBeCloseTo(30, 8);
       expect(flete({ modalidad: 'largo_corto', aforoCortoTn: 6 })).toBeCloseTo(35, 8);
     });
   });

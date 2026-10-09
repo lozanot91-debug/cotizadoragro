@@ -61,13 +61,13 @@ describe('recotizar', () => {
     expect(vieja.lineas[0].flete_usd).toBeCloseTo(3457.077 * 10 / 1400, 6);
   });
 
-  it('aforo por tramo: cada aforo multiplica solo su tramo; el corto solo cuenta en largo_corto', () => {
+  it('aforo por tramo: en largo_corto solo el aforo corto multiplica (el corto); en largo/directo el aforo_tn', () => {
     const corto: TarifaFlete[] = [{ id: '25', km: 25, tarifa: 700 }];
     const L = 3457.077 * 10 / 1400, C = 700 * 10 / 1400;
     const c = cotiz({ flete_modalidad: 'largo_corto', km_corto: 25, aforo_tn: 40, aforo_corto_tn: 30 });
     const r = recotizar({ cotiz: c, lineas: [linea({})], productos: [prod({})], tarifas, tarifasCorto: corto, config });
-    expect(r.lineas[0].flete_usd).toBeCloseTo(L * 2 + C * 1.5, 6);
-    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v' })).toMatchObject({ aforo_tn: 40, aforo_corto_tn: 30 });
+    expect(r.lineas[0].flete_usd).toBeCloseTo(L + C * 1.5, 6);
+    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v' })).toMatchObject({ aforo_tn: null, aforo_corto_tn: 30 });
     const solo = cotiz({ aforo_tn: 40, aforo_corto_tn: 30 });
     const r2 = recotizar({ cotiz: solo, lineas: [linea({})], productos: [prod({})], tarifas, config });
     expect(r2.lineas[0].flete_usd).toBeCloseTo(L * 2, 6);

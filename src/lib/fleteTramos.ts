@@ -32,7 +32,10 @@ export function tramosDeCotizacion(input: {
   tarifas: TarifaFlete[];
   kmCorto: number;
   tarifasCorto: TarifaFlete[];
-  /** Aforo (tn) de cada tramo y tn cargadas con flete. El aforo corto solo cuenta en largo_corto. */
+  /**
+   * Aforo (tn) y tn cargadas con flete. En directo/largo, aforoTn va al único tramo.
+   * En largo_corto el aforo va SOLO al corto (aforoCortoTn); el largo nunca lleva aforo y aforoTn se ignora.
+   */
   aforoTn?: number | null;
   aforoCortoTn?: number | null;
   tnCargadas?: number;
@@ -42,10 +45,13 @@ export function tramosDeCotizacion(input: {
     const f = factorAforo(tn, aforo);
     return f > 1 ? { factorAforo: f } : {};
   };
-  const principal = { km: input.km, tarifas: input.tarifas, ...conFactor(input.aforoTn) };
-  return tieneCorto(input.modalidad)
-    ? [principal, { km: input.kmCorto, tarifas: input.tarifasCorto, ...conFactor(input.aforoCortoTn) }]
-    : [principal];
+  if (tieneCorto(input.modalidad)) {
+    return [
+      { km: input.km, tarifas: input.tarifas },
+      { km: input.kmCorto, tarifas: input.tarifasCorto, ...conFactor(input.aforoCortoTn) },
+    ];
+  }
+  return [{ km: input.km, tarifas: input.tarifas, ...conFactor(input.aforoTn) }];
 }
 
 /** Km del tramo que todavía falta cargar (para avisar). */

@@ -149,7 +149,7 @@ export function cabeceraRecotizada(
     convenio_corto_id: cotiz.flete_modalidad === 'largo_corto' ? datos.convenioCortoId ?? null : null,
     campo_id: cotiz.campo_id ?? null,
     tc_flete: cotiz.tc_flete ?? null,
-    aforo_tn: cotiz.aforo_tn ?? null,
+    aforo_tn: cotiz.flete_modalidad === 'largo_corto' ? null : cotiz.aforo_tn ?? null,
     aforo_corto_tn: cotiz.flete_modalidad === 'largo_corto' ? cotiz.aforo_corto_tn ?? null : null,
   };
 }

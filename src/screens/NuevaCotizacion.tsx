@@ -373,7 +373,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const kmNum = Math.ceil(parseNumberInput(km) || 0);
   const kmCortoNum = modalidad === 'largo_corto' ? Math.ceil(parseNumberInput(kmCorto) || 0) : 0;
   // El aviso de km fuera de planilla lo muestra cada tramo en FleteCotizacion
-  const aforoNum = parseNumberInput(aforoTn) || 0;
+  // En largo + corto el aforo es solo del tramo corto: lo tipeado en el principal se guarda en pantalla pero se ignora
+  const aforoNum = modalidad === 'largo_corto' ? 0 : parseNumberInput(aforoTn) || 0;
   const aforoCortoNum = modalidad === 'largo_corto' ? parseNumberInput(aforoCortoTn) || 0 : 0;
   const tnCargadas = tnCargadasConFlete(lineas);
   const tramos = useMemo(

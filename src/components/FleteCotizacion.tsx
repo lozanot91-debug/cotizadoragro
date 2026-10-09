@@ -32,15 +32,15 @@ export interface PropsFlete {
 }
 
 function Tramo({ id, titulo, esReadOnly, tc, convenios, t, aforo }: {
-  id: string; titulo: string; esReadOnly: boolean; tc: number; convenios: ConvenioFlete[]; t: PropsFlete['principal']; aforo: PropsFlete['aforo'];
+  id: string; titulo: string; esReadOnly: boolean; tc: number; convenios: ConvenioFlete[]; t: PropsFlete['principal']; aforo: PropsFlete['aforo'] | null;
 }) {
   const kmNum = parseNumberInput(t.km) || 0;
   const tarifas = t.convenio?.tarifas ?? [];
   const max = tarifas.length ? tarifas[tarifas.length - 1].km : 0;
   const f = fleteDeTramos([{ km: kmNum, tarifas }], tc);
-  const aforoNum = parseNumberInput(aforo.valor) || 0;
+  const aforoNum = aforo ? parseNumberInput(aforo.valor) || 0 : 0;
   const usdOk = kmNum > 0 && !f.tarifaFaltante && tc > 0;
-  const ra = resumenAforo(aforo.tnCargadas, aforoNum, usdOk ? f.usdTn : 0);
+  const ra = resumenAforo(aforo?.tnCargadas ?? 0, aforoNum, usdOk ? f.usdTn : 0);
   return (
     <div className="rounded-lg border border-gray-200 p-3">
       <p className="text-sm font-semibold text-gray-700 mb-2">{titulo}</p>
@@ -69,7 +69,7 @@ function Tramo({ id, titulo, esReadOnly, tc, convenios, t, aforo }: {
         {kmNum > 0 && !f.tarifaFaltante && tc > 0 && <p className="text-gray-600">Flete: <span className="font-medium">USD {formatUSD(f.usdTn, 2)}/tn</span></p>}
         {t.convenio && !t.convenio.vigente && <p className="text-amber-700">Este convenio ya no está vigente.</p>}
       </div>
-      <div className="mt-2 grid gap-2 md:grid-cols-[6.5rem_1fr] items-start">
+      {aforo && <div className="mt-2 grid gap-2 md:grid-cols-[6.5rem_1fr] items-start">
         <div>
           <label htmlFor={`${id}-aforo`} className="block text-xs text-gray-500 mb-1">Aforo (tn)</label>
           <input id={`${id}-aforo`} inputMode="decimal" value={aforo.valor} placeholder="Sin aforo" disabled={esReadOnly} onChange={(e) => aforo.onChange(e.target.value)} className={inputCls} />
@@ -82,7 +82,7 @@ function Tramo({ id, titulo, esReadOnly, tc, convenios, t, aforo }: {
           ) : <p className="text-gray-500">El aforo no supera la carga: se cobra la carga real.</p>)}
           {!(aforoNum > 0) && <p className="text-gray-400">Opcional. Si el camión se cobra por más toneladas de las que lleva, el espacio vacío se reparte en el flete.</p>}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -152,7 +152,7 @@ export default function FleteCotizacion(p: PropsFlete) {
       </div>
 
       <div className={`grid gap-3 mt-3 ${conCorto ? 'md:grid-cols-2' : ''}`}>
-        <Tramo id="flete-principal" titulo={nombreTramoPrincipal(p.modalidad)} esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.principal} aforo={p.aforo} />
+        <Tramo id="flete-principal" titulo={nombreTramoPrincipal(p.modalidad)} esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.principal} aforo={conCorto ? null : p.aforo} />
         {conCorto && <Tramo id="flete-corto" titulo="Corto (planta → campo)" esReadOnly={p.esReadOnly} tc={p.tc} convenios={p.convenios} t={p.corto} aforo={p.aforoCorto} />}
       </div>
       <p className="text-xs text-gray-400 mt-2">Se aplica a los fertilizantes con flete tildado. La planilla está en pesos y se pasa a dólares con el TC comprador. Los km se precargan del campo y la planta, pero siempre los podés cambiar.</p>

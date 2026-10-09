@@ -210,9 +210,9 @@ export interface Cotizacion {
   campo_id?: string | null;
   /** TC con el que se pasó el flete a dólares (comprador divisa BNA). null = cotización vieja: se usó tc. */
   tc_flete?: number | null;
-  /** Aforo en tn del tramo principal (directo o largo), a mano en cada cotización. null = sin aforo: se cobra la carga real. */
+  /** Aforo en tn del tramo único (solo directo o largo; en largo + corto no aplica, va solo el aforo del corto), a mano en cada cotización. null = sin aforo: se cobra la carga real. */
   aforo_tn?: number | null;
-  /** Aforo en tn del tramo corto (solo largo + corto). */
+  /** Aforo en tn del tramo corto (solo largo + corto): único aforo de esa modalidad. */
   aforo_corto_tn?: number | null;
   cantidades_reales: Record<string, { cantidad: number; precio: number; motivo?: string | null }> | null;
   /** Ganada: subtotal realmente ganado (sin IVA ni financiación). Null si no está Ganada. */
