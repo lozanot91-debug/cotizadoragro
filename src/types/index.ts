@@ -516,3 +516,25 @@ export interface FuturoGrano {
   posicion: string;
   ajuste: number;
 }
+
+/** Precio que ofreció la competencia por un producto. */
+export interface PrecioCompetencia {
+  id: string;
+  fecha: string;
+  cotizacion_id: string | null;
+  cliente_id: string | null;
+  cliente_nombre: string | null;
+  cod: string | null;
+  producto: string;
+  unidad: string | null;
+  competidor: string;
+  /** Sin IVA, misma unidad que la cotización */
+  precio_usd: number;
+  /** Nuestro precio final (con flete, sin IVA) para comparar */
+  nuestro_precio_usd: number | null;
+  origen: 'perdida' | 'ganada_parcial' | 'manual';
+  notas: string | null;
+  usuario_id: string | null;
+  usuario_nombre: string | null;
+  created_at: string;
+}

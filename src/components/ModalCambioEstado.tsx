@@ -5,12 +5,15 @@ import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import { MOTIVOS_PERDIDA, esReapertura, motivoFinal } from '@/lib/estados';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { MOTIVOS_CON_COMPETENCIA, precioNuestro } from '@/lib/competencia';
 
 export interface DatosConfirmacion {
   motivo: string;
   comentario: string;
   /** Por línea: cantidad y precio reales (texto del formulario) y motivo de lo que no se ganó. */
   cantidadesReales: Record<string, { cantidad: string; precio: string; motivo: string }>;
+  /** Precio de la competencia (opcional), cuando se pierde por precio o competencia */
+  competencia: { competidor: string; precios: Record<string, string> };
 }
 
 interface FilaReal { cantidad: string; precio: string; motivo: string; otro: string }
@@ -33,15 +36,17 @@ function aReales(lineas: CotizacionLinea[], filas: Record<string, FilaReal>): Re
 interface Props {
   cotiz: Cotizacion;
   hacia: EstadoCotizacion;
-  /** Líneas de la cotización (solo se usan al pasar a Ganada). */
+  /** Líneas de la cotización (se usan al pasar a Ganada o Perdida). */
   lineas: CotizacionLinea[];
   guardando: boolean;
   onCancelar: () => void;
   onConfirmar: (datos: DatosConfirmacion) => void;
+  /** Competidores ya cargados, para sugerir el nombre */
+  competidores?: string[];
 }
 
 /** Modal único de confirmación de cambio de estado. Lo usan Cotizaciones y Pipeline. */
-export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar, onConfirmar }: Props) {
+export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar, onConfirmar, competidores = [] }: Props) {
   const [motivo, setMotivo] = useState('');
   const [otroMotivo, setOtroMotivo] = useState('');
   const [comentario, setComentario] = useState('');
@@ -52,6 +57,8 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
     });
     return inicial;
   });
+  const [competidor, setCompetidor] = useState('');
+  const [preciosComp, setPreciosComp] = useState<Record<string, string>>({});
   const cambiarFila = (id: string, cambios: Partial<FilaReal>) => setReales((prev) => ({ ...prev, [id]: { ...prev[id], ...cambios } }));
 
   const esGanada = hacia === 'Ganada' && lineas.length > 0;
@@ -61,6 +68,14 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
   const totalGanado = esGanada ? subtotalGanado(lineas, realesNum) : 0;
   const pctGanado = totalCotizado > 0 ? (totalGanado / totalCotizado) * 100 : 0;
   const parcial = esGanada && totalGanado < totalCotizado - 0.01;
+
+  // Competencia: al perder por precio/competencia (todas las líneas) o en las líneas no ganadas por ese motivo
+  const lineasComp = hacia === 'Perdida'
+    ? (MOTIVOS_CON_COMPETENCIA.includes(motivo) ? lineas : [])
+    : esGanada ? lineas.filter((l) => {
+      const r = realesNum[l.id];
+      return r && r.cantidad < l.cantidad - 0.005 && MOTIVOS_CON_COMPETENCIA.includes(reales[l.id]?.motivo || '');
+    }) : [];
 
   const reabre = esReapertura(cotiz.estado, hacia);
   const falta =
@@ -179,6 +194,27 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
           </div>
         )}
 
+        {lineasComp.length > 0 && (
+          <div className="mb-4 rounded-lg border border-gray-200 p-3 space-y-2">
+            <p className="text-sm font-medium text-gray-700">¿Cuánto ofreció la competencia? <span className="font-normal text-xs text-gray-400">(opcional)</span></p>
+            <input list="competidores-conocidos" value={competidor} onChange={(e) => setCompetidor(e.target.value)} maxLength={120}
+              placeholder="Competidor (empresa)" aria-label="Competidor"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
+            <datalist id="competidores-conocidos">{competidores.map((c) => <option key={c} value={c} />)}</datalist>
+            <div className="space-y-1.5">
+              {lineasComp.map((l) => (
+                <div key={l.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 min-w-0 truncate text-gray-700">{l.producto}<span className="text-xs text-gray-400 ml-1">nuestro USD {formatUSD(precioNuestro(l), 2)}/{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></span>
+                  <input type="text" inputMode="decimal" value={preciosComp[l.id] || ''} onChange={(e) => setPreciosComp((p) => ({ ...p, [l.id]: e.target.value }))}
+                    placeholder="Precio comp." aria-label={`Precio de la competencia para ${l.producto}`}
+                    className="w-28 px-2 py-1 border border-gray-300 rounded text-right text-sm" />
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400">Sin IVA, en la misma unidad. Queda en Análisis › Competencia.</p>
+          </div>
+        )}
+
         <div className="flex gap-2 justify-end">
           <button onClick={onCancelar} disabled={guardando} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm disabled:opacity-50">Cancelar</button>
           <button
@@ -186,6 +222,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
               motivo: motivoFinal(motivo, otroMotivo),
               comentario: comentario.trim(),
               cantidadesReales: Object.fromEntries(Object.entries(reales).map(([id, f]) => [id, { cantidad: f.cantidad, precio: f.precio, motivo: motivoFinal(f.motivo, f.otro) }])),
+              competencia: { competidor, precios: Object.fromEntries(lineasComp.map((l) => [l.id, preciosComp[l.id] || ''])) },
             })}
             disabled={falta || guardando}
             className={`px-4 py-2 text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2 ${hacia === 'Perdida' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}

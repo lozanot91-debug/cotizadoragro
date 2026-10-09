@@ -11,6 +11,7 @@ import { parseNumberInput } from '@/lib/format';
 import { detalleGanada, lineasGanadas, noGanados, subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import type { Cotizacion, CotizacionLinea, EstadoCotizacion } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { competidoresConocidos, filasDesdeCierre } from '@/lib/competencia';
 
 interface Pedido {
   cotiz: Cotizacion;
@@ -65,6 +66,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [seguimiento, setSeguimiento] = useState<Seguimiento | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [competidores, setCompetidores] = useState<string[]>([]);
 
   /** Abre el modal de confirmación. Devuelve false si el cambio no se puede ni pedir. */
   async function solicitarCambioEstado(cotiz: Cotizacion, hacia: EstadoCotizacion): Promise<boolean> {
@@ -74,7 +76,8 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       return false;
     }
     try {
-      const lineas = hacia === 'Ganada' ? await data.fetchLineas(cotiz.id) : [];
+      const lineas = hacia === 'Ganada' || hacia === 'Perdida' ? await data.fetchLineas(cotiz.id) : [];
+      if (hacia === 'Perdida' || hacia === 'Ganada') data.fetchPreciosCompetencia().then((r) => setCompetidores(competidoresConocidos(r))).catch(() => {});
       setPedido({ cotiz, hacia, lineas });
       return true;
     } catch (e) {
@@ -123,6 +126,17 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
 
       setPedido(null);
       toast.exito(`${nombreCotizacion(cotiz)}: ${hacia}`);
+
+      // Precios de la competencia que se cargaron al cerrar (no frena el cambio de estado si falla)
+      if (hacia === 'Perdida' || hacia === 'Ganada') {
+        const filas = filasDesdeCierre(cotiz, pedido.lineas, datos.competencia.competidor, datos.competencia.precios,
+          hacia === 'Perdida' ? 'perdida' : 'ganada_parcial', hoyAR(), usuario?.nombre || '');
+        try {
+          if (await data.guardarPreciosCompetencia(filas)) toast.exito(`Se guardó el precio de ${datos.competencia.competidor.trim()} (${filas.length} ${filas.length === 1 ? 'producto' : 'productos'}).`);
+        } catch (e) {
+          toast.aviso(`No se pudo guardar el precio de la competencia: ${e instanceof Error ? e.message : 'error'}`);
+        }
+      }
 
       // Cobranzas: al ganar se cargan los cobros por plazo; al reabrir se borran los que faltan cobrar
       try {
@@ -190,6 +204,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
           guardando={guardando}
           onCancelar={() => setPedido(null)}
           onConfirmar={confirmar}
+          competidores={competidores}
         />
       )}
       {seguimiento && (

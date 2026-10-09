@@ -32,6 +32,7 @@ import type {
   PrecioGrano,
   PizarraGrano,
   FuturoGrano,
+  PrecioCompetencia,
 } from '@/types';
 import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
@@ -336,6 +337,39 @@ export function useData() {
 
   async function eliminarCanje(id: string) {
     await ok(supabase.from('canjes').delete().eq('id', id));
+  }
+
+  // ---- Resumen semanal ----
+  /** Cambios de estado de cotizaciones desde una fecha (para saber cuándo se ganó o perdió). */
+  async function fetchCambiosEstado(desdeIso: string): Promise<{ cotizacion_id: string | null; valor_nuevo: string | null; created_at: string }[]> {
+    return fetchAllPaged(() => supabase.from('historial_cambios').select('cotizacion_id, valor_nuevo, created_at').eq('tipo', 'estado').gte('created_at', desdeIso).order('created_at') as unknown as AnyFilter);
+  }
+
+  /** Se manda a sí mismo el resumen por notificación (prueba). */
+  async function enviarmeResumen(): Promise<{ enviados: number; motivo?: string }> {
+    const { data, error } = await supabase.functions.invoke('resumen-semanal', { body: { prueba: true } });
+    if (error) throw new ErrorApp('No se pudo mandar el resumen.', error);
+    return data as { enviados: number; motivo?: string };
+  }
+
+  // ---- Precios de la competencia ----
+  async function fetchPreciosCompetencia(desde?: string): Promise<PrecioCompetencia[]> {
+    const filas = await fetchAllPaged<PrecioCompetencia>(() => {
+      let q = supabase.from('precios_competencia').select('*').order('fecha', { ascending: false }).order('created_at', { ascending: false });
+      if (desde) q = q.gte('fecha', desde);
+      return q as unknown as AnyFilter;
+    });
+    return filas.map((r) => ({ ...r, precio_usd: Number(r.precio_usd), nuestro_precio_usd: r.nuestro_precio_usd === null ? null : Number(r.nuestro_precio_usd) }));
+  }
+
+  async function guardarPreciosCompetencia(filas: Omit<PrecioCompetencia, 'id' | 'usuario_id' | 'created_at'>[]): Promise<number> {
+    if (!filas.length) return 0;
+    await ok(supabase.from('precios_competencia').insert(filas));
+    return filas.length;
+  }
+
+  async function eliminarPrecioCompetencia(id: string) {
+    await ok(supabase.from('precios_competencia').delete().eq('id', id));
   }
 
   // ---- Alertas de recompra ----
@@ -1117,6 +1151,11 @@ export function useData() {
     fetchCotizacionesConCanje,
     aplicarCanjeACotizacion,
     fetchRecomprasPospuestas,
+    fetchPreciosCompetencia,
+    fetchCambiosEstado,
+    enviarmeResumen,
+    guardarPreciosCompetencia,
+    eliminarPrecioCompetencia,
     posponerRecompra,
     fetchProductosDeCotizaciones,
     fetchPreciosGrano,

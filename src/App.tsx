@@ -21,6 +21,8 @@ import Cobranzas from '@/screens/Cobranzas';
 import ConsultaCostos from '@/screens/ConsultaCostos';
 import CalculadoraCanje from '@/screens/CalculadoraCanje';
 import RelacionInsumoGrano from '@/screens/RelacionInsumoGrano';
+import Competencia from '@/screens/Competencia';
+import ResumenSemanal from '@/screens/ResumenSemanal';
 import EvolucionCostos from '@/screens/EvolucionCostos';
 import PedidosMesa from '@/screens/PedidosMesa';
 import PublicoMesa from '@/screens/PublicoMesa';
@@ -107,6 +109,13 @@ function AppContent() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('abrir');
+    const pantallaUrl = params.get('pantalla');
+    if (pantallaUrl === 'resumen') {
+      setScreen('resumen');
+      params.delete('pantalla');
+      const q = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${q ? `?${q}` : ''}${window.location.hash}`);
+    }
     if (id && /^[0-9a-f-]{36}$/i.test(id)) {
       setEditCotizId(id); setDuplicateFromId(undefined); setScreen('nueva');
       params.delete('abrir');
@@ -115,7 +124,8 @@ function AppContent() {
     }
     if (!('serviceWorker' in navigator)) return;
     const alMensaje = (e: MessageEvent) => {
-      const d = e.data as { tipo?: string; cotizacionId?: string } | null;
+      const d = e.data as { tipo?: string; cotizacionId?: string; pantalla?: string } | null;
+      if (d?.tipo === 'abrir-pantalla' && d.pantalla === 'resumen') { setScreen('resumen'); return; }
       if (d?.tipo === 'abrir-cotizacion' && d.cotizacionId) {
         setEditCotizId(d.cotizacionId); setDuplicateFromId(undefined); setScreen('nueva');
         void loadPedidoBadge();
@@ -155,6 +165,8 @@ function AppContent() {
       {screen === 'canje' && <CalculadoraCanje key={canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} onEditCotiz={handleEditCotiz} />}
       {screen === 'catalogo' && <Catalogo />}
       {screen === 'relacion' && <RelacionInsumoGrano />}
+      {screen === 'competencia' && <Competencia />}
+      {screen === 'resumen' && <ResumenSemanal onEditCotiz={handleEditCotiz} onNavigate={handleNavigate} />}
       {screen === 'rentabilidad' && <Rentabilidad onEdit={handleEditCotiz} />}
       {screen === 'tareas' && <Tareas />}
       {screen === 'visitas' && <Visitas />}

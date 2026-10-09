@@ -1,6 +1,6 @@
 /** Estructura del menú lateral: dos accesos sueltos arriba y grupos que se abren y cierran. */
 
-export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion' | 'catalogo' | 'canje' | 'relacion';
+export type Screen = 'inicio' | 'nueva' | 'pipeline' | 'cotizaciones' | 'tareas' | 'visitas' | 'clientes' | 'listas' | 'estadisticas' | 'config' | 'historial' | 'recotizar' | 'rentabilidad' | 'vencimientos' | 'cobranzas' | 'costos' | 'pedidos' | 'consulta' | 'facturacion' | 'catalogo' | 'canje' | 'relacion' | 'competencia' | 'resumen';
 
 export type Badge = 'venc' | 'pedido' | 'cobro' | 'tarea' | 'factura';
 
@@ -46,8 +46,10 @@ export const GRUPOS: GrupoMenu[] = [
     { id: 'costos', label: 'Evolución de costos' },
   ] },
   { id: 'analisis', label: 'Análisis', items: [
+    { id: 'resumen', label: 'Resumen semanal' },
     { id: 'estadisticas', label: 'Estadísticas' },
     { id: 'rentabilidad', label: 'Rentabilidad' },
+    { id: 'competencia', label: 'Competencia' },
   ] },
   { id: 'admin', label: 'Administración', items: [
     { id: 'config', label: 'Configuración', soloAdmin: true },

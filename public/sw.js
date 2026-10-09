@@ -2,7 +2,7 @@
 // Guarda la "cáscara" de la app para que abra rápido y se pueda instalar en el celular.
 // NO guarda datos: todo lo que va a Supabase (otro dominio) pasa directo por la red,
 // así que nunca se muestran cotizaciones o precios viejos.
-const VERSION = 'cotizador-v2';
+const VERSION = 'cotizador-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -53,7 +53,7 @@ self.addEventListener('push', (e) => {
     badge: '/icon-192.png',
     tag: d.tag || undefined,
     renotify: !!d.tag,
-    data: { cotizacionId: d.cotizacionId || null },
+    data: { cotizacionId: d.cotizacionId || null, pantalla: d.pantalla || null },
   }));
 });
 
@@ -61,13 +61,15 @@ self.addEventListener('push', (e) => {
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const id = e.notification.data && e.notification.data.cotizacionId;
-  const url = id ? `/?abrir=${encodeURIComponent(id)}` : '/';
+  const pantalla = e.notification.data && e.notification.data.pantalla;
+  const url = id ? `/?abrir=${encodeURIComponent(id)}` : pantalla ? `/?pantalla=${encodeURIComponent(pantalla)}` : '/';
   e.waitUntil((async () => {
     const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const propia = ventanas.find((c) => new URL(c.url).origin === self.location.origin);
     if (propia) {
       await propia.focus();
       if (id) propia.postMessage({ tipo: 'abrir-cotizacion', cotizacionId: id });
+      else if (pantalla) propia.postMessage({ tipo: 'abrir-pantalla', pantalla });
       return;
     }
     await self.clients.openWindow(url);

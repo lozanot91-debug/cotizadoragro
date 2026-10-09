@@ -9,7 +9,7 @@ import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
-import type { Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio } from '@/types';
+import type { Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio, PrecioCompetencia } from '@/types';
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import FleteCotizacion from '@/components/FleteCotizacion';
 import EnviarAFacturar from '@/components/EnviarAFacturar';
@@ -18,11 +18,12 @@ import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizac
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
 import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2, ClipboardList } from 'lucide-react';
-import { hoyAR, formatearFechaHora } from '@/lib/fechas';
+import { hoyAR, formatearFechaHora, sumarDias } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { ultimaCotizacion, type LineaDeCliente } from '@/lib/historialCliente';
+import { ultimoPorCod } from '@/lib/competencia';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 interface LineaEditable {
@@ -102,6 +103,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [tasaMensual, setTasaMensual] = useState('');
   /** Lo que se le cotizó antes a este cliente, para mostrar "la última vez" en cada producto. */
   const [historialCliente, setHistorialCliente] = useState<LineaDeCliente[]>([]);
+  /** Último precio conocido de la competencia por código (últimos 6 meses) */
+  const [compPorCod, setCompPorCod] = useState<Map<string, PrecioCompetencia>>(new Map());
+  useEffect(() => {
+    data.fetchPreciosCompetencia(sumarDias(hoyAR(), -180)).then((r) => setCompPorCod(ultimoPorCod(r))).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [conCanje, setConCanje] = useState(false);
   const [canjeCultivo, setCanjeCultivo] = useState('Soja');
   const [canjeOtro, setCanjeOtro] = useState('');
@@ -1155,6 +1162,17 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                         <p className="text-xs text-gray-500 mt-0.5">
                           Última vez: USD {formatUSD(u.precio)} ({u.nombre || `N° ${u.numero}`}, {formatDate(u.fecha)}, {u.estado.toLowerCase()})
                           {Math.abs(dif) >= 0.5 && <span className={dif > 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif > 0 ? 'Ahora +' : 'Ahora '}{formatUSD(dif, 1)}%</span>}
+                        </p>
+                      );
+                    })()}{(() => {
+                      const comp = compPorCod.get(l.producto.cod);
+                      if (!comp) return null;
+                      const nuestro = l.precioConFlete || l.precioUSD;
+                      const dif = nuestro > 0 ? ((comp.precio_usd - nuestro) / nuestro) * 100 : 0;
+                      return (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Competencia: USD {formatUSD(comp.precio_usd)} ({comp.competidor}, {formatDate(comp.fecha)})
+                          {Math.abs(dif) >= 0.5 && <span className={dif < 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif < 0 ? `${formatUSD(-dif, 1)}% más barato` : `${formatUSD(dif, 1)}% más caro`}</span>}
                         </p>
                       );
                     })()}{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}{l.costoUSD <= 0 && <span className="block text-xs font-semibold text-red-600">Costo pendiente</span>}</td>
