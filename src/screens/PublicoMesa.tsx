@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Sprout, Loader2, Lock, FileDown, FileSpreadsheet, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, Lock, FileDown, FileSpreadsheet, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import LogoCotizador from '@/components/LogoCotizador';
 import { supabase } from '@/lib/supabase';
 import { traducirError } from '@/lib/errores';
 import { parseNumberInput, formatUSD, formatNumber } from '@/lib/format';
@@ -27,7 +28,7 @@ function Marco({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-emerald-900 text-white">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
-          <div className="w-9 h-9 bg-amber-400 rounded-lg flex items-center justify-center"><Sprout className="w-5 h-5 text-emerald-900" /></div>
+          <div className="w-9 h-9 bg-amber-400 rounded-lg flex items-center justify-center"><LogoCotizador className="w-6 h-6 text-emerald-900" colorHoja="#047857" /></div>
           <span className="titulo text-xl tracking-wide">Mesa de insumos</span>
         </div>
       </header>

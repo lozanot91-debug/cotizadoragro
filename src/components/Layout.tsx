@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Sprout, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat, Scale, Swords, CalendarDays, Map as MapIcon } from 'lucide-react';
+import { FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat, Scale, Swords, CalendarDays, Map as MapIcon } from 'lucide-react';
+import LogoCotizador from '@/components/LogoCotizador';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
 import MiPerfil from '@/components/MiPerfil';
@@ -84,7 +85,7 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
         <div className="px-4 lg:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-amber-400 rounded-lg flex items-center justify-center">
-              <Sprout className="w-5 h-5 text-emerald-900" />
+              <LogoCotizador className="w-6 h-6 text-emerald-900" colorHoja="#047857" titulo="Cotizador Agro" />
             </div>
             <span className="titulo text-xl tracking-wide">Cotizador Agro</span>
           </div>

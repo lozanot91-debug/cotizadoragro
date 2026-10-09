@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useSesion } from '@/context/AuthContext';
 import { linkRecuperacionVencido } from '@/lib/supabase';
 import { MIN_PASSWORD, validarPasswordNueva } from '@/lib/password';
-import { Sprout, Loader2, ArrowLeft, MailCheck, Eye, EyeOff } from 'lucide-react';
+import { Loader2, ArrowLeft, MailCheck, Eye, EyeOff } from 'lucide-react';
+import LogoCotizador from '@/components/LogoCotizador';
 
 type Modo = 'ingresar' | 'olvido' | 'enviado' | 'nueva';
 
@@ -95,7 +96,7 @@ export default function AuthScreen({ modoInicial = 'ingresar' }: { modoInicial?:
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="flex flex-col items-center mb-8 text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-green-700 rounded-2xl flex items-center justify-center shadow-lg mb-4">
-              {modo === 'enviado' ? <MailCheck className="w-9 h-9 text-white" /> : <Sprout className="w-9 h-9 text-white" />}
+              {modo === 'enviado' ? <MailCheck className="w-9 h-9 text-white" /> : <LogoCotizador className="w-10 h-10 text-white" colorHoja="#fcd34d" titulo="Cotizador Agro" />}
             </div>
             <h1 className="text-2xl font-bold text-gray-800">Cotizador Agro</h1>
             <p className="text-sm text-gray-500 mt-1">{subtitulo}</p>
