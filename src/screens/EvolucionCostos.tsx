@@ -6,7 +6,8 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { serieDeCostos, variacionesEntreListas, type PuntoCosto } from '@/lib/costos';
 import { formatUSD, formatDate } from '@/lib/format';
-import type { ListaCostos, ProductoConCosto } from '@/types';
+import { fuentePrincipal } from '@/lib/fuentesLista';
+import type { FuenteLista, ListaCostos, ProductoConCosto } from '@/types';
 
 /** Gráfico de línea de un solo producto: marcas finas, cruz y detalle al pasar el dedo o el mouse. */
 function Grafico({ serie, moneda }: { serie: PuntoCosto[]; moneda: string }) {
@@ -77,8 +78,13 @@ export default function EvolucionCostos() {
   const [serie, setSerie] = useState<PuntoCosto[]>([]);
   const [cargandoSerie, setCargandoSerie] = useState(false);
 
+  const [fuentes, setFuentes] = useState<FuenteLista[]>([]);
+  const [fuenteId, setFuenteId] = useState('');
+
   const cargar = useCallback(async () => {
-    const ls = await data.fetchListas();
+    const fs = await data.fetchFuentes();
+    setFuentes(fs);
+    const ls = await data.fetchListas(fuenteId || fuentePrincipal(fs)?.id);
     setListas(ls);
     if (ls.length === 0) return;
     const [act, ant] = await Promise.all([
@@ -86,7 +92,7 @@ export default function EvolucionCostos() {
       ls[1] ? data.fetchProductosConCosto(ls[1].id) : Promise.resolve([] as ProductoConCosto[]),
     ]);
     setActuales(act); setAnteriores(ant);
-  }, []);
+  }, [fuenteId]);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { void load(); }, [load]);
 
@@ -137,6 +143,16 @@ export default function EvolucionCostos() {
       <div>
         <h1 className="text-2xl titulo text-gray-800 flex items-center gap-2"><LineChart className="w-6 h-6 text-emerald-600" /> Evolución de costos</h1>
         <p className="text-sm text-gray-500">Cómo fue cambiando el costo de cada producto en las listas que cargaste. Para decidir cuándo cotizar o comprar, y para explicar un aumento.</p>
+        {fuentes.length > 1 && (
+          <select
+            aria-label="Lista de precios"
+            value={fuenteId || fuentePrincipal(fuentes)?.id || ''}
+            onChange={(e) => { setFuenteId(e.target.value); setSel(null); setBusqueda(''); }}
+            className="mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+          >
+            {fuentes.map((f) => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+          </select>
+        )}
       </div>
 
       {listas.length === 0 ? (

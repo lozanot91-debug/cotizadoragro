@@ -113,10 +113,10 @@ export default function RelacionInsumoGrano() {
 
   const montado = useRef(true);
   const cargar = useCallback(async () => {
-    const [ps, listas, cfg] = await Promise.all([data.fetchPreciosGrano(), data.fetchListas(), data.fetchConfig()]);
+    const [ps, prods, cfg] = await Promise.all([data.fetchPreciosGrano(), data.fetchProductosVigentes(), data.fetchConfig()]);
     setPrecios(ps);
     setConfig(cfg);
-    if (listas[0]) setProductos(await data.fetchProductosConCosto(listas[0].id));
+    setProductos(prods);
     void data.fetchTipoCambioBNA().then((b) => { if (montado.current) setTcBna(b); }).catch(() => {});
     setPizarras(await data.fetchPizarrasRecientes());
     void data.actualizarPizarras().then((nuevas) => {

@@ -4,19 +4,19 @@ import { useData } from '@/hooks/useData';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { BotonFicha } from '@/components/FichaProducto';
-import { buscarProductos, costoDeLista, fleteConsultaTramos, precioConsulta, type FleteConsulta } from '@/lib/consulta';
+import { buscarProductos, construirComparacionPorFuente, unirProductosDeFuentes, type ComparacionFuente, costoDeLista, fleteConsultaTramos, precioConsulta, type FleteConsulta } from '@/lib/consulta';
 import { ivaPorDefecto, resolverMargen } from '@/lib/calculations';
 import { MODALIDADES, nombreTramoPrincipal, tieneCorto } from '@/lib/fleteTramos';
 import { formatUSD, formatDate, parseNumberInput, formatInputNumber } from '@/lib/format';
-import type { Configuracion, ConvenioFlete, ListaCostos, ModalidadFlete, Planta, ProductoConCosto, TipoCambioBNA } from '@/types';
+import type { Configuracion, ConvenioFlete, ModalidadFlete, Planta, ProductoConCosto, TipoCambioBNA } from '@/types';
 import { elegirConvenioVigente, conveniosParaElegir, etiquetaConvenio } from '@/lib/convenios';
 
 /** Consulta rápida: costo de lista de un insumo y flete por km (en $/tn y USD/tn al TC comprador divisa BNA). */
 export default function ConsultaCostos() {
   const data = useData();
   const [loading, setLoading] = useState(true);
-  const [lista, setLista] = useState<ListaCostos | null>(null);
-  const [productos, setProductos] = useState<ProductoConCosto[]>([]);
+  const [comparacion, setComparacion] = useState<ComparacionFuente[]>([]);
+  const [productos, setProductos] = useState<(ProductoConCosto & { fuenteNombre: string })[]>([]);
   const [anteriores, setAnteriores] = useState<Map<string, number>>(new Map());
   const [convenios, setConvenios] = useState<ConvenioFlete[]>([]);
   const [convenioId, setConvenioId] = useState<string | null>(null);
@@ -38,18 +38,22 @@ export default function ConsultaCostos() {
 
   const montado = useRef(true);
   const cargar = useCallback(async () => {
-    const [listas, convs, cfg] = await Promise.all([data.fetchListas(), data.fetchConvenios(), data.fetchConfig()]);
+    const [fuentes, listas, convs, cfg] = await Promise.all([data.fetchFuentes(), data.fetchListas(), data.fetchConvenios(), data.fetchConfig()]);
     setConvenios(convs);
     setTcRespaldo(cfg.tipo_cambio_default);
     setConfig(cfg);
-    setLista(listas[0] ?? null);
-    if (listas[0]) {
-      const [act, ant] = await Promise.all([
-        data.fetchProductosConCosto(listas[0].id),
-        listas[1] ? data.fetchProductosConCosto(listas[1].id) : Promise.resolve([] as ProductoConCosto[]),
+    const comp = construirComparacionPorFuente(fuentes, listas);
+    setComparacion(comp);
+    if (comp.length > 0) {
+      // Actual = lo último de cada fuente; anterior = la lista previa de cada fuente (si la tiene)
+      const [acts, ants] = await Promise.all([
+        Promise.all(comp.map((c) => data.fetchProductosConCosto(c.actual.id))),
+        Promise.all(comp.map((c) => (c.anterior ? data.fetchProductosConCosto(c.anterior.id) : Promise.resolve([] as ProductoConCosto[])))),
       ]);
-      setProductos(act);
-      setAnteriores(new Map(ant.map((p) => [p.cod, p.costo])));
+      setProductos(unirProductosDeFuentes(comp.map((c, i) => ({ fuenteNombre: c.fuente.nombre, productos: acts[i] }))));
+      const mapaAnt = new Map<string, number>();
+      for (const p of ants.flat()) if (!mapaAnt.has(p.cod)) mapaAnt.set(p.cod, p.costo);
+      setAnteriores(mapaAnt);
     }
     void data.fetchTipoCambioBNA().then((b) => { if (montado.current) setTcBna(b); }).catch(() => {});
     data.fetchPlantasFlete().then((p) => { if (montado.current) setPlantas(p); }).catch((e) => console.error('No se pudieron cargar las plantas:', e));
@@ -85,6 +89,8 @@ export default function ConsultaCostos() {
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
 
+  const lista = comparacion[0]?.actual ?? null;
+  const variasFuentes = comparacion.length > 1;
   const costo = sel ? costoDeLista(sel) : null;
   const margenSugerido = sel && config ? resolverMargen(sel, config.margen_general, []) : null;
   const margenNum = margenTxt.trim() === '' ? NaN : parseNumberInput(margenTxt);
@@ -108,8 +114,18 @@ export default function ConsultaCostos() {
         <section className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between gap-2 mb-3">
             <h2 className="font-semibold text-gray-800 flex items-center gap-2"><Package className="w-5 h-5 text-emerald-700" /> Costo de insumo</h2>
-            {lista && <span className="text-xs text-gray-500">Lista del {formatDate(lista.fecha)}</span>}
+            {lista && !variasFuentes && <span className="text-xs text-gray-500">Lista del {formatDate(lista.fecha)}</span>}
           </div>
+
+          {variasFuentes && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {comparacion.map((c) => (
+                <span key={c.fuente.id} className="text-xs text-gray-600 bg-gray-100 rounded-full px-2.5 py-1">
+                  <strong>{c.fuente.nombre}:</strong> lista {formatDate(c.actual.fecha)}{c.actual.descripcion ? ` · ${c.actual.descripcion}` : ''}
+                </span>
+              ))}
+            </div>
+          )}
 
           {!lista ? (
             <p className="text-sm text-gray-500">No hay lista de costos cargada.</p>
@@ -189,7 +205,7 @@ export default function ConsultaCostos() {
                         <button onClick={() => { setSel(p); setMargenTxt(config ? formatInputNumber(resolverMargen(p, config.margen_general, []), 2) : ''); }} className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-center justify-between gap-3">
                           <span className="min-w-0">
                             <span className="block text-sm font-medium text-gray-800 truncate">{p.producto}</span>
-                            <span className="block text-xs text-gray-500 truncate">{p.cod} · {p.proveedor || 'Sin proveedor'}</span>
+                            <span className="block text-xs text-gray-500 truncate">{p.cod} · {p.proveedor || 'Sin proveedor'}{variasFuentes ? ` · ${p.fuenteNombre}` : ''}</span>
                           </span>
                           <span className="text-sm text-gray-700 whitespace-nowrap">{c.moneda === 'ARS' ? '$' : 'USD'} {formatUSD(c.valor, 2)}<span className="text-xs text-gray-400">/{c.unidad}</span></span>
                         </button>

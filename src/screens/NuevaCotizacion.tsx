@@ -208,7 +208,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
     let productosLista: ProductoConCosto[] = [];
     if (lista) {
-      productosLista = await data.fetchProductosConCosto(lista.id);
+      productosLista = await data.fetchProductosVigentes();
       setProductos(productosLista);
     }
 
@@ -245,7 +245,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
         let productosCotiz = productosLista;
         if (cotiz.lista_id && cotiz.lista_id !== lista?.id) {
-          productosCotiz = await data.fetchProductosConCosto(cotiz.lista_id);
+          productosCotiz = await data.fetchProductosVigentes({ listaIdBase: cotiz.lista_id });
           setProductos(productosCotiz);
         }
 

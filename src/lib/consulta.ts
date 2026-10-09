@@ -1,5 +1,5 @@
 /** Cálculos de la pantalla de consulta rápida (costo de un insumo y flete por km). */
-import type { ProductoConCosto, TarifaFlete } from '@/types';
+import type { FuenteLista, ListaCostos, ProductoConCosto, TarifaFlete } from '@/types';
 import { buscarTarifa, calcularFleteUSD, clampMargen, precioConMargen } from '@/lib/calculations';
 
 export interface FleteConsulta {
@@ -78,4 +78,40 @@ export function precioConsulta(costo: number, margenPct: number, ivaPct = 0): { 
   const margen = clampMargen(margenPct);
   const precio = precioConMargen(costo, margen);
   return { precio, ganancia: precio - costo, conIva: precio * (1 + (ivaPct || 0) / 100), margen };
+}
+
+export interface ComparacionFuente {
+  fuente: FuenteLista;
+  actual: ListaCostos;
+  /** La lista inmediatamente anterior de la misma fuente (null si solo tiene una) */
+  anterior: ListaCostos | null;
+}
+
+/** Las dos últimas listas de cada fuente (las fuentes sin listas no aparecen), en el orden de las fuentes. */
+export function construirComparacionPorFuente(fuentes: FuenteLista[], listas: ListaCostos[]): ComparacionFuente[] {
+  const out: ComparacionFuente[] = [];
+  for (const fuente of fuentes) {
+    const ls = listas
+      .filter((l) => l.fuente_id === fuente.id)
+      .sort((a, b) => (a.fecha === b.fecha ? b.created_at.localeCompare(a.created_at) : b.fecha.localeCompare(a.fecha)));
+    if (ls[0]) out.push({ fuente, actual: ls[0], anterior: ls[1] ?? null });
+  }
+  return out;
+}
+
+/** Une los productos de varias fuentes sin repetir (gana el primero) y marca de qué fuente viene cada uno. */
+export function unirProductosDeFuentes(
+  grupos: { fuenteNombre: string; productos: ProductoConCosto[] }[]
+): (ProductoConCosto & { fuenteNombre: string })[] {
+  const vistos = new Set<string>();
+  const out: (ProductoConCosto & { fuenteNombre: string })[] = [];
+  for (const g of grupos) {
+    for (const p of g.productos) {
+      const clave = p.id || p.cod;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      out.push({ ...p, fuenteNombre: g.fuenteNombre });
+    }
+  }
+  return out;
 }

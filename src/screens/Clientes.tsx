@@ -87,7 +87,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
     setVisitasCliente(viss);
     setConfigCli(cfg);
     if (lista) {
-      const prods = await data.fetchProductosConCosto(lista.id);
+      const prods = await data.fetchProductosVigentes();
       setProductos(prods);
     }
   }

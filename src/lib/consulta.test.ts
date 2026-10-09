@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buscarProductos, costoDeLista, fleteConsulta, fleteConsultaTramos, precioConsulta } from './consulta';
+import { buscarProductos, construirComparacionPorFuente, unirProductosDeFuentes, costoDeLista, fleteConsulta, fleteConsultaTramos, precioConsulta } from './consulta';
 
 const tarifas = [{ km: 100, tarifa: 2766.984 }, { km: 101, tarifa: 2780 }] as never;
 
@@ -67,5 +67,37 @@ describe('precioConsulta', () => {
   });
   it('sin costo no hay precio', () => {
     expect(precioConsulta(0, 10)).toBeNull();
+  });
+});
+
+describe('construirComparacionPorFuente', () => {
+  const fu = (id: string, orden = 0) => ({ id, nombre: `F${id}`, descripcion: null, prefijo_cod: null, orden, created_at: '', updated_at: '' });
+  const li = (id: string, fuente_id: string, fecha: string) => ({ id, fuente_id, fecha, nombre_archivo: null, uploaded_by: null, created_at: fecha, descripcion: null });
+
+  it('una fuente: actual = la más nueva y anterior = la que sigue (como listas[0] y listas[1])', () => {
+    const r = construirComparacionPorFuente([fu('a')], [li('l1', 'a', '2026-10-01'), li('l2', 'a', '2026-09-01'), li('l3', 'a', '2026-08-01')]);
+    expect(r).toHaveLength(1);
+    expect(r[0].actual.id).toBe('l1');
+    expect(r[0].anterior?.id).toBe('l2');
+  });
+  it('dos fuentes: cada una con sus dos últimas, en orden de fuente', () => {
+    const r = construirComparacionPorFuente([fu('a'), fu('b', 1)], [li('b1', 'b', '2026-10-05'), li('a1', 'a', '2026-10-01'), li('a2', 'a', '2026-09-01'), li('b2', 'b', '2026-09-20')]);
+    expect(r.map((x) => [x.actual.id, x.anterior?.id])).toEqual([['a1', 'a2'], ['b1', 'b2']]);
+  });
+  it('fuente con una sola lista: sin anterior; sin listas: no aparece', () => {
+    const r = construirComparacionPorFuente([fu('a'), fu('b', 1), fu('c', 2)], [li('a1', 'a', '2026-10-01'), li('b1', 'b', '2026-10-02')]);
+    expect(r.map((x) => x.fuente.id)).toEqual(['a', 'b']);
+    expect(r[1].anterior).toBeNull();
+  });
+});
+
+describe('unirProductosDeFuentes', () => {
+  const pr = (id: string, cod: string) => ({ id, cod }) as never;
+  it('une sin repetir y marca la fuente', () => {
+    const r = unirProductosDeFuentes([
+      { fuenteNombre: 'A', productos: [pr('1', 'X'), pr('2', 'Y')] },
+      { fuenteNombre: 'B', productos: [pr('2', 'Y'), pr('3', 'Z')] },
+    ]);
+    expect(r.map((p) => [p.cod, p.fuenteNombre])).toEqual([['X', 'A'], ['Y', 'A'], ['Z', 'B']]);
   });
 });

@@ -9,6 +9,7 @@ import { registrarCambio } from '@/lib/historial';
 import { recotizar, cabeceraRecotizada, type ResultadoRecotizar } from '@/lib/recotizar';
 import { formatUSD, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
+import { vigentePorFuente } from '@/lib/fuentesLista';
 import type { Configuracion, Cotizacion, CotizacionLinea, ListaCostos, ProductoConCosto, ConvenioFlete, EstadoCotizacion } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
@@ -49,10 +50,17 @@ export default function Recotizar({ onEdit }: { onEdit: (id: string) => void }) 
     setConfig(cfg); setVigente(lv); setListas(ls); setConvenios(tars);
     if (!lv) { setProductos([]); setCotizaciones([]); setLineas([]); return; }
     const [prods, cots, lins] = await Promise.all([
-      data.fetchProductosConCosto(lv.id), data.fetchCotizaciones(), data.fetchLineasDeCotizacionesAbiertas(),
+      data.fetchProductosVigentes(), data.fetchCotizaciones(), data.fetchLineasDeCotizacionesAbiertas(),
     ]);
     setProductos(prods);
-    setCotizaciones(cots.filter((c) => ['Borrador', 'Enviada', 'En negociación'].includes(c.estado) && c.lista_id !== lv.id));
+    // Una cotización es candidata si la vigente de la fuente de SU lista no es la que usó
+    const porId = new Map(ls.map((l) => [l.id, l]));
+    const vigPorFuente = vigentePorFuente(ls);
+    const vigenteDe = (listaId: string | null) => {
+      const l = listaId ? porId.get(listaId) : undefined;
+      return (l ? vigPorFuente.get(l.fuente_id) : undefined) ?? lv;
+    };
+    setCotizaciones(cots.filter((c) => ['Borrador', 'Enviada', 'En negociación'].includes(c.estado) && c.lista_id !== vigenteDe(c.lista_id).id));
     setLineas(lins);
     setSeleccion(new Set());
   }, []);

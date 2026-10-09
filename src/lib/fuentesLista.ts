@@ -1,3 +1,4 @@
+import { ErrorApp } from '@/lib/errores';
 import type { FuenteLista, ListaCostos } from '@/types';
 
 /** La fuente principal: menor orden y, a igual orden, la más vieja. */
@@ -31,4 +32,10 @@ export function aplicarPrefijoCod<T extends { cod: string }>(filas: T[], prefijo
     if (!p || !f.cod || f.cod.startsWith(p)) return { ...f };
     return { ...f, cod: p + f.cod };
   });
+}
+
+/** Error de nombre repetido (índice único de fuentes_lista). */
+export function esNombreRepetido(err: unknown): boolean {
+  const causa = err instanceof ErrorApp ? (err.causa as { code?: string } | undefined) : (err as { code?: string } | null);
+  return causa?.code === '23505';
 }

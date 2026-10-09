@@ -49,9 +49,9 @@ export default function Competencia() {
   const [guardando, setGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
-    const [r, listas, cls, cfg] = await Promise.all([data.fetchPreciosCompetencia(), data.fetchListas(), data.fetchClientes(), data.fetchConfig()]);
+    const [r, prods, cls, cfg] = await Promise.all([data.fetchPreciosCompetencia(), data.fetchProductosVigentes(), data.fetchClientes(), data.fetchConfig()]);
     setRegs(r); setClientes(cls); setConfig(cfg);
-    if (listas[0]) setProductos(await data.fetchProductosConCosto(listas[0].id));
+    setProductos(prods);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);

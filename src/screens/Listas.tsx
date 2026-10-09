@@ -1,157 +1,77 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ConveniosFlete from '@/components/ConveniosFlete';
 import PlantasFlete from '@/components/PlantasFlete';
+import TarjetaFuenteLista, { type CambioCosto, type ResultadoCarga } from '@/components/TarjetaFuenteLista';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
-import { parsearListaCostos } from '@/lib/excel';
-import { formatDate, formatUSD } from '@/lib/format';
-import { registrarCambio } from '@/lib/historial';
-import type { ListaCostos, ProductoConCosto } from '@/types';
-import { Upload, ListChecks, AlertCircle, Check, Loader2, FileSpreadsheet, History, TrendingUp } from 'lucide-react';
-import { hoyAR } from '@/lib/fechas';
+import { formatUSD } from '@/lib/format';
 import { traducirError } from '@/lib/errores';
+import { esNombreRepetido } from '@/lib/fuentesLista';
+import type { FuenteLista, ListaCostos } from '@/types';
+import { AlertCircle, Check, Loader2, TrendingUp, Plus } from 'lucide-react';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+
+const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none';
 
 export default function Listas() {
   const { usuario } = useAuth();
   // Los vendedores ven las listas y los costos, pero solo el admin puede cargarlas
   const esAdmin = usuario.rol === 'admin';
   const data = useData();
+  const [fuentes, setFuentes] = useState<FuenteLista[]>([]);
   const [listas, setListas] = useState<ListaCostos[]>([]);
+  const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [mensaje, setMensaje] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
-  const [cambiosCosto, setCambiosCosto] = useState<{ cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] | null>(null);
+  const [cambiosCosto, setCambiosCosto] = useState<CambioCosto[] | null>(null);
+  const [fuenteCambios, setFuenteCambios] = useState('');
   const [cotizAfectadas, setCotizAfectadas] = useState<{ numero: number; nombre: string }[]>([]);
-  const [modalConfirmar, setModalConfirmar] = useState<{ fecha: string; file: File; filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[]; afectadas: { total: number; abiertas: number } } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Nueva lista de precios (fuente)
+  const [creando, setCreando] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevaDesc, setNuevaDesc] = useState('');
+  const [nuevoPrefijo, setNuevoPrefijo] = useState('');
+  const [errorNueva, setErrorNueva] = useState('');
+  const [guardandoNueva, setGuardandoNueva] = useState(false);
 
   const cargar = useCallback(async () => {
-    const ls = await data.fetchListas();
+    const [fs, ls] = await Promise.all([data.fetchFuentes(), data.fetchListas()]);
+    setFuentes(fs);
     setListas(ls);
+    setVersion((v) => v + 1);
   }, []);
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleUploadCostos(file: File) {
-    setUploading(true);
-    setMensaje(null);
-    try {
-      const buffer = await file.arrayBuffer();
-      const { filas, fecha } = await parsearListaCostos(buffer, file.name);
-      const fechaFinal = fecha || hoyAR();
+  const variasFuentes = fuentes.length > 1;
 
-      // Validate
-      if (filas.length === 0) {
-        setMensaje({ type: 'error', text: 'No se encontraron filas válidas en el archivo' });
-        setUploading(false);
-        return;
-      }
-      const invalidas = filas.filter((f) => !f.cod || isNaN(f.costo) || f.costo <= 0);
-      if (invalidas.length > 0) {
-        setMensaje({ type: 'error', text: `${invalidas.length} filas tienen código o costo inválido. Revisá el archivo.` });
-        setUploading(false);
-        return;
-      }
-
-      // Check if a lista with this fecha already exists
-      const existente = await data.fetchListaByFecha(fechaFinal);
-      if (existente) {
-        const afectadas = await data.cotizacionesAfectadas(fechaFinal);
-        setUploading(false);
-        setModalConfirmar({ fecha: fechaFinal, file, filas, afectadas });
-        return;
-      }
-
-      await procesarCarga(fechaFinal, file.name, filas, false);
-    } catch (err) {
-      setMensaje({ type: 'error', text: `Error al procesar el archivo: ${traducirError(err)}` });
-    }
-    setUploading(false);
-  }
-
-  async function procesarCarga(fecha: string, nombreArchivo: string, filas: { cod: string; proveedor: string; familia: string; producto: string; unid: string; costo: number }[], reemplazar: boolean) {
-    setUploading(true);
-    setMensaje(null);
-    try {
-      // Lista inmediatamente anterior a la fecha que se carga (no "la primera de la lista")
-      const listaAnterior = await data.fetchListaAnteriorA(fecha);
-      const productosAnt: ProductoConCosto[] = listaAnterior ? await data.fetchProductosConCosto(listaAnterior.id) : [];
-
-      // Carga atómica en la base: o se carga todo o no se carga nada
-      const resultado = await data.cargarLista(fecha, nombreArchivo, filas, reemplazar);
-
-      // Comparar costos con la lista anterior
-      const cambios: { cod: string; producto: string; costoAnt: number; costoNuevo: number; diff: number; pct: number }[] = [];
-      if (listaAnterior) {
-        const costoAntMap = new Map(productosAnt.map((p) => [p.cod, p]));
-        for (const fila of filas) {
-          const prodAnt = costoAntMap.get(fila.cod);
-          if (prodAnt && prodAnt.costo !== fila.costo) {
-            const pct = prodAnt.costo > 0 ? ((fila.costo - prodAnt.costo) / prodAnt.costo) * 100 : 0;
-            cambios.push({
-              cod: fila.cod,
-              producto: fila.producto,
-              costoAnt: prodAnt.costo,
-              costoNuevo: fila.costo,
-              diff: fila.costo - prodAnt.costo,
-              pct,
-            });
-          }
-        }
-      }
-
-      await registrarCambio({
-        tipo: 'lista',
-        campo: 'lista de costos',
-        valor_nuevo: `${filas.length} productos`,
-        detalle: `Fecha: ${fecha}${reemplazar ? ' (reemplazo)' : ''}`,
-      });
-
-      const resumen = `Lista cargada: ${filas.length} productos (${resultado.productos_nuevos} nuevos, ${resultado.productos_actualizados} actualizados).`;
-      // La vigente es siempre la de fecha más reciente: cargar una más vieja no la cambia
-      const vigente = listas[0];
-      const esAnteriorAVigente = !!vigente && fecha < vigente.fecha;
-      const avisoVigente = esAnteriorAVigente
-        ? ` Esta lista es anterior a la vigente (${formatDate(vigente.fecha)}): la vigente sigue siendo la más reciente.`
-        : '';
-
-      // Cotizaciones abiertas que usan algún producto cuyo costo cambió (una sola consulta)
-      let afectadas: { numero: number; nombre: string }[] = [];
-      let avisoAfectadas = '';
-      if (cambios.length > 0) {
-        try {
-          const codsCambiados = new Set(cambios.map((c) => c.cod));
-          const lineasAbiertas = await data.fetchLineasCotizacionesAbiertas();
-          const porNumero = new Map<number, string>();
-          for (const l of lineasAbiertas) {
-            if (codsCambiados.has(l.cod)) porNumero.set(l.numero, l.nombre);
-          }
-          afectadas = [...porNumero].sort((x, y) => x[0] - y[0]).map(([numero, nombre]) => ({ numero, nombre }));
-        } catch {
-          avisoAfectadas = ' No se pudo calcular qué cotizaciones abiertas se ven afectadas.';
-        }
-        setCambiosCosto(cambios);
-        setCotizAfectadas(afectadas);
-        setMensaje({ type: 'warning', text: `${resumen} ${cambios.length} productos cambiaron de costo.${avisoAfectadas}${avisoVigente}` });
-      } else {
-        setMensaje({
-          type: esAnteriorAVigente ? 'warning' : 'success',
-          text: `${listaAnterior ? resumen : `${resumen} Es la primera lista: no hay costos anteriores para comparar.`}${avisoVigente}`,
-        });
-      }
-
-      load();
-    } catch (err) {
-      setMensaje({ type: 'error', text: `No se cargó la lista (no se guardó nada). ${traducirError(err)}` });
-    } finally {
-      setUploading(false);
+  function recibirResultado(f: FuenteLista, r: ResultadoCarga) {
+    setMensaje(r.mensaje);
+    if (r.cambios !== undefined) {
+      setCambiosCosto(r.cambios);
+      setCotizAfectadas(r.afectadas ?? []);
+      setFuenteCambios(f.nombre);
     }
   }
 
+  async function crearNueva() {
+    if (!nuevoNombre.trim()) { setErrorNueva('Poné un nombre'); return; }
+    setGuardandoNueva(true);
+    setErrorNueva('');
+    try {
+      await data.crearFuente({ nombre: nuevoNombre, descripcion: nuevaDesc, prefijo_cod: nuevoPrefijo });
+      setCreando(false);
+      setNuevoNombre(''); setNuevaDesc(''); setNuevoPrefijo('');
+      await load();
+    } catch (err) {
+      setErrorNueva(esNombreRepetido(err) ? 'Ya hay una lista con ese nombre' : traducirError(err));
+    }
+    setGuardandoNueva(false);
+  }
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
 
@@ -167,48 +87,43 @@ export default function Listas() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-gray-800">Listas de costos y flete</h1>
 
-      {/* Carga de archivos (solo admin) */}
-      {esAdmin && (
+      {/* Un casillero por tipo de lista de precios */}
       <div className="grid grid-cols-1 gap-4">
-        {/* Lista de costos */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-              <ListChecks className="w-5 h-5 text-emerald-600" />
-            </div>
+        {fuentes.map((f) => (
+          <TarjetaFuenteLista
+            key={f.id}
+            fuente={f}
+            listas={listas.filter((l) => l.fuente_id === f.id)}
+            esAdmin={esAdmin}
+            variasFuentes={variasFuentes}
+            version={version}
+            onCambio={() => { void load(); }}
+            onResultado={(r) => recibirResultado(f, r)}
+          />
+        ))}
+      </div>
+
+      {esAdmin && (
+        creando ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-2">
+            <h3 className="font-semibold text-gray-800">Nueva lista de precios</h3>
+            <input value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} placeholder="Nombre (ej. Híbridos)" aria-label="Nombre" className={inputCls} />
+            <input value={nuevaDesc} onChange={(e) => setNuevaDesc(e.target.value)} placeholder="Descripción (opcional)" aria-label="Descripción" className={inputCls} />
             <div>
-              <h3 className="font-semibold text-gray-800">Lista de costos</h3>
-              <p className="text-xs text-gray-500">Subir archivo .xlsx semanal</p>
+              <input value={nuevoPrefijo} onChange={(e) => setNuevoPrefijo(e.target.value)} placeholder="Prefijo de códigos (opcional)" aria-label="Prefijo de códigos" className={inputCls} />
+              <p className="text-xs text-gray-400 mt-1">Se antepone a cada código del archivo. Dejalo vacío para la lista principal.</p>
+            </div>
+            {errorNueva && <p className="text-sm text-red-600">{errorNueva}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => void crearNueva()} disabled={guardandoNueva} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">Crear</button>
+              <button onClick={() => { setCreando(false); setErrorNueva(''); }} className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
             </div>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadCostos(f); e.target.value = ''; }}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="w-full border-2 border-dashed border-gray-300 rounded-lg py-6 hover:border-emerald-400 hover:bg-emerald-50 transition-colors flex flex-col items-center gap-2 disabled:opacity-50"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" />
-                <span className="text-sm text-gray-500">Cargando...</span>
-              </>
-            ) : (
-              <Upload className="w-6 h-6 text-gray-400" />
-            )}
-            {!uploading && <span className="text-sm text-gray-500">Seleccionar archivo .xlsx</span>}
+        ) : (
+          <button onClick={() => setCreando(true)} className="flex items-center gap-2 px-4 py-2 border border-emerald-600 text-emerald-700 rounded-lg text-sm hover:bg-emerald-50">
+            <Plus className="w-4 h-4" /> Nueva lista de precios
           </button>
-          <p className="text-xs text-gray-400 mt-2">
-            El nombre del archivo debe incluir la fecha (ej. lista_de_costos_2-10-26.xlsx)
-          </p>
-        </div>
-
-      </div>
+        )
       )}
 
       <ConveniosFlete esAdmin={esAdmin} />
@@ -230,7 +145,7 @@ export default function Listas() {
       {cambiosCosto && cambiosCosto.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-amber-200 p-5">
           <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" /> Productos que cambiaron de costo
+            <TrendingUp className="w-5 h-5" /> Productos que cambiaron de costo{variasFuentes ? ` (${fuenteCambios})` : ''}
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -282,73 +197,6 @@ export default function Listas() {
           >
             Cerrar
           </button>
-        </div>
-      )}
-
-      {/* Historial de listas */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <History className="w-5 h-5 text-gray-400" /> Historial de listas
-        </h3>
-        {listas.length === 0 ? (
-          <p className="text-sm text-gray-400">No hay listas cargadas</p>
-        ) : (
-          <div className="space-y-2">
-            {listas.map((l) => (
-              <div key={l.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                <div className="flex items-center gap-3">
-                  <FileSpreadsheet className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">{formatDate(l.fecha)}</span>
-                    {l.nombre_archivo && <span className="text-xs text-gray-400 ml-2">{l.nombre_archivo}</span>}
-                  </div>
-                </div>
-                {l.id === listas[0]?.id && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Vigente</span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Modal confirmar reemplazo */}
-      {modalConfirmar && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setModalConfirmar(null)}>
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-800">Ya existe una lista con esta fecha</h3>
-                <p className="text-sm text-gray-500">Fecha: {formatDate(modalConfirmar.fecha)}</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              ¿Querés reemplazar la lista existente? Se reemplazarán todos sus costos por los del archivo nuevo.
-            </p>
-            {modalConfirmar.afectadas.total > 0 && (
-              <div className="text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 mb-4">
-                Hay {modalConfirmar.afectadas.total} cotización(es) hechas con esta lista
-                {modalConfirmar.afectadas.abiertas > 0 ? ` (${modalConfirmar.afectadas.abiertas} todavía abierta/s)` : ''}.
-                Sus precios ya guardados <strong>no cambian</strong>; solo se actualizan los costos de la lista para cotizaciones nuevas.
-              </div>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setModalConfirmar(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
-              <button
-                onClick={async () => {
-                  const m = modalConfirmar;
-                  setModalConfirmar(null);
-                  await procesarCarga(m.fecha, m.file.name, m.filas, true);
-                }}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700"
-              >
-                Reemplazar
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
