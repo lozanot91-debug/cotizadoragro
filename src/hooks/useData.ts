@@ -24,6 +24,7 @@ import type {
   CampoParcela,
   ParcelaMapa,
   ParcelaInfo,
+  CampoMapa,
   ConvenioFlete,
   Contacto,
   Usuario,
@@ -187,6 +188,14 @@ export function useData() {
 
   async function eliminarParcela(id: string) {
     await ok(supabase.from('campos_parcelas').delete().eq('id', id));
+  }
+
+  /** Campos que tienen contorno dibujado, con el nombre del cliente. */
+  async function fetchCamposMapa(): Promise<CampoMapa[]> {
+    type Fila = Omit<CampoMapa, 'cliente_nombre'> & { clientes: { nombre: string } | null };
+    const data = (await ok(supabase.from('campos').select('id, nombre, cliente_id, superficie_ha, contorno, contorno_fuente, contorno_ha, clientes(nombre)')
+      .not('contorno', 'is', null))) as unknown as Fila[] | null;
+    return (data || []).map(({ clientes, ...c }) => ({ ...c, cliente_nombre: clientes?.nombre ?? '' }));
   }
 
   async function fetchParcelasInfo(): Promise<ParcelaInfo[]> {
@@ -1223,6 +1232,7 @@ export function useData() {
     guardarParcela,
     eliminarParcela,
     fetchParcelasInfo,
+    fetchCamposMapa,
     guardarParcelaInfo,
     fetchContactos,
     fetchPedidosFacturacion,

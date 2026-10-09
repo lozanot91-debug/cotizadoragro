@@ -395,6 +395,10 @@ export interface Campo {
   /** Punto del campo (centro de sus parcelas o marcado a mano) */
   lat?: number | null;
   lng?: number | null;
+  /** Contorno real (alambrado), dibujado o importado de KML */
+  contorno?: GeoPoligono | null;
+  contorno_fuente?: 'dibujo' | 'KML' | 'ARBA' | null;
+  contorno_ha?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -427,6 +431,18 @@ export interface ParcelaMapa extends CampoParcela {
   campo_nombre: string;
   cliente_id: string;
   cliente_nombre: string;
+}
+
+/** Campo con contorno dibujado, con su cliente (para el mapa). */
+export interface CampoMapa {
+  id: string;
+  nombre: string;
+  cliente_id: string;
+  cliente_nombre: string;
+  superficie_ha: number | null;
+  contorno: GeoPoligono;
+  contorno_fuente: 'dibujo' | 'KML' | 'ARBA' | null;
+  contorno_ha: number | null;
 }
 
 /** Datos que carga el equipo sobre una parcela (por partida), sea de un cliente o un prospecto. */
