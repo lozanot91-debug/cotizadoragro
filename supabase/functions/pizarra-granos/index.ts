@@ -4,10 +4,12 @@
 // - Con usuario logueado: { accion: 'actualizar' } relee los últimos días si la última lectura tiene más de 4 h.
 // - Con el secreto de la tarea programada (header x-pizarra-secreto): 'actualizar' siempre, o
 //   { accion: 'historia', dias } para cargar la historia.
+// También guarda los ajustes de futuros en USD de Rosario (Matba-Rofex / A3) en `futuros_granos`.
 // Rosario cotiza en pesos: se guarda el $ y se pasa a USD con el comprador del BNA de ese día (si lo tenemos).
 // verify_jwt está apagado porque la tarea programada no manda JWT: la autenticación se hace acá adentro.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { CEREALES, PLAZAS, parsearRango, urlRango, type Cereal, type Plaza } from './parser.ts';
+import { parsearFuturos, urlFuturos, type Futuro } from './futuros.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -28,8 +30,8 @@ async function leer(url: string): Promise<string> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 20_000);
   try {
-    const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (cotizador Ceres Tolvas)', 'Accept': 'text/html' } });
-    if (!r.ok) throw new Error(`bcp.org.ar respondió ${r.status}`);
+    const r = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (cotizador Ceres Tolvas)', 'Accept': 'text/html, application/json' } });
+    if (!r.ok) throw new Error(`${new URL(url).host} respondió ${r.status}`);
     return await r.text();
   } finally {
     clearTimeout(t);
@@ -48,6 +50,18 @@ async function leerCombo(plaza: Plaza, cereal: Cereal, desde: string, hasta: str
     const tc = tcPorFecha(r.fecha);
     return { fecha: r.fecha, plaza, cultivo: cereal, precio_usd: tc ? Math.round((r.precio / tc) * 100) / 100 : null, precio_ars: r.precio, obtenido_at: ahora };
   });
+}
+
+/** Ajustes de futuros en un rango de fechas (la API devuelve de a 50 filas por página). */
+async function leerFuturos(desde: string, hasta: string): Promise<Futuro[]> {
+  const pagina = async (n: number) => {
+    const r = JSON.parse(await leer(urlFuturos(desde, hasta, n)));
+    return { filas: parsearFuturos(r), total: Number(r?.totalEntries) || 0 };
+  };
+  const primera = await pagina(1);
+  const paginas = Math.min(Math.ceil(primera.total / 50), 80);
+  const resto = await enTandas(Array.from({ length: Math.max(paginas - 1, 0) }, (_, i) => () => pagina(i + 2)), 5);
+  return [...primera.filas, ...resto.flatMap((r) => (r.status === 'fulfilled' ? r.value.filas : []))];
 }
 
 /** Corre las tareas de a `n` por vez. */
@@ -106,6 +120,22 @@ Deno.serve(async (req) => {
     const { error } = await db.from('pizarras_granos').upsert(filas.slice(i, i + 500), { onConflict: 'fecha,plaza,cultivo' });
     if (error) return json({ error: `No se pudo guardar: ${error.message}`, errores }, 500);
   }
+  // Futuros: la última semana (en la historia, el último mes)
+  let futuros = 0;
+  try {
+    const ahora = new Date().toISOString();
+    const fs = await leerFuturos(restarDias(hasta, accion === 'historia' ? 30 : 7), hasta);
+    // Sin repetidos (la misma fecha y símbolo en dos páginas haría fallar el upsert)
+    const filasF = [...new Map(fs.map((f) => [`${f.fecha}|${f.simbolo}`, { ...f, obtenido_at: ahora }])).values()];
+    for (let i = 0; i < filasF.length; i += 500) {
+      const { error } = await db.from('futuros_granos').upsert(filasF.slice(i, i + 500), { onConflict: 'fecha,simbolo' });
+      if (error) throw new Error(error.message);
+    }
+    futuros = filasF.length;
+  } catch (e) {
+    errores.push(`futuros: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   if (errores.length) console.error('pizarra-granos:', errores.join(' | '));
-  return json({ accion, desde, hasta, filas: filas.length, errores });
+  return json({ accion, desde, hasta, filas: filas.length, futuros, errores });
 });

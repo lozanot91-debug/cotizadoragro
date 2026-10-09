@@ -507,3 +507,12 @@ export interface PizarraGrano {
   precio_usd: number | null;
   precio_ars: number | null;
 }
+
+/** Ajuste diario de un futuro en USD de Rosario (Matba-Rofex / A3). posicion 'YYYY-MM' o 'DIS' (disponible). */
+export interface FuturoGrano {
+  fecha: string;
+  simbolo: string;
+  cultivo: string;
+  posicion: string;
+  ajuste: number;
+}

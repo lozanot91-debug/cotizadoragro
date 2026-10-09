@@ -19,9 +19,25 @@
  * Todo en USD. Los % se guardan como porcentaje (98.5, 10.5), no como fracción.
  */
 
+/** De dónde salió el precio del grano (solo informativo, para mostrarlo en PDF/WhatsApp). */
+export interface ReferenciaPrecio {
+  tipo: 'pizarra' | 'futuro' | 'manual';
+  plaza?: string | null;
+  /** Fecha de la pizarra o del ajuste del futuro */
+  fecha?: string | null;
+  /** Futuro: 'YYYY-MM' de la posición, su ajuste y el diferencial de plaza */
+  posicion?: string | null;
+  futuro?: number | null;
+  diferencial?: number | null;
+  /** Precio que dio esta referencia: si después el precio se cambió a mano, la referencia ya no se muestra */
+  precio?: number | null;
+}
+
 export interface ParamsCanje {
   /** Destino / condición de entrega, solo informativo ("Necochea, condiciones cámara") */
   destino: string;
+  /** Origen del precio del grano (opcional) */
+  referencia?: ReferenciaPrecio | null;
   pago_pct: number;
   iva_grano_pct: number;
   comision_pct: number;
@@ -101,7 +117,34 @@ export function normalizarParams(p: Partial<ParamsCanje> | null | undefined, bas
     ret_iva_pct: num(x.ret_iva_pct, base.ret_iva_pct),
     ret_ganancias: typeof x.ret_ganancias === 'boolean' ? x.ret_ganancias : base.ret_ganancias,
     ret_ganancias_pct: num(x.ret_ganancias_pct, base.ret_ganancias_pct),
+    referencia: normalizarReferencia(x.referencia),
   };
+}
+
+function normalizarReferencia(r: unknown): ReferenciaPrecio | null {
+  if (!r || typeof r !== 'object') return null;
+  const x = r as Record<string, unknown>;
+  if (x.tipo !== 'pizarra' && x.tipo !== 'futuro' && x.tipo !== 'manual') return null;
+  const txt = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return { tipo: x.tipo, plaza: txt(x.plaza, 40), fecha: txt(x.fecha, 10), posicion: txt(x.posicion, 7), futuro: n(x.futuro), diferencial: n(x.diferencial), precio: n(x.precio) };
+}
+
+const MESES_TXT = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** "futuro mayo 2027 (USD 358,80 − 14,50 Quequén)" / "pizarra Quequén del 05/10" */
+export function textoReferencia(r: ReferenciaPrecio | null | undefined, fmt: (n: number, d?: number) => string, precio?: number): string | null {
+  if (!r) return null;
+  if (precio !== undefined && r.precio && Math.abs(r.precio - precio) > 0.005) return null;
+  const fecha = r.fecha ? `${r.fecha.slice(8, 10)}/${r.fecha.slice(5, 7)}` : null;
+  if (r.tipo === 'futuro' && r.posicion) {
+    const [a, m] = r.posicion.split('-').map(Number);
+    const pos = `${MESES_TXT[m - 1] ?? r.posicion} ${a}`;
+    const dif = r.diferencial ? ` ${r.diferencial < 0 ? '−' : '+'} ${fmt(Math.abs(r.diferencial))} ${r.plaza ?? ''}`.trimEnd() : '';
+    return `futuro ${pos}${r.futuro ? ` (Matba-Rofex USD ${fmt(r.futuro)}${dif})` : ''}${fecha ? ` al ${fecha}` : ''}`;
+  }
+  if (r.tipo === 'pizarra') return `pizarra ${r.plaza ?? ''}${fecha ? ` del ${fecha}` : ''}`.replace(/\s+/g, ' ').trim();
+  return null;
 }
 
 /** Lee los parámetros por defecto guardados en configuración (texto JSON). */
@@ -218,7 +261,8 @@ export function netoGuardado(precio: number, params: Partial<ParamsCanje> | null
 export function resumenLiquidacion(precio: number, params: Partial<ParamsCanje> | null | undefined, fmt: (n: number, d?: number) => string): string {
   if (!params) return `precio de referencia USD ${fmt(precio)}/tn`;
   const p = normalizarParams(params);
-  const partes = [`precio USD ${fmt(precio)}/tn`, `neto liquidación USD ${fmt(netoPorTn(precio, p))}/tn`];
+  const ref = textoReferencia(p.referencia, fmt, precio);
+  const partes = [`precio USD ${fmt(precio)}/tn${ref ? ` (${ref})` : ''}`, `neto liquidación USD ${fmt(netoPorTn(precio, p))}/tn`];
   if (p.destino.trim()) partes.push(`puesto ${p.destino.trim()}`);
   return partes.join(' · ');
 }
@@ -236,7 +280,8 @@ export function textoWhatsAppCanje(d: {
   const liq = liquidarTn(d.precio, d.params);
   let m = `*Canje ${d.cultivo}*${d.cliente ? ` · ${d.cliente}` : ''}\n`;
   m += `Insumos (total con IVA): USD ${d.fmt(d.monto)}\n`;
-  m += `Precio ${d.cultivo}: USD ${d.fmt(d.precio)}/tn${d.params.destino ? ` (${d.params.destino})` : ''}\n`;
+  const ref = textoReferencia(d.params.referencia, d.fmt, d.precio);
+  m += `Precio ${d.cultivo}: USD ${d.fmt(d.precio)}/tn${ref ? ` · ${ref}` : ''}${d.params.destino ? ` (${d.params.destino})` : ''}\n`;
   m += `Neto liquidación: USD ${d.fmt(liq.neto)}/tn\n`;
   m += `*Toneladas a entregar: ${d.fmt(d.tn)} tn*\n`;
   return m;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PARAMS_CANJE_BASE, conIvaInsumos, fleteGranoUSD, liquidarTn, montoPorToneladas, netoGuardado, netoPorTn,
+  PARAMS_CANJE_BASE, conIvaInsumos, fleteGranoUSD, liquidarTn, textoReferencia, montoPorToneladas, netoGuardado, netoPorTn,
   normalizarParams, paramsDesdeConfig, toneladasPorMonto, type ParamsCanje,
 } from './canje';
 
@@ -105,5 +105,24 @@ describe('flete del grano por convenio', () => {
     const p = normalizarParams({ flete_modo: 'manual', flete_convenio_id: 'abc', flete_km: 150 });
     expect(p).toMatchObject({ flete_modo: 'manual', flete_convenio_id: 'abc', flete_km: 150 });
     expect(normalizarParams({}).flete_modo).toBe('convenio');
+  });
+});
+
+describe('referencia del precio', () => {
+  const fmt = (n: number, d = 2) => n.toFixed(d).replace('.', ',');
+  it('futuro con diferencial', () => {
+    expect(textoReferencia({ tipo: 'futuro', plaza: 'Quequén', fecha: '2026-10-08', posicion: '2027-05', futuro: 358.8, diferencial: -14.5 }, fmt))
+      .toBe('futuro mayo 2027 (Matba-Rofex USD 358,80 − 14,50 Quequén) al 08/10');
+  });
+  it('pizarra', () => {
+    expect(textoReferencia({ tipo: 'pizarra', plaza: 'Quequén', fecha: '2026-10-05' }, fmt)).toBe('pizarra Quequén del 05/10');
+    expect(textoReferencia(null, fmt)).toBeNull();
+    // si el precio se cambió a mano después, la referencia no se muestra
+    expect(textoReferencia({ tipo: 'pizarra', plaza: 'Quequén', fecha: '2026-10-05', precio: 355 }, fmt, 360)).toBeNull();
+    expect(textoReferencia({ tipo: 'pizarra', plaza: 'Quequén', fecha: '2026-10-05', precio: 355 }, fmt, 355)).toBe('pizarra Quequén del 05/10');
+  });
+  it('normalizar conserva y limpia la referencia', () => {
+    expect(normalizarParams({ referencia: { tipo: 'futuro', posicion: '2027-05', futuro: 358.8 } as never }).referencia).toMatchObject({ tipo: 'futuro', posicion: '2027-05', futuro: 358.8 });
+    expect(normalizarParams({ referencia: { tipo: 'otro' } as never }).referencia).toBeNull();
   });
 });

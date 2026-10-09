@@ -8,15 +8,16 @@ import ErrorCarga from '@/components/ErrorCarga';
 import { CampoNumero, DesgloseCanje, ParametrosCanje } from '@/components/LiquidacionCanje';
 import {
   CULTIVOS_CANJE, PARAMS_CANJE_BASE, conIvaInsumos, montoPorToneladas, netoPorTn, normalizarParams,
-  textoWhatsAppCanje, toneladasPorMonto, type ParamsCanje,
+  textoWhatsAppCanje, toneladasPorMonto, type ParamsCanje, type ReferenciaPrecio,
 } from '@/lib/canje';
 import { montoCanjeDeCotizacion } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { PLAZAS_PIZARRA, PLAZA_DEFECTO, precioDelDia, ultimaPizarra } from '@/lib/relacion';
+import { diferencialPlaza, etiquetaPosicion, posicionCosecha, posicionesVigentes } from '@/lib/futuros';
 import { diasEntre, hoyAR } from '@/lib/fechas';
 import { registrarCambio } from '@/lib/historial';
 import { formatDate, formatUSD } from '@/lib/format';
-import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, PizarraGrano, PrecioGrano, TipoCambioBNA } from '@/types';
+import type { Campo, CanjeGuardado, Cliente, ConvenioFlete, Cotizacion, CotizacionLinea, FuturoGrano, PizarraGrano, PrecioGrano, TipoCambioBNA } from '@/types';
 import VistaPreviaCotizacion from '@/components/VistaPreviaCotizacion';
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white';
@@ -45,6 +46,11 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const [preciosGrano, setPreciosGrano] = useState<PrecioGrano[]>([]);
   const [pizarras, setPizarras] = useState<PizarraGrano[]>([]);
   const [plaza, setPlaza] = useState<string>(PLAZA_DEFECTO);
+  // Precio disponible (pizarra) o a cosecha (futuro Matba-Rofex de la posición + diferencial de plaza)
+  const [futuros, setFuturos] = useState<FuturoGrano[]>([]);
+  const [tipoPrecio, setTipoPrecio] = useState<'disponible' | 'cosecha'>('disponible');
+  const [posicionSel, setPosicionSel] = useState<string | null>(null);
+  const [difManual, setDifManual] = useState<number | null>(null);
   const [camposCliente, setCamposCliente] = useState<Campo[]>([]);
 
   // Formulario
@@ -73,7 +79,12 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     data.fetchPreciosGrano(300).then(setPreciosGrano).catch(() => setPreciosGrano([]));
     // Pizarras: se muestran las guardadas y, si tienen más de 4 h, se piden de nuevo
     data.fetchPizarrasRecientes().then(setPizarras).catch(() => setPizarras([]));
-    void data.actualizarPizarras().then((nuevas) => { if (nuevas) data.fetchPizarrasRecientes().then(setPizarras).catch(() => {}); });
+    data.fetchFuturosRecientes().then(setFuturos).catch(() => setFuturos([]));
+    void data.actualizarPizarras().then((nuevas) => {
+      if (!nuevas) return;
+      data.fetchPizarrasRecientes().then(setPizarras).catch(() => {});
+      data.fetchFuturosRecientes().then(setFuturos).catch(() => {});
+    });
     setClientes(cls);
     setCotizaciones(cots);
     setDefaults(cfg.canje_parametros);
@@ -116,20 +127,44 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const tcHoy = tcBna?.compra || tcRespaldo || null;
   const pizarra = cultivoNombre ? ultimaPizarra(pizarras, plaza, cultivoNombre, tcHoy) : null;
   const manual = cultivoNombre ? precioDelDia(preciosGrano.filter((p) => !p.destino || p.destino === plaza), cultivoNombre) : null;
-  const sugerido: { fecha: string; usd: number; origen: string; convertido: boolean } | null =
+  const sugeridoDisp: { fecha: string; usd: number; origen: string; convertido: boolean } | null =
     manual && (!pizarra || manual.fecha > pizarra.fecha) ? { fecha: manual.fecha, usd: manual.precio_usd, origen: 'cargado a mano', convertido: false }
       : pizarra ? { fecha: pizarra.fecha, usd: pizarra.usd, origen: `pizarra ${plaza}`, convertido: pizarra.convertido } : null;
+  // A cosecha: futuro de la posición (por defecto la de cosecha: soja mayo, maíz abril, trigo enero) + diferencial de plaza
+  const posiciones = useMemo(() => (cultivoNombre ? posicionesVigentes(futuros, cultivoNombre) : []), [futuros, cultivoNombre]);
+  const posicion = posiciones.find((p) => p.posicion === posicionSel) ?? (cultivoNombre ? posicionCosecha(posiciones, cultivoNombre, hoyAR()) : null);
+  const difSugerido = useMemo(() => (plaza === 'Rosario' || !cultivoNombre ? null : diferencialPlaza(pizarras, futuros, plaza, cultivoNombre)), [pizarras, futuros, plaza, cultivoNombre]);
+  const diferencial = difManual ?? (plaza === 'Rosario' ? 0 : difSugerido?.usd ?? 0);
+  const sugeridoCosecha = posicion ? { fecha: posicion.fecha, usd: Math.round((posicion.ajuste + diferencial) * 100) / 100, origen: 'futuro', convertido: false } : null;
+  const sugerido = tipoPrecio === 'cosecha' ? sugeridoCosecha : sugeridoDisp;
+  /** Origen del precio que se guarda con el canje (si el precio es el sugerido; si lo tocaron, "a mano"). */
+  const referencia: ReferenciaPrecio = sugerido && Math.abs(sugerido.usd - precio) < 0.005
+    ? (tipoPrecio === 'cosecha' && posicion
+      ? { tipo: 'futuro', plaza, fecha: posicion.fecha, posicion: posicion.posicion, futuro: posicion.ajuste, diferencial, precio: sugerido.usd }
+      : { tipo: 'pizarra', plaza, fecha: sugerido.fecha, precio: sugerido.usd })
+    : { tipo: 'manual', plaza };
+  const paramsConRef: ParamsCanje = { ...params, referencia };
   // Se carga solo si el precio está vacío o sigue siendo el último que se cargó solo (no lo tocaron a mano)
   const precioAutoRef = useRef<number | null>(null);
-  const claveSugerido = sugerido ? `${plaza}|${cultivoNombre}|${sugerido.fecha}|${sugerido.usd}` : `${plaza}|${cultivoNombre}|-`;
+  const claveSugerido = sugerido ? `${tipoPrecio}|${plaza}|${cultivoNombre}|${sugerido.fecha}|${sugerido.usd}` : `${tipoPrecio}|${plaza}|${cultivoNombre}|-`;
   useEffect(() => {
     if (!sugerido) return;
     if (precio === 0 || precio === precioAutoRef.current) { setPrecio(sugerido.usd); precioAutoRef.current = sugerido.usd; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claveSugerido]);
 
+  /** Carga parámetros guardados: la liquidación va a los parámetros y el origen del precio a los selectores. */
+  function usarReferencia(p: ParamsCanje) {
+    const r = p.referencia;
+    setParams({ ...p, referencia: null });
+    if (r?.plaza && (PLAZAS_PIZARRA as readonly string[]).includes(r.plaza)) setPlaza(r.plaza);
+    if (r?.tipo === 'futuro') { setTipoPrecio('cosecha'); setPosicionSel(r.posicion ?? null); setDifManual(r.diferencial ?? null); }
+    else { setTipoPrecio('disponible'); setPosicionSel(null); setDifManual(null); }
+  }
+
   function cambiarPlaza(p: string) {
     setPlaza(p);
+    setDifManual(null);
     setParams((x) => ({ ...x, destino: `${p}, condiciones cámara` }));
   }
   const neto = netoPorTn(precio, params);
@@ -154,7 +189,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
         setPrecio(c.canje_precio_usd);
         const cult = c.canje_cultivo || 'Soja';
         if (CULTIVOS_CANJE.includes(cult)) { setCultivo(cult); setCultivoOtro(''); } else { setCultivo('Otro'); setCultivoOtro(cult); }
-        setParams(p);
+        usarReferencia(p);
       }
     } catch (e) { toast.error(e); } finally { setCargandoCotiz(false); }
   }
@@ -180,7 +215,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
         cotizacion_id: cotizacionId || null,
         cultivo: cultivoNombre,
         precio_usd: precio,
-        params,
+        params: paramsConRef,
         neto_usd: Math.round(neto * 1e6) / 1e6,
         monto_usd: Math.round(montoConIva * 100) / 100,
         iva_insumos_pct: modo === 'monto' ? ivaInsumos : null,
@@ -201,14 +236,14 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     const antes = c.canje_precio_usd > 0 ? `${c.canje_cultivo} a USD ${fmt(c.canje_precio_usd)}/tn` : 'Sin canje';
     setAplicando(true);
     try {
-      const act = await data.aplicarCanjeACotizacion(c.id, { cultivo: cultivoNombre, precio, params });
+      const act = await data.aplicarCanjeACotizacion(c.id, { cultivo: cultivoNombre, precio, params: paramsConRef });
       setCotizaciones((cs) => cs.map((x) => (x.id === act.id ? { ...x, ...act } : x)));
       setPrevia((p) => (p && p.cotizacion.id === act.id ? { ...p, cotizacion: { ...p.cotizacion, ...act } } : p));
       await registrarCambio({ tipo: 'cotizacion', cotizacion_id: c.id, campo: 'canje', valor_anterior: antes, valor_nuevo: `${cultivoNombre} a USD ${fmt(precio)}/tn (neto ${fmt(neto)}) desde la calculadora` });
       if (modo === 'monto' && montoConIva > 0) {
         const g = await data.guardarCanje({
           cliente_id: cliente?.id ?? c.cliente_id, cliente_nombre: cliente?.nombre ?? c.cliente_nombre, cotizacion_id: c.id,
-          cultivo: cultivoNombre, precio_usd: precio, params, neto_usd: Math.round(neto * 1e6) / 1e6,
+          cultivo: cultivoNombre, precio_usd: precio, params: paramsConRef, neto_usd: Math.round(neto * 1e6) / 1e6,
           monto_usd: Math.round(montoConIva * 100) / 100, iva_insumos_pct: ivaInsumos, tn: Math.round(tn * 1e4) / 1e4,
           tc_compra: tcCompra, notas: notas.trim() || 'Aplicado a la cotización',
         });
@@ -220,7 +255,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
 
   async function copiar() {
     if (errores.length) { toast.aviso(errores[0]); return; }
-    const texto = textoWhatsAppCanje({ cliente: cliente?.nombre ?? (clienteTxt.trim() || null), cultivo: cultivoNombre, precio, params, monto: montoConIva, tn, fmt });
+    const texto = textoWhatsAppCanje({ cliente: cliente?.nombre ?? (clienteTxt.trim() || null), cultivo: cultivoNombre, precio, params: paramsConRef, monto: montoConIva, tn, fmt });
     try { await navigator.clipboard.writeText(texto); toast.exito('Copiado para WhatsApp'); } catch { toast.aviso('No se pudo copiar. Probá de nuevo.'); }
   }
 
@@ -229,7 +264,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     setCotizacionId(h.cotizacion_id || '');
     if (CULTIVOS_CANJE.includes(h.cultivo)) { setCultivo(h.cultivo); setCultivoOtro(''); } else { setCultivo('Otro'); setCultivoOtro(h.cultivo); }
     setPrecio(h.precio_usd);
-    setParams(normalizarParams(h.params));
+    usarReferencia(normalizarParams(h.params));
     setModo('monto'); setIvaInsumos(null); setMonto(h.monto_usd);
     setNotas(h.notas || '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -328,7 +363,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
               <label className="block">
                 <span className="block text-xs font-medium text-gray-600 mb-1">Cultivo</span>
                 <div className="flex gap-2">
-                  <select value={cultivo} onChange={(e) => setCultivo(e.target.value)} className={inputCls}>
+                  <select value={cultivo} onChange={(e) => { setCultivo(e.target.value); setPosicionSel(null); setDifManual(null); }} className={inputCls}>
                     {CULTIVOS_CANJE.map((c) => <option key={c} value={c}>{c}</option>)}
                     <option value="Otro">Otro</option>
                   </select>
@@ -345,14 +380,55 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                 <CampoNumero label="Precio del grano" sufijo="USD/tn" value={precio} onChange={setPrecio} />
                 {sugerido ? (
                   <span className={`block text-[11px] mt-0.5 ${diasEntre(sugerido.fecha, hoyAR()) > 7 ? 'text-amber-700' : 'text-gray-400'}`}>
-                    {sugerido.origen === 'cargado a mano' ? 'Cargado a mano' : `Pizarra ${plaza}`} {sugerido.fecha === hoyAR() ? 'de hoy' : `del ${formatDate(sugerido.fecha)}`}: USD {fmt(sugerido.usd)}
+                    {tipoPrecio === 'cosecha' ? `Futuro ${posicion ? etiquetaPosicion(posicion.posicion).toLowerCase() : ''} ${diferencial ? (diferencial < 0 ? '−' : '+') + ' ' + fmt(Math.abs(diferencial)) : ''}` : sugerido.origen === 'cargado a mano' ? 'Cargado a mano' : `Pizarra ${plaza}`} {sugerido.fecha === hoyAR() ? 'de hoy' : `del ${formatDate(sugerido.fecha)}`}: USD {fmt(sugerido.usd)}
                     {sugerido.convertido ? ' (pesos al TC comprador)' : ''}
                     {Math.abs(sugerido.usd - precio) > 0.001 && <button type="button" onClick={() => { setPrecio(sugerido.usd); precioAutoRef.current = sugerido.usd; }} className="ml-1.5 text-emerald-700 font-medium hover:underline">Usar</button>}
                   </span>
                 ) : cultivoNombre && (
-                  <span className="block text-[11px] text-amber-700 mt-0.5">Sin pizarra de {cultivoNombre.toLowerCase()} en {plaza}: cargalo a mano.</span>
+                  <span className="block text-[11px] text-amber-700 mt-0.5">{tipoPrecio === 'cosecha' ? `No hay futuros de ${cultivoNombre.toLowerCase()} en Matba-Rofex.` : `Sin pizarra de ${cultivoNombre.toLowerCase()} en ${plaza}: cargalo a mano.`}</span>
                 )}
               </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-medium text-gray-600">Tipo de precio</span>
+                <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+                  <button type="button" onClick={() => setTipoPrecio('disponible')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tipoPrecio === 'disponible' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Disponible</button>
+                  <button type="button" onClick={() => setTipoPrecio('cosecha')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tipoPrecio === 'cosecha' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>A cosecha (futuro)</button>
+                </div>
+              </div>
+              {tipoPrecio === 'cosecha' && (
+                posiciones.length === 0 ? (
+                  <p className="text-xs text-amber-700">No hay futuros de {cultivoNombre.toLowerCase() || 'ese grano'} en Matba-Rofex (solo soja, maíz y trigo). Usá el disponible o cargá el precio a mano.</p>
+                ) : (
+                  <div className="rounded-lg bg-gray-50 p-3 space-y-3">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="block text-xs font-medium text-gray-600 mb-1">Posición (Matba-Rofex, Rosario)</span>
+                        <select value={posicion?.posicion ?? ''} onChange={(e) => setPosicionSel(e.target.value)} className={inputCls}>
+                          {posiciones.map((p) => <option key={p.posicion} value={p.posicion}>{p.etiqueta} · USD {fmt(p.ajuste)}</option>)}
+                        </select>
+                      </label>
+                      <div>
+                        <CampoNumero label={`Diferencial ${plaza}`} sufijo="USD/tn" value={diferencial} onChange={(n) => setDifManual(n)} placeholder="0" />
+                        <span className="block text-[11px] text-gray-400 mt-0.5">
+                          {plaza === 'Rosario' ? 'Rosario: sin diferencial.'
+                            : difSugerido ? <>Sugerido {fmt(difSugerido.usd)}: pizarra {fmt(difSugerido.pizarra)} − disponible Rosario {fmt(difSugerido.disponible)} ({formatDate(difSugerido.fecha)})</>
+                              : 'Sin un día con pizarra y disponible para sugerirlo.'}
+                          {difManual !== null && difSugerido && Math.abs(difManual - difSugerido.usd) > 0.001 && <button type="button" onClick={() => setDifManual(null)} className="ml-1.5 text-emerald-700 font-medium hover:underline">Usar sugerido</button>}
+                        </span>
+                      </div>
+                    </div>
+                    {posicion && (
+                      <p className="text-sm text-gray-700 tabular-nums">
+                        Futuro {fmt(posicion.ajuste)} {diferencial < 0 ? '−' : '+'} {fmt(Math.abs(diferencial))} = <strong>USD {fmt(posicion.ajuste + diferencial)}/tn</strong>
+                        <span className="text-xs text-gray-400 ml-1.5">ajuste del {formatDate(posicion.fecha)}</span>
+                      </p>
+                    )}
+                  </div>
+                )
+              )}
             </div>
 
             <div className="pt-4 border-t border-gray-100">

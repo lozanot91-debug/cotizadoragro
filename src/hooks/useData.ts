@@ -31,6 +31,7 @@ import type {
   CanjeGuardado,
   PrecioGrano,
   PizarraGrano,
+  FuturoGrano,
 } from '@/types';
 import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
@@ -366,6 +367,13 @@ export function useData() {
   /** Historia de una plaza y cultivo. */
   async function fetchSeriePizarra(plaza: string, cultivo: string): Promise<PizarraGrano[]> {
     return fetchAllPaged<PizarraGrano>(() => supabase.from('pizarras_granos').select('fecha, plaza, cultivo, precio_usd, precio_ars').eq('plaza', plaza).eq('cultivo', cultivo).order('fecha') as unknown as AnyFilter);
+  }
+
+  /** Ajustes de futuros (USD Rosario) de los últimos días. */
+  async function fetchFuturosRecientes(dias = 20): Promise<FuturoGrano[]> {
+    const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+    const filas = await fetchAllPaged<FuturoGrano>(() => supabase.from('futuros_granos').select('fecha, simbolo, cultivo, posicion, ajuste').gte('fecha', desde).order('fecha', { ascending: false }).order('simbolo') as unknown as AnyFilter);
+    return filas.map((f) => ({ ...f, ajuste: Number(f.ajuste) }));
   }
 
   /** Pide releer las pizarras (la función solo lo hace si la última lectura tiene más de 4 h). true si trajo datos nuevos. */
@@ -1114,6 +1122,7 @@ export function useData() {
     fetchPreciosGrano,
     fetchPizarrasRecientes,
     fetchSeriePizarra,
+    fetchFuturosRecientes,
     actualizarPizarras,
     cargarPrecioGrano,
     eliminarPrecioGrano,
