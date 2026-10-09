@@ -141,3 +141,18 @@ export function unirSeries(base: PuntoPrecio[], encima: PuntoPrecio[]): PuntoPre
   for (const p of encima) m.set(p.fecha, p.valor);
   return [...m.entries()].map(([fecha, valor]) => ({ fecha, valor })).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
+
+export interface CotizacionMercado { fecha: string; usd: number; anterior: number | null; fechaAnterior: string | null; variacionPct: number | null; convertido: boolean }
+
+/** Última pizarra de la plaza y cultivo con su variación contra la pizarra anterior (para el tablero de Inicio). */
+export function pizarraConVariacion(filas: PizarraGrano[], plaza: string, cultivo: string, tcHoy?: number | null): CotizacionMercado | null {
+  const ult = ultimaPizarra(filas, plaza, cultivo, tcHoy);
+  if (!ult) return null;
+  const previas = filas.filter((f) => f.plaza === plaza && normCultivo(f.cultivo) === normCultivo(cultivo) && f.fecha < ult.fecha);
+  const prev = ultimaPizarra(previas, plaza, cultivo, tcHoy);
+  return {
+    fecha: ult.fecha, usd: ult.usd, convertido: ult.convertido,
+    anterior: prev?.usd ?? null, fechaAnterior: prev?.fecha ?? null,
+    variacionPct: prev && prev.usd > 0 ? ((ult.usd - prev.usd) / prev.usd) * 100 : null,
+  };
+}

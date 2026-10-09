@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { precioDelDia, relacion, resumirRelacion, seriePizarra, seriePrecioGrano, serieRelacion, ultimaPizarra, unirSeries } from './relacion';
+import { precioDelDia, pizarraConVariacion, relacion, resumirRelacion, seriePizarra, seriePrecioGrano, serieRelacion, ultimaPizarra, unirSeries } from './relacion';
 import type { PizarraGrano, PrecioGrano } from '@/types';
 
 const pg = (fecha: string, cultivo: string, precio_usd: number): PrecioGrano => ({ id: fecha + cultivo, fecha, cultivo, precio_usd, destino: null, usuario_nombre: null, created_at: '', updated_at: '' });
@@ -73,5 +73,15 @@ describe('pizarras', () => {
     expect(seriePizarra(filas, 'Quequén', 'Soja').map((p) => p.valor)).toEqual([360, 355]);
     expect(unirSeries([{ fecha: '2026-10-01', valor: 360 }], [{ fecha: '2026-10-01', valor: 362 }, { fecha: '2026-10-08', valor: 350 }]))
       .toEqual([{ fecha: '2026-10-01', valor: 362 }, { fecha: '2026-10-08', valor: 350 }]);
+  });
+});
+
+describe('variación de pizarra', () => {
+  const pz = (fecha: string, precio_usd: number): PizarraGrano => ({ fecha, plaza: 'Quequén', cultivo: 'Soja', precio_usd, precio_ars: null });
+  it('contra la pizarra anterior con dato', () => {
+    const r = pizarraConVariacion([pz('2026-10-05', 355), pz('2026-10-01', 350), pz('2026-09-29', 360)], 'Quequén', 'Soja')!;
+    expect(r).toMatchObject({ fecha: '2026-10-05', usd: 355, anterior: 350, fechaAnterior: '2026-10-01' });
+    expect(r.variacionPct).toBeCloseTo(1.4286, 3);
+    expect(pizarraConVariacion([pz('2026-10-05', 355)], 'Quequén', 'Soja')!.variacionPct).toBeNull();
   });
 });

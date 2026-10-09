@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { montoGanado } from '@/lib/ganadaParcial';
 import AvisosPush from '@/components/AvisosPush';
 import RecomprasInicio from '@/components/RecomprasInicio';
+import MercadosInicio from '@/components/MercadosInicio';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formatUSD, formatDate } from '@/lib/format';
@@ -233,6 +234,9 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
           <ChevronRight className="w-4 h-4 text-emerald-700" />
         </button>
       )}
+
+      {/* ===== Mercados: dólar BNA y granos (pizarra y futuros) ===== */}
+      <MercadosInicio onAbrir={() => onNavigate('relacion')} />
 
       <AvisosPush compacto />
 

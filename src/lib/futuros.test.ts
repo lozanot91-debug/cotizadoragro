@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diferencialPlaza, etiquetaPosicion, posicionCosecha, posicionesVigentes } from './futuros';
+import { diferencialPlaza, futuroConVariacion, etiquetaPosicion, posicionCosecha, posicionesVigentes } from './futuros';
 import type { FuturoGrano, PizarraGrano } from '@/types';
 
 const fu = (fecha: string, cultivo: string, posicion: string, ajuste: number): FuturoGrano => ({ fecha, simbolo: `${cultivo}/${posicion}`, cultivo, posicion, ajuste });
@@ -31,5 +31,13 @@ describe('futuros', () => {
     // el 08/10 no hay disponible: se usa el 05/10 (355 − 368)
     expect(diferencialPlaza(pizarras, futuros, 'Quequén', 'Soja')).toEqual({ usd: -13, fecha: '2026-10-05', pizarra: 355, disponible: 368 });
     expect(diferencialPlaza(pizarras, futuros, 'Bahía Blanca', 'Soja')).toBeNull();
+  });
+});
+
+describe('variación de futuros', () => {
+  it('contra el día anterior', () => {
+    const r = futuroConVariacion(futuros, 'Soja', '2027-05')!;
+    expect(r.ajuste).toBe(359.2);
+    expect(r.variacionPct).toBeCloseTo((359.2 - 355) / 355 * 100, 6);
   });
 });

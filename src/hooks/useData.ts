@@ -113,6 +113,12 @@ export function useData() {
     }
   }
 
+  /** Últimas lecturas guardadas del dólar BNA (sin pedirle al BNA), la más nueva primero. */
+  async function fetchHistoriaTC(n = 5): Promise<{ fecha: string; compra: number; venta: number }[]> {
+    const data = await ok(supabase.from('tipo_cambio_bna').select('fecha, compra, venta').order('fecha', { ascending: false }).limit(n));
+    return (data || []).map((r) => ({ fecha: r.fecha as string, compra: Number(r.compra), venta: Number(r.venta) }));
+  }
+
   // ---- Campos de clientes ----
   async function fetchCampos(clienteId: string): Promise<Campo[]> {
     const data = await ok(supabase.from('campos').select('*').eq('cliente_id', clienteId).order('nombre'));
@@ -1145,6 +1151,7 @@ export function useData() {
   return {
     fetchConfig,
     fetchTipoCambioBNA,
+    fetchHistoriaTC,
     fetchCanjes,
     guardarCanje,
     eliminarCanje,

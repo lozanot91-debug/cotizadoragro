@@ -55,3 +55,12 @@ export function diferencialPlaza(pizarras: PizarraGrano[], futuros: FuturoGrano[
   }
   return null;
 }
+
+/** Ajuste de una posición en su último día y la variación contra el día anterior con dato. */
+export function futuroConVariacion(futuros: FuturoGrano[], cultivo: string, posicion: string): { fecha: string; ajuste: number; variacionPct: number | null } | null {
+  const k = norm(cultivo);
+  const filas = futuros.filter((f) => norm(f.cultivo) === k && f.posicion === posicion).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  if (!filas.length) return null;
+  const [u, p] = filas;
+  return { fecha: u.fecha, ajuste: Number(u.ajuste), variacionPct: p && p.ajuste > 0 ? ((u.ajuste - p.ajuste) / p.ajuste) * 100 : null };
+}
