@@ -59,7 +59,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                       <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${fin.plazo > 0 ? `${fin.plazo} días` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
                     </td>
                     <td className="py-2 text-right tabular-nums whitespace-nowrap">{fmt(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} {l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</td>
-                    <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnit)}</td>
+                    <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnit)}<span className="text-[11px] text-gray-400"> /{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></td>
                     <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap font-medium">{fmt(fin.total)}</td>
                   </tr>
                 ))}

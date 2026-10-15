@@ -176,12 +176,11 @@ export async function construirPDF(
   y += 15;
 
   // Tabla de productos. Columnas: x = borde derecho de cada columna numérica
-  const hasFert = lineas.some((l) => l.es_fertilizante);
   const conFin = hayFinanciacion(cotiz, lineas);
   const cols = [
     { label: 'Producto', x: margin + 2.5, align: 'left' as const },
     { label: 'Cant.', x: conFin ? 84 : 97, align: 'right' as const },
-    { label: hasFert ? 'Precio USD/tn' : 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
+    { label: 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
     { label: 'Pago', x: 132, align: 'right' as const },
     { label: 'IVA %', x: 150, align: 'right' as const },
     { label: cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', x: derecha - 2.5, align: 'right' as const },
@@ -231,7 +230,10 @@ export async function construirPDF(
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
     const unidad = linea.es_fertilizante ? 'tn' : (linea.unid || '').toLowerCase();
     doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), cols[0].x, y + 4 + extra);
-    if (unidad) doc.text(unidad, cols[iCant].x, y + 4, { align: 'right' });
+    if (unidad) {
+      doc.text(unidad, cols[iCant].x, y + 4, { align: 'right' });
+      doc.text(`USD/${unidad}`, cols[iPrecio].x, y + 4, { align: 'right' });
+    }
     y += altoFila;
   });
 
@@ -390,7 +392,8 @@ export function generarWhatsApp(
     if (l.es_fertilizante) {
       msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${formatUSD(fin.precioUnit)} USD/tn = ${formatUSD(fin.total)} USD\n`;
     } else {
-      msg += `• ${l.producto}${pago}\n  ${l.cantidad} × ${formatUSD(fin.precioUnit)} USD = ${formatUSD(fin.total)} USD\n`;
+      const u = (l.unid || '').toLowerCase() || 'un';
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${formatUSD(fin.precioUnit)} USD/${u} = ${formatUSD(fin.total)} USD\n`;
     }
   });
 

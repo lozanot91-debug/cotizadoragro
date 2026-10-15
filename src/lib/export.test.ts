@@ -82,6 +82,22 @@ describe('texto de WhatsApp', () => {
   });
 });
 
+describe('WhatsApp: unidad en el precio unitario', () => {
+  it('fertilizante en tn y no fertilizante con su unidad', () => {
+    const msg = generarWhatsApp(
+      cotiz,
+      [
+        linea({ producto: 'Urea', es_fertilizante: true, cantidad: 10, precio_usd: 650, total_usd: 6500 }),
+        linea({ producto: 'Glifosato', unid: 'LTS', cantidad: 20, precio_usd: 5, total_usd: 100 }),
+      ],
+      config
+    );
+    expect(msg).toContain('10 tn × 650,00 USD/tn = 6.500,00 USD');
+    expect(msg).toContain('20 lts × 5,00 USD/lts = 100,00 USD');
+    expect(msg).not.toMatch(/flete/i);
+  });
+});
+
 describe('financiación y canje', () => {
   it('recargo = tasa mensual × días / 30', () => {
     expect(recargoPorcentaje(60, 1.5)).toBe(3);
@@ -118,8 +134,8 @@ describe('financiación y canje', () => {
     const msg = generarWhatsApp(c, lineas, config);
     expect(msg).toContain('GLIFO · Contado');
     expect(msg).toContain('CIPER · 60 días');
-    expect(msg).toContain('1 × 1.000,00 USD = 1.000,00 USD');
-    expect(msg).toContain('1 × 1.030,00 USD = 1.030,00 USD');
+    expect(msg).toContain('1 lt × 1.000,00 USD/lt = 1.000,00 USD');
+    expect(msg).toContain('1 lt × 1.030,00 USD/lt = 1.030,00 USD');
     expect(msg).not.toContain('Financiación');
     expect(msg).not.toContain('Subtotal');
     expect(msg).toContain('Total: 2.030,00 USD');
