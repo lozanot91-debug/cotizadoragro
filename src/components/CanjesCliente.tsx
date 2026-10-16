@@ -10,7 +10,7 @@ import { formatDate, formatUSD } from '@/lib/format';
 import type { CanjeGuardado, Cliente, Cotizacion } from '@/types';
 
 /** Ficha del cliente: cálculos de canje guardados y cotizaciones con canje. */
-export default function CanjesCliente({ cliente, onCalcular, onEditCotiz }: { cliente: Cliente; onCalcular?: () => void; onEditCotiz?: (id: string) => void }) {
+export default function CanjesCliente({ cliente, onCalcular, onEditCotiz }: { cliente: Cliente; onCalcular?: (canje?: CanjeGuardado) => void; onEditCotiz?: (id: string) => void }) {
   const data = useData();
   const toast = useToast();
   const { usuario } = useAuth();
@@ -38,10 +38,10 @@ export default function CanjesCliente({ cliente, onCalcular, onEditCotiz }: { cl
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-gray-500">{canjes.length ? `${canjes.length} ${canjes.length === 1 ? 'cálculo guardado' : 'cálculos guardados'}` : 'Sin cálculos guardados.'}</p>
-        {onCalcular && <button onClick={onCalcular} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-1.5"><Wheat className="w-4 h-4" /> Calcular canje</button>}
+        {onCalcular && <button onClick={() => onCalcular()} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-1.5"><Wheat className="w-4 h-4" /> Calcular canje</button>}
       </div>
       {canjes.length > 0 && (
-        <HistorialCanjes canjes={canjes} onEditCotiz={onEditCotiz} onBorrar={(h) => void borrar(h)} puedeBorrar={(h) => usuario.rol === 'admin' || h.autor_id === usuario.id} />
+        <HistorialCanjes canjes={canjes} onEditar={onCalcular} onEditCotiz={onEditCotiz} onBorrar={(h) => void borrar(h)} puedeBorrar={(h) => usuario.rol === 'admin' || h.autor_id === usuario.id} />
       )}
       {cotiz.length > 0 && (
         <div>

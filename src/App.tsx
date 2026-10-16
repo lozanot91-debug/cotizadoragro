@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { lazyConRecarga } from '@/lib/lazy';
 import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
+import type { CanjeGuardado } from '@/types';
 const Mapa = lazyConRecarga(() => import('@/screens/Mapa'));
 const NuevaCotizacion = lazyConRecarga(() => import('@/screens/NuevaCotizacion'));
 const Cotizaciones = lazyConRecarga(() => import('@/screens/Cotizaciones'));
@@ -45,6 +46,7 @@ function AppContent() {
   const [duplicateFromId, setDuplicateFromId] = useState<string | undefined>(undefined);
   // Cliente con el que se abre la calculadora de canje (desde la ficha del cliente)
   const [canjeClienteId, setCanjeClienteId] = useState<string | undefined>(undefined);
+  const [canjeEditar, setCanjeEditar] = useState<CanjeGuardado | undefined>(undefined);
   const [taskBadge, setTaskBadge] = useState(0);
   const [vencBadge, setVencBadge] = useState(0);
   const [cobroBadge, setCobroBadge] = useState(0);
@@ -141,7 +143,7 @@ function AppContent() {
 
   function handleNavigate(s: Screen) {
     setScreen(s);
-    if (s === 'canje') setCanjeClienteId(undefined);
+    if (s === 'canje') { setCanjeClienteId(undefined); setCanjeEditar(undefined); }
     if (s === 'nueva') { setEditCotizId(undefined); setDuplicateFromId(undefined); }
   }
 
@@ -167,7 +169,7 @@ function AppContent() {
         {screen === 'facturacion' && <Facturacion onEdit={handleEditCotiz} />}
         {screen === 'costos' && <EvolucionCostos />}
         {screen === 'consulta' && <ConsultaCostos />}
-        {screen === 'canje' && <CalculadoraCanje key={canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} onEditCotiz={handleEditCotiz} />}
+        {screen === 'canje' && <CalculadoraCanje key={canjeEditar?.id ?? canjeClienteId ?? 'suelta'} clienteInicial={canjeClienteId} canjeInicial={canjeEditar} onEditCotiz={handleEditCotiz} />}
         {screen === 'catalogo' && <Catalogo />}
         {screen === 'relacion' && <RelacionInsumoGrano />}
         {screen === 'formasPago' && <FormasPago />}
@@ -177,7 +179,7 @@ function AppContent() {
         {screen === 'tareas' && <Tareas />}
         {screen === 'visitas' && <Visitas />}
         {screen === 'mapa' && <Mapa />}
-        {screen === 'clientes' && <Clientes onCalcularCanje={(id) => { setCanjeClienteId(id); setScreen('canje'); }} onEditCotiz={handleEditCotiz} />}
+        {screen === 'clientes' && <Clientes onCalcularCanje={(id, c) => { setCanjeClienteId(id); setCanjeEditar(c); setScreen('canje'); }} onEditCotiz={handleEditCotiz} />}
         {screen === 'listas' && <Listas />}
         {screen === 'estadisticas' && <Estadisticas />}
         {screen === 'config' && usuario.rol === 'admin' && <ConfigScreen />}

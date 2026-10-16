@@ -18,7 +18,7 @@ import { productosDelCliente, type LineaDeCliente } from '@/lib/historialCliente
 import { hoyAR } from '@/lib/fechas';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
-export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularCanje?: (clienteId: string) => void; onEditCotiz?: (id: string) => void } = {}) {
+export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularCanje?: (clienteId: string, canje?: import('@/types').CanjeGuardado) => void; onEditCotiz?: (id: string) => void } = {}) {
   const data = useData();
   const { usuario } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -388,7 +388,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
 
         {tabCli === 'contactos' && <ContactosCliente cliente={detalle} onCambio={() => void recargarResumen()} />}
         {tabCli === 'campos' && <CamposCliente cliente={detalle} onCambio={() => void recargarResumen()} />}
-        {tabCli === 'canjes' && <CanjesCliente cliente={detalle} onEditCotiz={onEditCotiz} onCalcular={onCalcularCanje ? () => onCalcularCanje(detalle.id) : undefined} />}
+        {tabCli === 'canjes' && <CanjesCliente cliente={detalle} onEditCotiz={onEditCotiz} onCalcular={onCalcularCanje ? (c) => onCalcularCanje(detalle.id, c) : undefined} />}
 
         {/* Tab: Cotizaciones (includes márgenes) */}
         {tabCli === 'cotizaciones' && (

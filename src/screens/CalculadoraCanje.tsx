@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye, Check, Search } from 'lucide-react';
+import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, Pencil, ArrowLeftRight, Eye, Check, Search } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
@@ -32,7 +32,7 @@ type IvaInsumos = null | 10.5 | 21;
  * Calculadora de canje suelta: cuántas tn de grano paga un monto de insumos (o al revés),
  * con la liquidación del grano (misma cuenta que la cotización y la facturación). Guarda historial por cliente.
  */
-export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clienteInicial?: string; onEditCotiz?: (id: string) => void }) {
+export default function CalculadoraCanje({ clienteInicial, canjeInicial, onEditCotiz }: { clienteInicial?: string; canjeInicial?: CanjeGuardado; onEditCotiz?: (id: string) => void }) {
   const data = useData();
   const toast = useToast();
   const { usuario } = useAuth();
@@ -111,6 +111,14 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   }, [clienteInicial]);
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
   useEffect(() => { void load(); }, [load]);
+  // Si viene de la ficha del cliente con un canje para editar, se carga cuando termina la carga inicial (que pisa parámetros y cliente)
+  const canjeInicialAplicado = useRef(false);
+  useEffect(() => {
+    if (loading || !canjeInicial || canjeInicialAplicado.current) return;
+    canjeInicialAplicado.current = true;
+    editarDelHistorial(canjeInicial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
   useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
 
   const cliente = useMemo(() => {
@@ -289,10 +297,10 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     try { await navigator.clipboard.writeText(texto); toast.exito('Copiado para WhatsApp'); } catch { toast.aviso('No se pudo copiar. Probá de nuevo.'); }
   }
 
-  function cargarDelHistorial(h: CanjeGuardado) {
+  /** Pasa un canje guardado al formulario. El monto guardado ya trae el IVA de los insumos, por eso no se restaura ivaInsumos. */
+  function rehidratar(h: CanjeGuardado) {
     setClienteTxt(h.cliente_nombre || '');
     setCotizacionId(h.cotizacion_id || '');
-    setCanjeGuardadoId(null);
     setOrigenMonto(h.cotizacion_id ? 'cotizacion' : 'manual'); setListaAbierta(false);
     if (CULTIVOS_CANJE.includes(h.cultivo)) { setCultivo(h.cultivo); setCultivoOtro(''); } else { setCultivo('Otro'); setCultivoOtro(h.cultivo); }
     setPrecio(h.precio_usd);
@@ -301,6 +309,12 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     setNotas(h.notas || '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  /** Carga como un canje nuevo (copia): al guardar se inserta otra fila. */
+  function cargarDelHistorial(h: CanjeGuardado) { rehidratar(h); setCanjeGuardadoId(null); }
+
+  /** Carga el canje para modificarlo: al guardar se actualiza esa misma fila. */
+  function editarDelHistorial(h: CanjeGuardado) { rehidratar(h); setCanjeGuardadoId(h.id); }
 
   async function borrar(h: CanjeGuardado) {
     if (!window.confirm('¿Borrar este cálculo del historial?')) return;
@@ -325,6 +339,13 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
         <p className="text-sm text-gray-500 mt-1">Cuántas toneladas de grano pagan los insumos, con la liquidación completa del grano.</p>
       </div>
 
+      {canjeGuardadoId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-2 text-sm">
+          <span className="font-medium">Editando un canje guardado</span>
+          <button type="button" onClick={limpiar} className="text-xs underline hover:text-amber-700">Cancelar edición</button>
+        </div>
+      )}
+
       {/* ===== Resultado: franja compacta ===== */}
       <section className="bg-emerald-900 rounded-xl px-5 py-3.5 text-white lg:sticky lg:top-2 z-10 shadow-sm">
         <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
@@ -342,7 +363,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
           </dl>
           <div className="flex gap-2 ml-auto">
             <button onClick={() => void guardar()} disabled={guardando} className="px-3 py-2 bg-amber-400 text-emerald-950 rounded-lg text-sm font-semibold hover:bg-amber-300 disabled:opacity-60 flex items-center gap-1.5">
-              {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {canjeGuardadoId ? 'Actualizar canje guardado' : 'Guardar'}
+              {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {canjeGuardadoId ? 'Guardar cambios' : 'Guardar'}
             </button>
             <button onClick={() => void copiar()} className="px-3 py-2 border border-emerald-600 rounded-lg text-sm hover:bg-emerald-800 flex items-center gap-1.5"><Copy className="w-4 h-4" /> WhatsApp</button>
             <button onClick={limpiar} className="p-2 text-emerald-300 hover:text-white" title="Limpiar" aria-label="Limpiar"><RotateCcw className="w-4 h-4" /></button>
@@ -564,7 +585,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
         {histFiltrado.length === 0 ? (
           <p className="text-sm text-gray-500">{historial.length ? 'Nada coincide con el filtro.' : 'Todavía no hay cálculos guardados.'}</p>
         ) : (
-          <HistorialCanjes canjes={histFiltrado} onCargar={cargarDelHistorial} onBorrar={(h) => void borrar(h)} onEditCotiz={onEditCotiz}
+          <HistorialCanjes canjes={histFiltrado} onCargar={cargarDelHistorial} onEditar={editarDelHistorial} onBorrar={(h) => void borrar(h)} onEditCotiz={onEditCotiz}
             puedeBorrar={(h) => usuario.rol === 'admin' || h.autor_id === usuario.id} conCliente />
         )}
       </section>
@@ -573,9 +594,10 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
 }
 
 /** Tabla de cálculos guardados; la usa también la ficha del cliente. */
-export function HistorialCanjes({ canjes, onCargar, onBorrar, onEditCotiz, puedeBorrar, conCliente }: {
+export function HistorialCanjes({ canjes, onCargar, onEditar, onBorrar, onEditCotiz, puedeBorrar, conCliente }: {
   canjes: CanjeGuardado[];
   onCargar?: (h: CanjeGuardado) => void;
+  onEditar?: (h: CanjeGuardado) => void;
   onBorrar?: (h: CanjeGuardado) => void;
   onEditCotiz?: (id: string) => void;
   puedeBorrar?: (h: CanjeGuardado) => boolean;
@@ -593,7 +615,7 @@ export function HistorialCanjes({ canjes, onCargar, onBorrar, onEditCotiz, puede
           <th className="text-right py-2 font-medium">Insumos c/IVA</th>
           <th className="text-right py-2 font-medium">Toneladas</th>
           <th className="text-left py-2 font-medium pl-3">Por</th>
-          <th className="w-24" />
+          <th className="w-28" />
         </tr></thead>
         <tbody>
           {canjes.map((h) => (
@@ -613,7 +635,8 @@ export function HistorialCanjes({ canjes, onCargar, onBorrar, onEditCotiz, puede
               <td className="py-2">
                 <div className="flex justify-end gap-1">
                   {h.cotizacion_id && onEditCotiz && <button onClick={() => onEditCotiz(h.cotizacion_id!)} title="Abrir cotización" aria-label="Abrir cotización" className="p-1.5 text-gray-400 hover:text-emerald-700"><FileText className="w-4 h-4" /></button>}
-                  {onCargar && <button onClick={() => onCargar(h)} title="Cargar en la calculadora" aria-label="Cargar en la calculadora" className="p-1.5 text-gray-400 hover:text-emerald-700"><Upload className="w-4 h-4" /></button>}
+                  {onCargar && <button onClick={() => onCargar(h)} title="Cargar como nuevo" aria-label="Cargar como nuevo" className="p-1.5 text-gray-400 hover:text-emerald-700"><Upload className="w-4 h-4" /></button>}
+                  {onEditar && puedeBorrar?.(h) && <button onClick={() => onEditar(h)} title="Editar" aria-label="Editar" className="p-1.5 text-gray-400 hover:text-emerald-700"><Pencil className="w-4 h-4" /></button>}
                   {onBorrar && puedeBorrar?.(h) && <button onClick={() => onBorrar(h)} title="Borrar" aria-label="Borrar" className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
                 </div>
               </td>
