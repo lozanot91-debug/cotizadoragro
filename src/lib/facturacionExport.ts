@@ -1,6 +1,6 @@
 /** Excel y PDF del pedido de facturación: lo que necesita quien factura. */
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
-import { describirCondicion, precioFinal, totalLinea, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
+import { describirCondicion, precioFinanciado, totalLineaFinanciado, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
 import { nombreCotizacion, limpiarParaArchivo, type DatosNombre } from '@/lib/nombreCotizacion';
 import type { ClienteFacturacion, ExtraFacturacion, PedidoFacturacion } from '@/types';
 
@@ -71,10 +71,10 @@ export async function facturacionExcel(d: DocFacturacion): Promise<void> {
     filas.push([describirCondicion(t.condicion, fmt)]);
     filas.push(['Código', 'Producto', 'Cantidad', 'Unidad', 'Costo USD', 'Precio USD (sin flete)', 'Flete USD', 'Precio final USD', 'Margen %', 'IVA %', 'Subtotal USD']);
     for (const l of d.lineas.filter((x) => x.condicion_id === t.condicion.id)) {
-      filas.push([l.cod, l.producto, l.cantidad, unidad(l), r2(l.costo_usd), r2(l.precio_usd), r2(l.flete_usd), r2(precioFinal(l)), r2(l.margen), l.iva, r2(totalLinea(l))]);
+      filas.push([l.cod, l.producto, l.cantidad, unidad(l), r2(l.costo_usd), r2(l.precio_usd), r2(l.flete_usd), r2(precioFinanciado(l, d.condiciones)), r2(l.margen), l.iva, r2(totalLineaFinanciado(l, d.condiciones))]);
     }
-    filas.push(['', '', '', '', '', '', '', '', '', 'Subtotal', r2(t.subtotal)]);
-    if (t.recargo) filas.push(['', '', '', '', '', '', '', '', '', `Financiación ${fmt(t.recargoPct)} %`, r2(t.recargo)]);
+    filas.push(['', '', '', '', '', '', '', '', '', t.recargo ? 'Subtotal contado' : 'Subtotal', r2(t.subtotal)]);
+    if (t.recargo) filas.push(['', '', '', '', '', '', '', '', '', `Incluye ${fmt(t.recargoPct)} % de financiación`, r2(t.recargo)]);
     filas.push(['', '', '', '', '', '', '', '', '', 'IVA', r2(t.iva)]);
     filas.push(['', '', '', '', '', '', '', '', '', 'Total', r2(t.total)]);
     if (t.toneladas) filas.push(['', '', '', '', '', '', '', '', '', 'Toneladas', r2(t.toneladas)]);
@@ -146,14 +146,14 @@ export async function facturacionPDF(d: DocFacturacion): Promise<void> {
       doc.text(nombre, C.prod + 1, y);
       doc.text(cant(l.cantidad), C.cant, y, { align: 'right' }); doc.text(unidad(l), C.uni, y);
       doc.text(fmt(l.costo_usd), C.costo, y, { align: 'right' }); doc.text(fmt(l.precio_usd), C.precio, y, { align: 'right' });
-      doc.text(l.flete_usd ? fmt(l.flete_usd) : '-', C.flete, y, { align: 'right' }); doc.text(fmt(precioFinal(l)), C.final, y, { align: 'right' });
+      doc.text(l.flete_usd ? fmt(l.flete_usd) : '-', C.flete, y, { align: 'right' }); doc.text(fmt(precioFinanciado(l, d.condiciones)), C.final, y, { align: 'right' });
       doc.text(fmt(l.margen, 1), C.margen, y, { align: 'right' }); doc.text(fmt(l.iva, 1), C.iva, y, { align: 'right' });
-      doc.text(fmt(totalLinea(l)), C.sub, y, { align: 'right' });
+      doc.text(fmt(totalLineaFinanciado(l, d.condiciones)), C.sub, y, { align: 'right' });
       y += Math.max(5, nombre.length * 3.8 + 1.5);
       doc.setDrawColor(225, 225, 225); doc.line(m, y - 3.2, ancho - m, y - 3.2);
     }
-    const tot: [string, number][] = [['Subtotal', t.subtotal]];
-    if (t.recargo) tot.push([`Financiación ${fmt(t.recargoPct)} %`, t.recargo]);
+    const tot: [string, number][] = [[t.recargo ? 'Subtotal contado' : 'Subtotal', t.subtotal]];
+    if (t.recargo) tot.push([`Incluye ${fmt(t.recargoPct)} % de financiación`, t.recargo]);
     tot.push(['IVA', t.iva], ['Total USD', t.total]);
     salto(tot.length * 4.5 + 8);
     for (const [k, v] of tot) {

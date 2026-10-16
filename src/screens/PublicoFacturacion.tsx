@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { traducirError } from '@/lib/errores';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
-import { describirCondicion, precioFinal, totalLinea, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
+import { describirCondicion, precioFinanciado, totalLineaFinanciado, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
 import { facturacionExcel, facturacionPDF, type DocFacturacion } from '@/lib/facturacionExport';
 import type { ClienteFacturacion, ExtraFacturacion } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -164,19 +164,19 @@ export default function PublicoFacturacion({ token }: { token: string }) {
                     <td className="px-4 py-2"><p className="font-medium text-gray-800">{l.producto}</p><p className="text-xs text-gray-400">{l.cod}</p></td>
                     <td className="px-2 py-2 text-right whitespace-nowrap">{formatNumber(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} {l.es_fertilizante ? 'tn' : l.unidad || 'un'}</td>
                     <td className="px-2 py-2 text-right text-gray-600">{fmt(l.costo_usd)}</td>
-                    <td className="px-2 py-2 text-right">{fmt(precioFinal(l))}</td>
+                    <td className="px-2 py-2 text-right">{fmt(precioFinanciado(l, doc.condiciones))}</td>
                     <td className="px-2 py-2 text-right text-gray-500">{l.flete_usd ? fmt(l.flete_usd) : '-'}</td>
                     <td className="px-2 py-2 text-right text-gray-600">{fmt(l.margen, 1)} %</td>
                     <td className="px-2 py-2 text-right text-gray-600">{fmt(l.iva, 1)} %</td>
-                    <td className="px-4 py-2 text-right font-medium">{fmt(totalLinea(l))}</td>
+                    <td className="px-4 py-2 text-right font-medium">{fmt(totalLineaFinanciado(l, doc.condiciones))}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="px-4 py-2.5 border-t border-gray-100 text-sm text-gray-600 flex flex-wrap justify-end gap-x-5 gap-y-1">
-            <span>Subtotal {fmt(t.subtotal)}</span>
-            {t.recargo > 0 && <span>Financiación {fmt(t.recargoPct)} %: {fmt(t.recargo)}</span>}
+            <span>Subtotal{t.recargo > 0 && ' contado'} {fmt(t.subtotal)}</span>
+            {t.recargo > 0 && <span>Incluye {fmt(t.recargoPct)} % de financiación: {fmt(t.recargo)}</span>}
             <span>IVA {fmt(t.iva)}</span>
             {t.toneladas !== null && <span className="font-medium text-gray-800">{fmt(t.toneladas)} tn de {t.condicion.cultivo}</span>}
             {t.ndMonto !== null && <span className="font-medium text-gray-800">Nota de débito {fmt(t.condicion.nd_pct || 0)} %: USD {fmt(t.ndMonto)}</span>}

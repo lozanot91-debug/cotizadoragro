@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  calcularTotalesFacturacion, condicionesIniciales, lineasDesdeCotizacion, describirCondicion, nuevaCondicion, sinUsar,
+  calcularTotalesFacturacion, condicionDeLinea, condicionesIniciales, pctFinanciacionLinea, precioFinanciado, subtotalConFinanciacion, totalLineaFinanciado, lineasDesdeCotizacion, describirCondicion, nuevaCondicion, sinUsar,
   textoWhatsAppFacturacion, urlFacturacion, validarPedidoFacturacion, type LineaFacturacion,
 } from './facturacion';
 import { PARAMS_CANJE_BASE, netoPorTn } from './canje';
@@ -129,5 +129,48 @@ describe('lineasDesdeCotizacion', () => {
     const r = lineasDesdeCotizacion(ls, null, () => 21);
     expect(r.map((l) => l.cod)).toEqual(['UREA', 'GLIFO']);
     expect(r[1]).toMatchObject({ cantidad: 100, flete_usd: 0, margen: 20 });
+  });
+});
+
+describe('precio de línea con financiación', () => {
+  const contado = { ...nuevaCondicion('contado'), id: 'a' };
+  const fin = { ...nuevaCondicion('financiado', { plazo_dias: 150, tasa_mensual: 0.7 }), id: 'f' };
+  const canje = { ...nuevaCondicion('canje', { cultivo: 'Soja', precio_cultivo: 300 }), id: 'c' };
+  const tarjeta = { ...nuevaCondicion('tarjeta', { tarjeta: 'X', plazo_dias: 180, tasa_mensual: 1, nd_pct: 3 }), id: 't' };
+  const base = { precio_usd: 100, flete_usd: 10, cantidad: 2 };
+
+  it('financiado: precio con flete × (1 + pct); contado sin cambios', () => {
+    expect(pctFinanciacionLinea(linea({ condicion_id: 'f' }), [contado, fin])).toBeCloseTo(3.5, 9);
+    expect(precioFinanciado(linea({ ...base, condicion_id: 'f' }), [contado, fin])).toBeCloseTo(113.85, 9);
+    expect(precioFinanciado(linea({ ...base, condicion_id: 'a' }), [contado, fin])).toBe(110);
+  });
+
+  it('canje: sin cambios', () => {
+    expect(precioFinanciado(linea({ ...base, condicion_id: 'c' }), [canje])).toBe(110);
+    expect(totalLineaFinanciado(linea({ ...base, condicion_id: 'c' }), [canje])).toBe(220);
+  });
+
+  it('tarjeta: incluye solo el recargo (sin ND) y suma subtotal + recargo', () => {
+    const ls = [linea({ ...base, condicion_id: 't' }), linea({ precio_usd: 50, flete_usd: 0, cantidad: 3, condicion_id: 't' })];
+    const t = calcularTotalesFacturacion(ls, [tarjeta]).porCondicion[0];
+    expect(precioFinanciado(ls[0], [tarjeta])).toBeCloseTo(110 * 1.06, 9);
+    const suma = ls.reduce((a, l) => a + totalLineaFinanciado(l, [tarjeta]), 0);
+    expect(suma).toBeCloseTo(subtotalConFinanciacion(t), 6);
+  });
+
+  it('dos condiciones: cada línea toma su pct', () => {
+    const cs = [contado, fin];
+    const ls = [linea({ ...base, condicion_id: 'a' }), linea({ ...base, condicion_id: 'f' })];
+    expect(ls.map((l) => pctFinanciacionLinea(l, cs))).toEqual([0, expect.closeTo(3.5, 9)]);
+    const tot = calcularTotalesFacturacion(ls, cs);
+    expect(tot.porCondicion.map((t, i) => totalLineaFinanciado(ls[i], cs) - subtotalConFinanciacion(t)).every((x) => Math.abs(x) < 1e-9)).toBe(true);
+  });
+
+  it('condición desconocida o vacía: mismo criterio que los totales (no pertenece a ninguna)', () => {
+    const l = linea({ ...base, condicion_id: 'zzz' });
+    expect(condicionDeLinea(l, [fin])).toBeUndefined();
+    expect(condicionDeLinea(linea({ condicion_id: '' }), [fin])).toBeUndefined();
+    expect(precioFinanciado(l, [fin])).toBe(110);
+    expect(calcularTotalesFacturacion([l], [fin]).porCondicion[0].lineas).toBe(0);
   });
 });

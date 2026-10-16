@@ -89,6 +89,27 @@ export function recargoDeCondicion(c: CondicionPago): number {
   return c.tipo === 'financiado' || c.tipo === 'tarjeta' ? recargoPorcentaje(c.plazo_dias || 0, c.tasa_mensual || 0) : 0;
 }
 
+/** Condición de la línea (misma regla que los totales: por `condicion_id`, sin fallback). */
+export const condicionDeLinea = (l: Pick<LineaFacturacion, 'condicion_id'>, condiciones: CondicionPago[]) =>
+  condiciones.find((c) => c.id === l.condicion_id);
+
+/** % de financiación que lleva la línea según su condición (0 si no tiene o no existe). */
+export function pctFinanciacionLinea(l: Pick<LineaFacturacion, 'condicion_id'>, condiciones: CondicionPago[]): number {
+  const c = condicionDeLinea(l, condiciones);
+  return c ? recargoDeCondicion(c) : 0;
+}
+
+/** Precio unitario con flete y con la financiación de su condición (sin IVA, sin redondear). */
+export const precioFinanciado = (l: Pick<LineaFacturacion, 'precio_usd' | 'flete_usd' | 'condicion_id'>, condiciones: CondicionPago[]) =>
+  precioFinal(l) * (1 + pctFinanciacionLinea(l, condiciones) / 100);
+
+/** Total de la línea con la financiación de su condición (sin IVA, sin redondear). */
+export const totalLineaFinanciado = (l: Pick<LineaFacturacion, 'precio_usd' | 'flete_usd' | 'cantidad' | 'condicion_id'>, condiciones: CondicionPago[]) =>
+  totalLinea(l) * (1 + pctFinanciacionLinea(l, condiciones) / 100);
+
+/** Subtotal contado + recargo = suma de `totalLineaFinanciado`. */
+export const subtotalConFinanciacion = (t: { subtotal: number; recargo: number }) => t.subtotal + t.recargo;
+
 /** Totales por condición y generales. El IVA va sobre la base financiada, como en la cotización. */
 export function calcularTotalesFacturacion(lineas: LineaFacturacion[], condiciones: CondicionPago[]): TotalesFacturacion {
   const porCondicion: TotalCondicion[] = condiciones.map((c) => {

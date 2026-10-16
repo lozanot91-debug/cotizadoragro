@@ -12,7 +12,7 @@ import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { formatearFechaHora } from '@/lib/fechas';
 import {
   TIPOS_CONDICION, calcularTotalesFacturacion, condicionesIniciales, describirCondicion, estadoFacturacionInfo,
-  lineasDesdeCotizacion, nuevaCondicion, numCampo, precioFinal, sinUsar, textoWhatsAppFacturacion, totalLinea,
+  lineasDesdeCotizacion, nuevaCondicion, numCampo, pctFinanciacionLinea, precioFinal, precioFinanciado, sinUsar, subtotalConFinanciacion, textoWhatsAppFacturacion, totalLineaFinanciado,
   urlFacturacion, validarPedidoFacturacion, type CondicionPago, type LineaFacturacion, type TipoCondicion,
 } from '@/lib/facturacion';
 import { docDePedido, facturacionExcel, facturacionPDF } from '@/lib/facturacionExport';
@@ -331,9 +331,9 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                         <td className="px-3 py-2"><p className="font-medium text-gray-800">{l.producto}</p><p className="text-xs text-gray-400">{l.cod} · IVA {fmt(l.iva, 1)} %{l.flete_usd ? ` · flete USD ${fmt(l.flete_usd)}` : ''}</p></td>
                         <td className="px-2 py-2"><div className="flex items-center gap-1"><input aria-label={`Cantidad de ${l.producto}`} inputMode="decimal" value={l.cantidadStr} onChange={(e) => setLineas((ls) => ls.map((x, j) => (j === i ? { ...x, cantidadStr: e.target.value } : x)))} className={inputCls + ' text-right'} /><span className="text-xs text-gray-400">{l.es_fertilizante ? 'tn' : l.unidad || 'un'}</span></div></td>
                         <td className="px-2 py-2 text-right text-gray-600">{fmt(l.costo_usd)}</td>
-                        <td className="px-2 py-2 text-right">{fmt(precioFinal(l))}</td>
+                        <td className="px-2 py-2 text-right">{fmt(precioFinanciado(l, condiciones))}{pctFinanciacionLinea(l, condiciones) > 0 && <span className="block text-xs font-normal text-gray-400">contado {fmt(precioFinal(l))}</span>}</td>
                         <td className="px-2 py-2 text-right text-gray-600">{fmt(l.margen, 1)} %</td>
-                        <td className="px-2 py-2 text-right font-medium">{fmt(totalLinea({ ...l, cantidad: numCampo(l.cantidadStr) ?? 0 }))}</td>
+                        <td className="px-2 py-2 text-right font-medium">{fmt(totalLineaFinanciado({ ...l, cantidad: numCampo(l.cantidadStr) ?? 0 }, condiciones))}</td>
                         <td className="px-2 py-2">
                           <select aria-label={`Condición de ${l.producto}`} value={l.condicion_id} onChange={(e) => setLineas((ls) => ls.map((x, j) => (j === i ? { ...x, condicion_id: e.target.value } : x)))} className={inputCls}>
                             {condiciones.map((c, k) => <option key={c.id} value={c.id}>{k + 1}. {describirCondicion(c, fmt)}</option>)}
@@ -345,6 +345,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                   </tbody>
                 </table>
               </div>
+              {lineas.some((l) => pctFinanciacionLinea(l, condiciones) > 0) && <p className="mt-2 text-xs text-gray-400">Los precios de las líneas con plazo ya incluyen la financiación de su condición.</p>}
               {previo && <button onClick={() => void armarDesdeCotizacion()} className="mt-2 text-xs text-emerald-700 hover:underline">Volver a armar desde la cotización</button>}
             </section>
 
@@ -358,7 +359,8 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
             {/* Total */}
             <div className="rounded-xl bg-emerald-900 text-white px-4 py-3 flex flex-wrap items-end justify-between gap-3">
               <div className="text-xs text-emerald-200 space-y-0.5">
-                <p>Subtotal USD {fmt(totales.subtotal)}{totales.recargo > 0 && ` · Financiación USD ${fmt(totales.recargo)}`} · IVA USD {fmt(totales.iva)}</p>
+                <p>{totales.recargo > 0 ? 'Subtotal (con financiación)' : 'Subtotal'} USD {fmt(subtotalConFinanciacion(totales))} · IVA USD {fmt(totales.iva)}</p>
+                {totales.recargo > 0 && <p className="text-emerald-300/70">Incluye financiación USD {fmt(totales.recargo)}</p>}
                 {totales.ndTotal > 0 && <p>Notas de débito: USD {fmt(totales.ndTotal)}</p>}
               </div>
               <p className="cifra text-3xl">USD {fmt(totales.total)}</p>
