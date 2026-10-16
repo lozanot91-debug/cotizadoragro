@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye, Check } from 'lucide-react';
+import { Wheat, Loader2, Save, Copy, Trash2, RotateCcw, FileText, Upload, ArrowLeftRight, Eye, Check, Search } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
@@ -12,6 +12,7 @@ import {
 } from '@/lib/canje';
 import { montoCanjeDeCotizacion } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { buscarCotizaciones } from '@/lib/cotizacionesBusqueda';
 import { PLAZAS_PIZARRA, PLAZA_DEFECTO, precioDelDia, ultimaPizarra } from '@/lib/relacion';
 import { diferencialPlaza, etiquetaPosicion, posicionCosecha, posicionesVigentes } from '@/lib/futuros';
 import { diasEntre, hoyAR } from '@/lib/fechas';
@@ -72,6 +73,15 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   const [verPrevia, setVerPrevia] = useState(false);
   const [aplicando, setAplicando] = useState(false);
   const [filtro, setFiltro] = useState('');
+  // Canje ya guardado en esta sesión: los "Guardar" siguientes lo actualizan en vez de crear otro
+  const [canjeGuardadoId, setCanjeGuardadoId] = useState<string | null>(null);
+  const guardandoRef = useRef(false);
+  const aplicandoRef = useRef(false);
+  // De dónde sale el monto: a mano o de una cotización
+  const [origenMonto, setOrigenMonto] = useState<'manual' | 'cotizacion'>('manual');
+  const [busqCotiz, setBusqCotiz] = useState('');
+  const [verTodasCotiz, setVerTodasCotiz] = useState(false);
+  const [listaAbierta, setListaAbierta] = useState(false);
 
   const montado = useRef(true);
   const cargar = useCallback(async () => {
@@ -107,9 +117,9 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     const t = clienteTxt.trim().toLowerCase();
     return t ? clientes.find((c) => c.nombre.trim().toLowerCase() === t) ?? null : null;
   }, [clientes, clienteTxt]);
-  const cotizCliente = useMemo(
-    () => (cliente ? cotizaciones.filter((c) => c.cliente_id === cliente.id).sort((a, b) => (b.fecha > a.fecha ? 1 : -1)).slice(0, 30) : []),
-    [cotizaciones, cliente],
+  const resultadosCotiz = useMemo(
+    () => (origenMonto === 'cotizacion' ? buscarCotizaciones(cotizaciones, { texto: busqCotiz, clienteId: cliente && !verTodasCotiz ? cliente.id : null, limite: 20 }) : []),
+    [origenMonto, cotizaciones, busqCotiz, cliente, verTodasCotiz],
   );
 
   const tcCompra = tcBna?.compra || tcRespaldo || null;
@@ -178,6 +188,10 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
     setCotizacionId(id);
     const c = cotizaciones.find((x) => x.id === id);
     if (!c) return;
+    setListaAbierta(false);
+    // El cliente pasa a ser el de la cotización (sin desvincularla: no es un cambio hecho por el usuario)
+    const nombreCli = clientes.find((x) => x.id === c.cliente_id)?.nombre ?? c.cliente_nombre ?? '';
+    if (nombreCli && nombreCli.trim().toLowerCase() !== clienteTxt.trim().toLowerCase()) { setClienteTxt(nombreCli); setCanjeGuardadoId(null); }
     setCargandoCotiz(true);
     try {
       const lineas = await data.fetchLineas(c.id);
@@ -198,6 +212,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
 
   function limpiar() {
     setCotizacionId(''); setPrecio(sugerido?.usd ?? 0); precioAutoRef.current = sugerido?.usd ?? null; setMonto(0); setTnIngresadas(0); setIvaInsumos(null); setNotas(''); setParams({ ...defaults });
+    setCanjeGuardadoId(null); setOrigenMonto('manual'); setListaAbierta(false);
   }
 
   const errores: string[] = [];
@@ -206,53 +221,66 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   else if (!(neto > 0)) errores.push('El neto por tn da cero: revisá la liquidación.');
   if (!(montoConIva > 0) || !(tn > 0)) errores.push(modo === 'monto' ? 'Falta el monto de insumos.' : 'Faltan las toneladas.');
 
+  /** Un solo armado del registro para guardar y para aplicar a una cotización. */
+  function armarPayload(c?: Cotizacion) {
+    return {
+      cliente_id: cliente?.id ?? c?.cliente_id ?? null,
+      cliente_nombre: cliente?.nombre ?? (clienteTxt.trim() || c?.cliente_nombre || ''),
+      cotizacion_id: c?.id ?? (cotizacionId || null),
+      cultivo: cultivoNombre,
+      precio_usd: precio,
+      params: paramsConRef,
+      neto_usd: Math.round(neto * 1e6) / 1e6,
+      monto_usd: Math.round(montoConIva * 100) / 100,
+      iva_insumos_pct: modo === 'monto' ? ivaInsumos : null,
+      tn: Math.round(tn * 1e4) / 1e4,
+      tc_compra: tcCompra,
+      notas: notas.trim() || (c ? 'Aplicado a la cotización' : null),
+    };
+  }
+
+  /** Inserta el canje la primera vez; si ya está guardado, actualiza ese mismo registro. */
+  async function persistirCanje(payload: ReturnType<typeof armarPayload>) {
+    if (canjeGuardadoId) {
+      const g = await data.actualizarCanje(canjeGuardadoId, payload);
+      setHistorial((h) => h.map((x) => (x.id === g.id ? g : x)));
+      return false;
+    }
+    const g = await data.guardarCanje(payload);
+    setCanjeGuardadoId(g.id);
+    setHistorial((h) => [g, ...h]);
+    return true;
+  }
+
   async function guardar() {
+    if (guardandoRef.current || aplicandoRef.current) return;
     if (errores.length) { toast.aviso(errores[0]); return; }
     if (!cliente && !clienteTxt.trim()) { toast.aviso('Elegí o escribí el cliente para guardarlo en su historial.'); return; }
+    guardandoRef.current = true;
     setGuardando(true);
     try {
-      const g = await data.guardarCanje({
-        cliente_id: cliente?.id ?? null,
-        cliente_nombre: cliente?.nombre ?? clienteTxt.trim(),
-        cotizacion_id: cotizacionId || null,
-        cultivo: cultivoNombre,
-        precio_usd: precio,
-        params: paramsConRef,
-        neto_usd: Math.round(neto * 1e6) / 1e6,
-        monto_usd: Math.round(montoConIva * 100) / 100,
-        iva_insumos_pct: modo === 'monto' ? ivaInsumos : null,
-        tn: Math.round(tn * 1e4) / 1e4,
-        tc_compra: tcCompra,
-        notas: notas.trim() || null,
-      });
-      setHistorial((h) => [g, ...h]);
-      toast.exito('Canje guardado en el historial');
-    } catch (e) { toast.error(e); } finally { setGuardando(false); }
+      const nuevo = await persistirCanje(armarPayload());
+      toast.exito(nuevo ? 'Canje guardado en el historial' : 'Canje actualizado en el historial');
+    } catch (e) { toast.error(e); } finally { guardandoRef.current = false; setGuardando(false); }
   }
 
   /** Pasa el canje calculado a la cotización traída (cultivo, precio y liquidación) y lo deja en el historial. */
   async function aplicarACotizacion() {
+    if (aplicandoRef.current || guardandoRef.current) return;
     const c = cotizaciones.find((x) => x.id === cotizacionId);
     if (!c) return;
     if (!cultivoNombre || !(precio > 0) || !(neto > 0)) { toast.aviso(errores[0] || 'Completá el cultivo y el precio.'); return; }
     const antes = c.canje_precio_usd > 0 ? `${c.canje_cultivo} a USD ${fmt(c.canje_precio_usd)}/tn` : 'Sin canje';
+    aplicandoRef.current = true;
     setAplicando(true);
     try {
       const act = await data.aplicarCanjeACotizacion(c.id, { cultivo: cultivoNombre, precio, params: paramsConRef });
       setCotizaciones((cs) => cs.map((x) => (x.id === act.id ? { ...x, ...act } : x)));
       setPrevia((p) => (p && p.cotizacion.id === act.id ? { ...p, cotizacion: { ...p.cotizacion, ...act } } : p));
       await registrarCambio({ tipo: 'cotizacion', cotizacion_id: c.id, campo: 'canje', valor_anterior: antes, valor_nuevo: `${cultivoNombre} a USD ${fmt(precio)}/tn (neto ${fmt(neto)}) desde la calculadora` });
-      if (modo === 'monto' && montoConIva > 0) {
-        const g = await data.guardarCanje({
-          cliente_id: cliente?.id ?? c.cliente_id, cliente_nombre: cliente?.nombre ?? c.cliente_nombre, cotizacion_id: c.id,
-          cultivo: cultivoNombre, precio_usd: precio, params: paramsConRef, neto_usd: Math.round(neto * 1e6) / 1e6,
-          monto_usd: Math.round(montoConIva * 100) / 100, iva_insumos_pct: ivaInsumos, tn: Math.round(tn * 1e4) / 1e4,
-          tc_compra: tcCompra, notas: notas.trim() || 'Aplicado a la cotización',
-        });
-        setHistorial((h) => [g, ...h]);
-      }
+      if (modo === 'monto' && montoConIva > 0) await persistirCanje(armarPayload(c));
       toast.exito(`Canje aplicado a ${nombreCotizacion(c)}: el PDF y el WhatsApp ya salen con las toneladas`);
-    } catch (e) { toast.error(e); } finally { setAplicando(false); }
+    } catch (e) { toast.error(e); } finally { aplicandoRef.current = false; setAplicando(false); }
   }
 
   async function copiar() {
@@ -264,6 +292,8 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
   function cargarDelHistorial(h: CanjeGuardado) {
     setClienteTxt(h.cliente_nombre || '');
     setCotizacionId(h.cotizacion_id || '');
+    setCanjeGuardadoId(null);
+    setOrigenMonto(h.cotizacion_id ? 'cotizacion' : 'manual'); setListaAbierta(false);
     if (CULTIVOS_CANJE.includes(h.cultivo)) { setCultivo(h.cultivo); setCultivoOtro(''); } else { setCultivo('Otro'); setCultivoOtro(h.cultivo); }
     setPrecio(h.precio_usd);
     usarReferencia(normalizarParams(h.params));
@@ -312,12 +342,13 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
           </dl>
           <div className="flex gap-2 ml-auto">
             <button onClick={() => void guardar()} disabled={guardando} className="px-3 py-2 bg-amber-400 text-emerald-950 rounded-lg text-sm font-semibold hover:bg-amber-300 disabled:opacity-60 flex items-center gap-1.5">
-              {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar
+              {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {canjeGuardadoId ? 'Actualizar canje guardado' : 'Guardar'}
             </button>
             <button onClick={() => void copiar()} className="px-3 py-2 border border-emerald-600 rounded-lg text-sm hover:bg-emerald-800 flex items-center gap-1.5"><Copy className="w-4 h-4" /> WhatsApp</button>
             <button onClick={limpiar} className="p-2 text-emerald-300 hover:text-white" title="Limpiar" aria-label="Limpiar"><RotateCcw className="w-4 h-4" /></button>
           </div>
         </div>
+        {canjeGuardadoId && <p className="text-[11px] text-emerald-300 mt-2 text-right">Ya está guardado. Si cambiás algo y volvés a guardar, se actualiza el mismo.</p>}
       </section>
 
       <div className="grid lg:grid-cols-2 gap-5 items-start">
@@ -328,37 +359,27 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
             <div className="grid sm:grid-cols-2 gap-4">
               <label className="block">
                 <span className="block text-xs font-medium text-gray-600 mb-1">Cliente</span>
-                <input list="canje-clientes" value={clienteTxt} onChange={(e) => { setClienteTxt(e.target.value); setCotizacionId(''); }} placeholder="Buscar o escribir" className={inputCls} />
+                <input list="canje-clientes" value={clienteTxt} onChange={(e) => { setClienteTxt(e.target.value); setCotizacionId(''); setCanjeGuardadoId(null); }} placeholder="Buscar o escribir" className={inputCls} />
                 <datalist id="canje-clientes">{clientes.map((c) => <option key={c.id} value={c.nombre} />)}</datalist>
                 {clienteTxt.trim() && !cliente && <span className="block text-[11px] text-amber-700 mt-0.5">No está en la lista: se guarda solo con el nombre.</span>}
               </label>
-              <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1">Traer total de una cotización</span>
-                <div className="flex items-center gap-2">
-                  <select value={cotizacionId} disabled={!cliente || cargandoCotiz} onChange={(e) => (e.target.value ? void usarCotizacion(e.target.value) : setCotizacionId(''))} className={inputCls + ' disabled:bg-gray-50 disabled:text-gray-400'}>
-                    <option value="">{cliente ? (cotizCliente.length ? 'Elegir…' : 'Sin cotizaciones') : 'Primero elegí el cliente'}</option>
-                    {cotizCliente.map((c) => <option key={c.id} value={c.id}>{nombreCotizacion(c)} · {formatDate(c.fecha)} · {c.estado}</option>)}
-                  </select>
-                  {cargandoCotiz && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
+              {cotizSel && (
+                <div className="flex items-center gap-3 self-end pb-2">
                   {!cargandoCotiz && previa && cotizacionId === previa.cotizacion.id && (
                     <button type="button" onClick={() => setVerPrevia(true)} title="Ver la cotización" aria-label="Ver la cotización"
                       className="p-2 rounded-lg border border-gray-300 text-gray-500 hover:text-emerald-700 hover:border-emerald-400 flex-shrink-0"><Eye className="w-4 h-4" /></button>
                   )}
+                  {cotizSel.estado === 'Ganada' || cotizSel.estado === 'Perdida' ? (
+                    <span className="text-[11px] text-gray-400">Está {cotizSel.estado}: el canje no se puede aplicar.</span>
+                  ) : (
+                    <button type="button" onClick={() => void aplicarACotizacion()} disabled={aplicando || !(precio > 0) || !(neto > 0)}
+                      className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:text-gray-400 flex items-center gap-1">
+                      {aplicando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      {cotizSel.canje_precio_usd > 0 ? 'Actualizar el canje de la cotización' : 'Aplicar este canje a la cotización'}
+                    </button>
+                  )}
                 </div>
-                {cotizSel && (
-                  <span className="block mt-1.5">
-                    {cotizSel.estado === 'Ganada' || cotizSel.estado === 'Perdida' ? (
-                      <span className="text-[11px] text-gray-400">Está {cotizSel.estado}: el canje no se puede aplicar.</span>
-                    ) : (
-                      <button type="button" onClick={() => void aplicarACotizacion()} disabled={aplicando || !(precio > 0) || !(neto > 0)}
-                        className="text-xs font-medium text-emerald-700 hover:text-emerald-800 disabled:text-gray-400 flex items-center gap-1">
-                        {aplicando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        {cotizSel.canje_precio_usd > 0 ? 'Actualizar el canje de la cotización' : 'Aplicar este canje a la cotización'}
-                      </button>
-                    )}
-                  </span>
-                )}
-              </label>
+              )}
             </div>
 
             <div className="grid sm:grid-cols-3 gap-4">
@@ -442,9 +463,55 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                 </div>
               </div>
               {modo === 'monto' ? (
+                <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+                    <button type="button" onClick={() => setOrigenMonto('manual')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${origenMonto === 'manual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Monto a mano</button>
+                    <button type="button" onClick={() => setOrigenMonto('cotizacion')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${origenMonto === 'cotizacion' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Traer cotización</button>
+                  </div>
+                  {origenMonto === 'cotizacion' && (cotizSel && !listaAbierta ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-900">
+                      <span>Cotización {nombreCotizacion(cotizSel)} · {cotizSel.cliente_nombre || 'Sin cliente'} · total USD {fmt(monto)}</span>
+                      {cargandoCotiz && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
+                      <button type="button" onClick={() => setListaAbierta(true)} className="ml-auto text-xs font-medium text-emerald-700 hover:underline">Cambiar</button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input value={busqCotiz} onChange={(e) => setBusqCotiz(e.target.value)} placeholder="Buscá por número o cliente" aria-label="Buscar cotización" className={inputCls + ' pl-8'} />
+                        </div>
+                        {cliente && (
+                          <button type="button" onClick={() => setVerTodasCotiz((v) => !v)} className="text-xs font-medium text-emerald-700 hover:underline whitespace-nowrap">
+                            {verTodasCotiz ? `Solo de ${cliente.nombre}` : 'Ver todas'}
+                          </button>
+                        )}
+                      </div>
+                      {resultadosCotiz.length === 0 ? (
+                        <p className="text-xs text-gray-500">No hay cotizaciones que coincidan.</p>
+                      ) : (
+                        <ul className="max-h-60 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                          {resultadosCotiz.map((c) => (
+                            <li key={c.id}>
+                              <button type="button" disabled={cargandoCotiz} onClick={() => void usarCotizacion(c.id)} className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 disabled:opacity-60">
+                                <span className="font-medium text-gray-800">{nombreCotizacion(c)}</span>
+                                <span className="text-gray-500"> · {c.cliente_nombre || 'Sin cliente'} · {formatDate(c.fecha)} · {c.estado}</span>
+                                <span className="text-gray-700 tabular-nums"> · total USD {fmt(c.total_usd)}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <CampoNumero label="Monto de insumos" sufijo="USD" value={monto} onChange={(n) => { setMonto(n); setCotizacionId(''); }}
+                  <div>
+                  <CampoNumero label="Monto de insumos" sufijo="USD" value={monto} onChange={(n) => { setMonto(n); setCotizacionId(''); setOrigenMonto('manual'); }}
                     ayuda={ivaInsumos !== null && monto > 0 ? `Con IVA: USD ${fmt(montoConIva)}` : undefined} />
+                  {cotizSel && <span className="block text-[11px] text-gray-400 mt-0.5">Tomado de la cotización {nombreCotizacion(cotizSel)}. Si lo editás a mano se desvincula.</span>}
+                  </div>
                   <label className="block">
                     <span className="block text-xs font-medium text-gray-600 mb-1">IVA de los insumos</span>
                     <select value={ivaInsumos ?? ''} onChange={(e) => setIvaInsumos(e.target.value ? (Number(e.target.value) === 21 ? 21 : 10.5) : null)} className={inputCls}>
@@ -453,6 +520,7 @@ export default function CalculadoraCanje({ clienteInicial, onEditCotiz }: { clie
                       <option value="21">Sumar IVA 21 %</option>
                     </select>
                   </label>
+                </div>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-4">

@@ -398,6 +398,10 @@ function crearApi() {
     return (await ok(supabase.from('canjes').insert(c).select('*').single())) as CanjeGuardado;
   }
 
+  async function actualizarCanje(id: string, c: Omit<CanjeGuardado, 'id' | 'autor_id' | 'autor_nombre' | 'created_at'>): Promise<CanjeGuardado> {
+    return (await ok(supabase.from('canjes').update(c).eq('id', id).select('*').single())) as CanjeGuardado;
+  }
+
   async function eliminarCanje(id: string) {
     await ok(supabase.from('canjes').delete().eq('id', id));
   }
@@ -1299,6 +1303,7 @@ function crearApi() {
     fetchHistoriaTC,
     fetchCanjes,
     guardarCanje,
+    actualizarCanje,
     eliminarCanje,
     fetchCotizacionesConCanje,
     aplicarCanjeACotizacion,
