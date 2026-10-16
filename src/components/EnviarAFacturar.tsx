@@ -9,7 +9,7 @@ import { textoFlete } from '@/lib/fleteTramos';
 import { normalizarParams, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
-import { formatearFechaHora, hoyAR, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
+import { formatearFechaHora, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import {
   TIPOS_CONDICION, calcularTotalesFacturacion, condicionesIniciales, describirCondicion, estadoFacturacionInfo,
   lineasDesdeCotizacion, nuevaCondicion, numCampo, pctFinanciacionLinea, precioFinal, precioFinanciado, sinUsar, subtotalConFinanciacion, textoWhatsAppFacturacion, totalLineaFinanciado,
@@ -30,9 +30,9 @@ const aTexto = (n: number | undefined) => (n === undefined || n === null || Numb
 function condAForm(c: CondicionPago): CondForm {
   return { id: c.id, tipo: c.tipo, plazo: aTexto(c.plazo_dias), tasa: aTexto(c.tasa_mensual), cultivo: c.cultivo || '', precio: aTexto(c.precio_cultivo), tarjeta: c.tarjeta || '', nd: aTexto(c.nd_pct), params: c.canje_params ? normalizarParams(c.canje_params) : null };
 }
-function formACond(f: CondForm): CondicionPago {
+function formACond(f: CondForm, base: string): CondicionPago {
   const c: CondicionPago = { id: f.id, tipo: f.tipo };
-  if (f.tipo === 'financiado' || f.tipo === 'tarjeta') { c.plazo_dias = Math.round(numCampo(f.plazo) ?? 0); if (c.plazo_dias > 0) c.vencimiento = vencimientoDesdeDias(hoyAR(), c.plazo_dias); c.tasa_mensual = numCampo(f.tasa) ?? 0; }
+  if (f.tipo === 'financiado' || f.tipo === 'tarjeta') { c.plazo_dias = Math.round(numCampo(f.plazo) ?? 0); if (c.plazo_dias > 0) c.vencimiento = vencimientoDesdeDias(base, c.plazo_dias); c.tasa_mensual = numCampo(f.tasa) ?? 0; }
   if (f.tipo === 'canje') { c.cultivo = f.cultivo.trim(); c.precio_cultivo = numCampo(f.precio) ?? 0; c.canje_params = f.params; }
   if (f.tipo === 'tarjeta') { c.tarjeta = f.tarjeta.trim(); c.nd_pct = numCampo(f.nd) ?? 0; }
   return c;
@@ -195,7 +195,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const condiciones = useMemo(() => conds.map(formACond), [conds]);
+  const condiciones = useMemo(() => conds.map((c) => formACond(c, cotizacion.fecha)), [conds, cotizacion.fecha]);
   const lineasCalc: LineaFacturacion[] = useMemo(
     () => lineas.map(({ cantidadStr, ...l }) => ({ ...l, cantidad: numCampo(cantidadStr) ?? 0 })),
     [lineas],
@@ -287,7 +287,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                         {c.tipo === 'tarjeta' && <Campo label="Tarjeta" full><input value={c.tarjeta} onChange={(e) => setCond(c.id, { tarjeta: e.target.value })} placeholder="Ej.: Agro Nación" className={inputCls} /></Campo>}
                         {(c.tipo === 'financiado' || c.tipo === 'tarjeta') && <>
                           <Campo label="Vencimiento">
-                            <input type="date" min={hoyAR()} value={vencimientoDesdeDias(hoyAR(), Math.round(numCampo(c.plazo) ?? 0))} onChange={(e) => setCond(c.id, { plazo: String(diasDesdeVencimiento(hoyAR(), e.target.value)) })} className={inputCls} />
+                            <input type="date" min={cotizacion.fecha} value={vencimientoDesdeDias(cotizacion.fecha, Math.round(numCampo(c.plazo) ?? 0))} onChange={(e) => setCond(c.id, { plazo: String(diasDesdeVencimiento(cotizacion.fecha, e.target.value)) })} className={inputCls} />
                             <span className="text-xs text-gray-400">{(numCampo(c.plazo) ?? 0) > 0 ? `(${Math.round(numCampo(c.plazo) ?? 0)} días${(numCampo(c.tasa) ?? 0) > 0 ? ` · ${textoMesesTasa(Math.round(numCampo(c.plazo) ?? 0))}` : ''})` : '(contado)'}</span>
                           </Campo>
                           <Campo label="Tasa mensual %"><input inputMode="decimal" value={c.tasa} onChange={(e) => setCond(c.id, { tasa: e.target.value })} placeholder="0 = sin interés" className={inputCls} /></Campo>
