@@ -237,10 +237,20 @@ export function urlFacturacion(origen: string, token: string): string {
 }
 
 /** `nombre`: "Cliente - 001". */
-export function textoWhatsAppFacturacion(p: { url: string; nombre: string; notaVenta?: string | null }): string {
+/** Fechas de vencimiento (ISO, sin repetir, ordenadas) de las condiciones con plazo: financiado y tarjeta. */
+export function vencimientosDeCondiciones(condiciones: CondicionPago[] | null | undefined): string[] {
+  const fechas = (condiciones ?? [])
+    .filter((c) => (c.tipo === 'financiado' || c.tipo === 'tarjeta') && c.vencimiento)
+    .map((c) => c.vencimiento as string);
+  return [...new Set(fechas)].sort();
+}
+
+export function textoWhatsAppFacturacion(p: { url: string; nombre: string; notaVenta?: string | null; vencimientos?: string[] }): string {
+  const venc = (p.vencimientos ?? []).map(formatearFecha);
   return [
     `Pedido de facturación · ${p.nombre}`,
     p.notaVenta ? `Nota de venta: ${p.notaVenta}` : null,
+    venc.length ? `${venc.length > 1 ? 'Vencimientos' : 'Vencimiento'}: ${venc.join(' · ')}` : null,
     '',
     'Detalle completo, Excel y PDF, y para marcarlo facturado:',
     p.url,

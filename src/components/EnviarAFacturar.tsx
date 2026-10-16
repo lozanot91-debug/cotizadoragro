@@ -12,7 +12,7 @@ import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { formatearFechaHora, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import {
   TIPOS_CONDICION, calcularTotalesFacturacion, condicionesIniciales, describirCondicion, estadoFacturacionInfo,
-  lineasDesdeCotizacion, nuevaCondicion, numCampo, pctFinanciacionLinea, precioFinal, precioFinanciado, sinUsar, subtotalConFinanciacion, textoWhatsAppFacturacion, totalLineaFinanciado,
+  lineasDesdeCotizacion, nuevaCondicion, numCampo, pctFinanciacionLinea, precioFinal, precioFinanciado, sinUsar, subtotalConFinanciacion, textoWhatsAppFacturacion, vencimientosDeCondiciones, totalLineaFinanciado,
   urlFacturacion, validarPedidoFacturacion, type CondicionPago, type LineaFacturacion, type TipoCondicion,
 } from '@/lib/facturacion';
 import { docDePedido, facturacionExcel, facturacionPDF } from '@/lib/facturacionExport';
@@ -116,7 +116,7 @@ export default function EnviarAFacturar({ cotizacion }: { cotizacion: Cotizacion
           <div className="flex flex-wrap gap-2">
             {pedido.estado !== 'Facturado' && (
               <>
-                <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre: nombreCotizacion(cotizacion), notaVenta: pedido.nota_venta }), 'Texto para WhatsApp copiado')}
+                <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre: nombreCotizacion(cotizacion), notaVenta: pedido.nota_venta, vencimientos: vencimientosDeCondiciones(pedido.condiciones) }), 'Texto para WhatsApp copiado')}
                   className="px-3 py-1.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
                 <button onClick={() => void copiar(link, 'Link copiado')} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Link2 className="w-4 h-4" /> Copiar link</button>
                 <button onClick={() => setAbierto(true)} className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 ${pedido.estado === 'Observado' || vencido ? 'bg-emerald-700 text-white hover:bg-emerald-800' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}>

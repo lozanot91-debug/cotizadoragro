@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calcularTotalesFacturacion, condicionDeLinea, condicionesIniciales, pctFinanciacionLinea, precioFinanciado, subtotalConFinanciacion, totalLineaFinanciado, lineasDesdeCotizacion, describirCondicion, nuevaCondicion, sinUsar,
-  textoWhatsAppFacturacion, urlFacturacion, validarPedidoFacturacion, type LineaFacturacion,
+  textoWhatsAppFacturacion, urlFacturacion, validarPedidoFacturacion, vencimientosDeCondiciones, type CondicionPago, type LineaFacturacion,
 } from './facturacion';
 import { PARAMS_CANJE_BASE, netoPorTn } from './canje';
 
@@ -184,5 +184,25 @@ describe('precio de línea con financiación', () => {
     expect(condicionDeLinea(linea({ condicion_id: '' }), [fin])).toBeUndefined();
     expect(precioFinanciado(l, [fin])).toBe(110);
     expect(calcularTotalesFacturacion([l], [fin]).porCondicion[0].lineas).toBe(0);
+  });
+});
+
+describe('vencimientos en el texto de WhatsApp', () => {
+  const url = 'https://x.test/f/abc';
+  it('vencimientosDeCondiciones junta solo financiado/tarjeta con fecha, sin repetir y ordenadas', () => {
+    const conds = [
+      { id: 'a', tipo: 'contado' },
+      { id: 'b', tipo: 'financiado', plazo_dias: 90, vencimiento: '2027-01-14' },
+      { id: 'c', tipo: 'tarjeta', plazo_dias: 30, vencimiento: '2026-11-15' },
+      { id: 'd', tipo: 'financiado', plazo_dias: 90, vencimiento: '2027-01-14' },
+      { id: 'e', tipo: 'financiado', plazo_dias: 60 },
+    ] as unknown as CondicionPago[];
+    expect(vencimientosDeCondiciones(conds)).toEqual(['2026-11-15', '2027-01-14']);
+    expect(vencimientosDeCondiciones(null)).toEqual([]);
+  });
+  it('el texto incluye el vencimiento (singular/plural) y no lo pone si no hay', () => {
+    expect(textoWhatsAppFacturacion({ url, nombre: 'N', vencimientos: ['2027-07-31'] })).toContain('Vencimiento: 31/07/2027');
+    expect(textoWhatsAppFacturacion({ url, nombre: 'N', vencimientos: ['2026-11-15', '2027-01-14'] })).toContain('Vencimientos: 15/11/2026 · 14/01/2027');
+    expect(textoWhatsAppFacturacion({ url, nombre: 'N' })).not.toContain('encimiento');
   });
 });

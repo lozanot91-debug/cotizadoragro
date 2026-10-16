@@ -6,7 +6,7 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { formatUSD, formatDate } from '@/lib/format';
 import { formatearFechaHora } from '@/lib/fechas';
-import { describirCondicion, estadoFacturacionInfo, textoWhatsAppFacturacion, urlFacturacion } from '@/lib/facturacion';
+import { describirCondicion, estadoFacturacionInfo, textoWhatsAppFacturacion, urlFacturacion, vencimientosDeCondiciones } from '@/lib/facturacion';
 import { docDePedido, facturacionPDF } from '@/lib/facturacionExport';
 import type { PedidoFacturacion } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -103,7 +103,7 @@ export default function Facturacion({ onEdit }: { onEdit: (cotizacionId: string)
                     <ExternalLink className="w-4 h-4" /> {p.estado === 'Observado' ? 'Abrir para corregir' : 'Abrir cotización'}
                   </button>
                   {(p.estado === 'Pendiente' || p.estado === 'Observado') && (
-                    <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre, notaVenta: p.nota_venta }), 'Texto para WhatsApp copiado')}
+                    <button onClick={() => void copiar(textoWhatsAppFacturacion({ url: link, nombre, notaVenta: p.nota_venta, vencimientos: vencimientosDeCondiciones(p.condiciones) }), 'Texto para WhatsApp copiado')}
                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><Copy className="w-4 h-4" /> Texto WhatsApp</button>
                   )}
                   <button onClick={() => void facturacionPDF(docDePedido(p, ref)).catch((e) => toast.error(e))} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><FileDown className="w-4 h-4" /> PDF</button>
