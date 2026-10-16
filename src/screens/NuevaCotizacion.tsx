@@ -19,7 +19,7 @@ import { esModalidad, kmFaltantes, kmSugeridos, nombreModalidad, tramosDeCotizac
 import { useToast } from '@/components/Toast';
 import { costosAplicables, lineasParaPedido, urlPedido, textoWhatsAppPedido, diasValidos } from '@/lib/pedidosPrecio';
 import { Search, Plus, Trash2, Save, Copy, FileDown, FileSpreadsheet, Package, Loader2, Check, X, Pencil, RotateCcw, AlertTriangle, Lock, History, Link2, ClipboardList, CreditCard } from 'lucide-react';
-import { hoyAR, formatearFechaHora, sumarDias } from '@/lib/fechas';
+import { hoyAR, formatearFechaHora, sumarDias, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import { traducirError } from '@/lib/errores';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
@@ -576,9 +576,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     setPlazo(String(d));
     setLineas((ls) => ls.map((l) => ({ ...l, plazo: d, plazoStr: String(d) })));
   }
+  /** `value` es la fecha de vencimiento 'YYYY-MM-DD'; se guarda en días desde la fecha de la cotización. */
   function handlePlazoChange(key: string, value: string) {
-    const n = Math.max(0, parseInt(value) || 0);
-    actualizarLinea(key, { plazoStr: value, plazo: n });
+    const n = diasDesdeVencimiento(fecha, value);
+    actualizarLinea(key, { plazoStr: String(n), plazo: n });
   }
   function handleIvaChange(key: string, value: string) {
     const n = parseNumberInput(value);
@@ -1034,6 +1035,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                   </button>
                 );
               })}
+              <input type="date" min={fecha} aria-label="Fecha de vencimiento (todas las filas)" disabled={esReadOnly}
+                value={vencimientoDesdeDias(fecha, lineas.length > 0 && lineas.every((l) => l.plazo === lineas[0].plazo) ? lineas[0].plazo : plazoNum)}
+                onChange={(e) => aplicarPlazoATodas(diasDesdeVencimiento(fecha, e.target.value))}
+                className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50" />
+              {plazoNum > 0 && <span className="text-xs text-gray-400">({plazoNum} días)</span>}
             </div>
             {(hayFinanciado || plazoNum > 0) && (
               <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -1169,7 +1175,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Margen %</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
                 <th className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Flete</th>
-                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Plazo (días)</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Vencimiento</th>
                 {conIva && <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">IVA %</th>}
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total USD</th>
                 <th className="px-2 py-2"></th>
@@ -1204,7 +1210,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
                     <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD)}<span className="text-xs font-normal text-gray-400"> /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">producto {formatUSD(l.precioUSD)} + flete {formatUSD(l.fleteUSD)}</span>}{l.recargoPct > 0 && l.totalUSD > 0 && <span className="block text-xs font-medium text-emerald-700">con tasa {formatUSD((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalFinanciado / l.totalUSD))} /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>}</td>
                     <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmFaltante && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-2 py-2 text-right"><input type="text" inputMode="numeric" value={l.plazoStr} disabled={esReadOnly} aria-label={`Plazo en días de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-14 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} />{l.plazo === 0 && <span className="block text-xs text-gray-400">contado</span>}</td>
+                    <td className="px-2 py-2 text-right"><input type="date" min={fecha} value={vencimientoDesdeDias(fecha, l.plazo)} disabled={esReadOnly} aria-label={`Vencimiento de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-36 px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} /><span className="block text-xs text-gray-400">{l.plazo === 0 ? 'contado' : `(${l.plazo} días)`}</span></td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}
                     <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalFinanciado)}{l.cantidad > 0 && <span className="block text-xs font-normal text-gray-400">{l.cantidadStr || l.cantidad} {l.producto.es_fertilizante ? 'tn' : l.producto.unid} × {formatUSD((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalUSD > 0 ? l.totalFinanciado / l.totalUSD : 1))} c/u</span>}{l.recargoPct > 0 && <span className="block text-xs font-normal text-gray-400">contado {formatUSD(l.totalUSD)} · +{formatInputNumber(l.recargoPct, 2)}%</span>}</td>
                     <td className="px-2 py-2">{!esReadOnly && <button onClick={() => eliminarLinea(l.key)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</td>

@@ -3,7 +3,7 @@ import { ChevronDown, Copy, Trophy } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useToast } from '@/components/Toast';
 import { formatUSD } from '@/lib/format';
-import { formatearFecha, hoyAR } from '@/lib/fechas';
+import { formatearFecha, hoyAR, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import { CULTIVOS_CANJE, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
 import { PLAZA_DEFECTO, ultimaPizarra } from '@/lib/relacion';
 import {
@@ -129,7 +129,10 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
           </div>
         )}
         <div className="flex items-end gap-2 pl-3 border-l border-gray-200">
-          <Campo label="Plazo" valor={plazoDias} onChange={setPlazoDias} sufijo="días" ancho="w-24" />
+          <label className="block w-36">
+            <span className="block text-[11px] text-gray-500 mb-0.5">Vencimiento <span className="text-gray-400">{num(plazoDias) > 0 ? `(${Math.round(num(plazoDias))} días)` : '(contado)'}</span></span>
+            <input type="date" min={hoyAR()} value={vencimientoDesdeDias(hoyAR(), Math.round(num(plazoDias)))} onChange={(e) => setPlazoDias(String(diasDesdeVencimiento(hoyAR(), e.target.value)))} className={inputCls} />
+          </label>
           <Campo label="Tasa mensual" valor={tasaMensual} onChange={setTasaMensual} sufijo="%" ancho="w-24" />
         </div>
         <div className="flex items-end gap-2 pl-3 border-l border-gray-200">

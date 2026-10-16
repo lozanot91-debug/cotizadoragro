@@ -3,6 +3,7 @@ import { X, FileText, ExternalLink } from 'lucide-react';
 import { calcularTotalesIva } from '@/lib/calculations';
 import { financiacionLinea, ivaLinea } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { formatDate, formatUSD } from '@/lib/format';
 import type { Cotizacion, CotizacionLinea } from '@/types';
 
@@ -56,7 +57,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                   <tr key={l.id} className="border-b border-gray-100 align-top">
                     <td className="py-2 pr-2">
                       <p className="text-gray-800">{l.producto}</p>
-                      <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${fin.plazo > 0 ? `${fin.plazo} días` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
+                      <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${fin.plazo > 0 ? `vence ${formatearFecha(sumarDias(c.fecha, fin.plazo))} (${fin.plazo} días)` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
                     </td>
                     <td className="py-2 text-right tabular-nums whitespace-nowrap">{fmt(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} {l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</td>
                     <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnit)}<span className="text-[11px] text-gray-400"> /{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></td>

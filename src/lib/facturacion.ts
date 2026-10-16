@@ -6,6 +6,7 @@
  */
 import { calcularTotalesIva, recargoPorcentaje } from '@/lib/calculations';
 import { netoGuardado, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
+import { formatearFecha } from '@/lib/fechas';
 import { parseNumberInput } from '@/lib/format';
 import { lineasGanadas, type Reales } from '@/lib/ganadaParcial';
 import type { CotizacionLinea } from '@/types';
@@ -25,6 +26,8 @@ export interface CondicionPago {
   tipo: TipoCondicion;
   /** Financiado y tarjeta */
   plazo_dias?: number;
+  /** Financiado y tarjeta: fecha de vencimiento 'YYYY-MM-DD' (foto al enviar; pedidos viejos no la tienen) */
+  vencimiento?: string;
   /** Financiado y tarjeta: tasa mensual % (recargo = tasa × días / 30) */
   tasa_mensual?: number;
   /** Canje */
@@ -145,7 +148,7 @@ export function describirCondicion(c: CondicionPago, fmt: (n: number, d?: number
   const p = [TIPOS_CONDICION.find((t) => t.valor === c.tipo)?.nombre ?? c.tipo];
   if (c.tipo === 'tarjeta' && c.tarjeta) p[0] = `Tarjeta ${c.tarjeta}`;
   if (c.tipo === 'financiado' || c.tipo === 'tarjeta') {
-    if (c.plazo_dias) p.push(`${c.plazo_dias} días`);
+    if (c.plazo_dias) p.push(c.vencimiento ? `${c.plazo_dias} días (vence ${formatearFecha(c.vencimiento)})` : `${c.plazo_dias} días`);
     p.push(c.tasa_mensual ? `${fmt(c.tasa_mensual, 2)} % mensual` : 'sin interés');
   }
   if (c.tipo === 'tarjeta' && c.nd_pct) p.push(`ND ${fmt(c.nd_pct, 2)} %`);

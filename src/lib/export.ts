@@ -4,6 +4,7 @@ import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/type
 import { formatUSD, formatDate } from '@/lib/format';
 import { calcularTotalesIva, recargoPorcentaje, type TotalesIva } from '@/lib/calculations';
 import { netoGuardado, resumenLiquidacion, toneladasPorMonto } from '@/lib/canje';
+import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { fechaVencimiento } from '@/lib/vencimientos';
 import { LOGO_CERES_TOLVAS } from '@/assets/logoCeresTolvas';
 import { nombreCotizacion, archivoCotizacion } from '@/lib/nombreCotizacion';
@@ -35,9 +36,9 @@ function hayFinanciacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): boolean 
   return lineas.some((l) => financiacionLinea(l, cotiz).pct > 0);
 }
 
-/** "Contado" o "60 días". */
-function condicionTxt(plazo: number): string {
-  return plazo > 0 ? `${plazo} días` : 'Contado';
+/** "Contado" o "vence 06/12/2026 (60 días)" (vencimiento = fecha de la cotización + días). */
+export function condicionTxt(plazo: number, base: string): string {
+  return plazo > 0 ? `vence ${formatearFecha(sumarDias(base, plazo))} (${plazo} días)` : 'Contado';
 }
 
 /** Totales calculados desde las líneas (cada una con su IVA y su financiación), para que PDF, WhatsApp y Excel coincidan. */
@@ -223,7 +224,12 @@ export async function construirPDF(
     // El flete y la financiación van incluidos en el precio: al cliente no se le muestran por separado
     const fin = financiacionLinea(linea, cotiz);
     doc.text(formatUSD(fin.precioUnit, 2), cols[iPrecio].x, y, { align: 'right' });
-    if (iPago >= 0) doc.text(condicionTxt(fin.plazo), cols[iPago].x, y, { align: 'right' });
+    if (iPago >= 0) {
+      // La columna es angosta: en el PDF va solo la fecha de vencimiento
+      doc.setFontSize(8);
+      doc.text(fin.plazo > 0 ? formatearFecha(sumarDias(cotiz.fecha, fin.plazo)) : 'Contado', cols[iPago].x, y, { align: 'right' });
+      doc.setFontSize(9);
+    }
     if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
     doc.setFont('helvetica', 'bold');
     doc.text(formatUSD(fin.total, 2), cols[iTotal].x, y, { align: 'right' });
@@ -328,6 +334,7 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     'Cantidad': l.cantidad,
     'Margen %': l.margen,
     'Plazo (días)': plazoLinea(l, cotiz),
+    'Vencimiento': plazoLinea(l, cotiz) > 0 ? formatearFecha(sumarDias(cotiz.fecha, plazoLinea(l, cotiz))) : '',
     ...(cotiz.con_iva ? { 'IVA %': ivaLinea(l, cotiz) } : {}),
     'Precio USD': l.precio_usd,
     'Flete USD': l.flete_usd,
@@ -388,7 +395,7 @@ export function generarWhatsApp(
   lineas.forEach((l) => {
     // Flete y financiación van incluidos en el precio de cada fila
     const fin = financiacionLinea(l, cotiz);
-    const pago = conFin ? ` · ${condicionTxt(fin.plazo)}` : '';
+    const pago = conFin ? ` · ${condicionTxt(fin.plazo, cotiz.fecha)}` : '';
     if (l.es_fertilizante) {
       msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${formatUSD(fin.precioUnit)} USD/tn = ${formatUSD(fin.total)} USD\n`;
     } else {

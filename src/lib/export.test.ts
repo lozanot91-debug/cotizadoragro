@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generarWhatsApp, totalesDeCotizacion } from './export';
+import { generarWhatsApp, totalesDeCotizacion, condicionTxt } from './export';
 import { calcularTotalesIva, recargoPorcentaje, toneladasCanje } from './calculations';
 import { parseNumberInput } from './format';
 import type { Cotizacion, CotizacionLinea, Configuracion } from '@/types';
@@ -133,7 +133,7 @@ describe('financiación y canje', () => {
     ];
     const msg = generarWhatsApp(c, lineas, config);
     expect(msg).toContain('GLIFO · Contado');
-    expect(msg).toContain('CIPER · 60 días');
+    expect(msg).toContain('CIPER · vence 06/12/2026 (60 días)');
     expect(msg).toContain('1 lt × 1.000,00 USD/lt = 1.000,00 USD');
     expect(msg).toContain('1 lt × 1.030,00 USD/lt = 1.030,00 USD');
     expect(msg).not.toContain('Financiación');
@@ -158,5 +158,13 @@ describe('financiación y canje', () => {
     const msg = generarWhatsApp({ ...cotiz, con_iva: false } as Cotizacion, [linea({ total_usd: 1000 })], config);
     expect(msg).not.toContain('Financiación');
     expect(msg).not.toContain('Equivale');
+  });
+});
+
+describe('condicionTxt', () => {
+  it('vencimiento desde la fecha de la cotización', () => {
+    expect(condicionTxt(0, '2026-10-07')).toBe('Contado');
+    expect(condicionTxt(30, '2026-10-07')).toBe('vence 06/11/2026 (30 días)');
+    expect(condicionTxt(90, '2026-12-01')).toBe('vence 01/03/2027 (90 días)');
   });
 });

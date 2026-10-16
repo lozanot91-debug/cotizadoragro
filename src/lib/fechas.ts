@@ -61,6 +61,20 @@ export function diasEntre(desde: string, hasta: string): number {
   return Math.round((aUTC(hasta) - aUTC(desde)) / 86400000);
 }
 
+const ISO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Días de plazo desde una fecha base hasta el vencimiento. Vacío, inválido o <= base → 0 (contado). */
+export function diasDesdeVencimiento(base: string, vencimiento: string): number {
+  if (!ISO_FECHA.test(base ?? '') || !ISO_FECHA.test(vencimiento ?? '')) return 0;
+  return Math.max(0, diasEntre(base, vencimiento));
+}
+
+/** Fecha de vencimiento 'YYYY-MM-DD' = base + días; '' si días <= 0 o la base es inválida. */
+export function vencimientoDesdeDias(base: string, dias: number): string {
+  if (!(dias > 0) || !ISO_FECHA.test(base ?? '')) return '';
+  return sumarDias(base, dias);
+}
+
 /**
  * Días transcurridos desde una fecha hasta hoy (en Argentina).
  * Acepta una fecha 'YYYY-MM-DD' o un timestamp con hora (fecha_envio, completada_at):

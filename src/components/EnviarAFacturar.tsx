@@ -9,7 +9,7 @@ import { textoFlete } from '@/lib/fleteTramos';
 import { normalizarParams, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
-import { formatearFechaHora } from '@/lib/fechas';
+import { formatearFechaHora, hoyAR, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import {
   TIPOS_CONDICION, calcularTotalesFacturacion, condicionesIniciales, describirCondicion, estadoFacturacionInfo,
   lineasDesdeCotizacion, nuevaCondicion, numCampo, pctFinanciacionLinea, precioFinal, precioFinanciado, sinUsar, subtotalConFinanciacion, textoWhatsAppFacturacion, totalLineaFinanciado,
@@ -32,7 +32,7 @@ function condAForm(c: CondicionPago): CondForm {
 }
 function formACond(f: CondForm): CondicionPago {
   const c: CondicionPago = { id: f.id, tipo: f.tipo };
-  if (f.tipo === 'financiado' || f.tipo === 'tarjeta') { c.plazo_dias = Math.round(numCampo(f.plazo) ?? 0); c.tasa_mensual = numCampo(f.tasa) ?? 0; }
+  if (f.tipo === 'financiado' || f.tipo === 'tarjeta') { c.plazo_dias = Math.round(numCampo(f.plazo) ?? 0); if (c.plazo_dias > 0) c.vencimiento = vencimientoDesdeDias(hoyAR(), c.plazo_dias); c.tasa_mensual = numCampo(f.tasa) ?? 0; }
   if (f.tipo === 'canje') { c.cultivo = f.cultivo.trim(); c.precio_cultivo = numCampo(f.precio) ?? 0; c.canje_params = f.params; }
   if (f.tipo === 'tarjeta') { c.tarjeta = f.tarjeta.trim(); c.nd_pct = numCampo(f.nd) ?? 0; }
   return c;
@@ -286,7 +286,10 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                       <div className="grid grid-cols-2 gap-2">
                         {c.tipo === 'tarjeta' && <Campo label="Tarjeta" full><input value={c.tarjeta} onChange={(e) => setCond(c.id, { tarjeta: e.target.value })} placeholder="Ej.: Agro Nación" className={inputCls} /></Campo>}
                         {(c.tipo === 'financiado' || c.tipo === 'tarjeta') && <>
-                          <Campo label="Plazo (días)"><input inputMode="numeric" value={c.plazo} onChange={(e) => setCond(c.id, { plazo: e.target.value })} className={inputCls} /></Campo>
+                          <Campo label="Vencimiento">
+                            <input type="date" min={hoyAR()} value={vencimientoDesdeDias(hoyAR(), Math.round(numCampo(c.plazo) ?? 0))} onChange={(e) => setCond(c.id, { plazo: String(diasDesdeVencimiento(hoyAR(), e.target.value)) })} className={inputCls} />
+                            <span className="text-xs text-gray-400">{(numCampo(c.plazo) ?? 0) > 0 ? `(${Math.round(numCampo(c.plazo) ?? 0)} días)` : '(contado)'}</span>
+                          </Campo>
                           <Campo label="Tasa mensual %"><input inputMode="decimal" value={c.tasa} onChange={(e) => setCond(c.id, { tasa: e.target.value })} placeholder="0 = sin interés" className={inputCls} /></Campo>
                         </>}
                         {c.tipo === 'tarjeta' && <Campo label="Nota de débito %"><input inputMode="decimal" value={c.nd} onChange={(e) => setCond(c.id, { nd: e.target.value })} placeholder="0 = no tiene" className={inputCls} /></Campo>}
