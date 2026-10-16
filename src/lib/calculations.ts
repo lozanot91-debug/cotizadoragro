@@ -203,13 +203,25 @@ export interface TotalesIva {
   ivaEfectivo: number;
 }
 
+/** Meses de tasa: se cobra por mes completo, el parcial se redondea para arriba (76 días = 3). 0 si no hay plazo. */
+export function mesesDeTasa(plazoDias: number): number {
+  if (!(plazoDias > 0)) return 0;
+  return Math.ceil(plazoDias / 30);
+}
+
+/** "3 meses de tasa" / "1 mes de tasa"; vacío si no hay plazo. */
+export function textoMesesTasa(plazoDias: number): string {
+  const m = mesesDeTasa(plazoDias);
+  return m === 0 ? '' : `${m} ${m === 1 ? 'mes' : 'meses'} de tasa`;
+}
+
 /**
- * Recargo por financiación en %: interés simple, tasa mensual × días / 30.
+ * Recargo por financiación en %: interés simple, tasa mensual × meses completos (redondeo para arriba).
  * Contado (0 días) o tasa 0 = sin recargo.
  */
 export function recargoPorcentaje(plazoDias: number, tasaMensual: number): number {
   if (!(plazoDias > 0) || !(tasaMensual > 0)) return 0;
-  return Math.round(((tasaMensual * plazoDias) / 30) * 10000) / 10000;
+  return Math.round(tasaMensual * mesesDeTasa(plazoDias) * 10000) / 10000;
 }
 
 /** Toneladas de grano equivalentes a un monto en USD (canje). 0 si no hay precio. */

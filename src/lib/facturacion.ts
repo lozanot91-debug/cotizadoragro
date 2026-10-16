@@ -28,7 +28,7 @@ export interface CondicionPago {
   plazo_dias?: number;
   /** Financiado y tarjeta: fecha de vencimiento 'YYYY-MM-DD' (foto al enviar; pedidos viejos no la tienen) */
   vencimiento?: string;
-  /** Financiado y tarjeta: tasa mensual % (recargo = tasa × días / 30) */
+  /** Financiado y tarjeta: tasa mensual % (recargo = tasa × meses completos) */
   tasa_mensual?: number;
   /** Canje */
   cultivo?: string;

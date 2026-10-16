@@ -23,7 +23,7 @@ describe('calcularTotalesFacturacion', () => {
     expect(t.total).toBeCloseTo(7956, 6);
   });
 
-  it('tarjeta: recargo = tasa × días / 30 sobre la base, IVA sobre lo financiado, ND sobre el total', () => {
+  it('tarjeta: recargo = tasa × meses completos sobre la base, IVA sobre lo financiado, ND sobre el total', () => {
     const t = calcularTotalesFacturacion([linea({ condicion_id: 'b', iva: 21, cantidad: 1, precio_usd: 100, flete_usd: 0 })], [tarjeta]);
     const c = t.porCondicion[0];
     expect(c.recargoPct).toBe(6);
@@ -32,6 +32,13 @@ describe('calcularTotalesFacturacion', () => {
     expect(c.total).toBeCloseTo(128.26, 6);
     expect(c.ndMonto).toBeCloseTo(128.26 * 0.03, 6);
     expect(t.ndTotal).toBeCloseTo(c.ndMonto!, 6);
+  });
+
+  it('financiado a 76 días: el recargo usa 3 meses', () => {
+    const fin = { ...nuevaCondicion('financiado', { plazo_dias: 76, tasa_mensual: 1.5 }), id: 'f' };
+    const t = calcularTotalesFacturacion([linea({ condicion_id: 'f', iva: 0, cantidad: 1, precio_usd: 100, flete_usd: 0 })], [fin]);
+    expect(t.porCondicion[0].recargoPct).toBe(4.5);
+    expect(t.porCondicion[0].recargo).toBeCloseTo(4.5, 6);
   });
 
   it('mezcla condiciones y calcula toneladas de canje', () => {

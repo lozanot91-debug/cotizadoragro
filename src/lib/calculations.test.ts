@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularLinea, buscarTarifa } from './calculations';
+import { calcularLinea, buscarTarifa, mesesDeTasa, textoMesesTasa } from './calculations';
 import type { ProductoConCosto, TarifaFlete } from '@/types';
 
 const tarifas: TarifaFlete[] = [
@@ -52,5 +52,19 @@ describe('calcularLinea aforo por tramo', () => {
     expect(calcularLinea({ ...base, conFlete: false, tramos: [t(150, 2)] }).fleteUSD).toBe(0);
     const otro = { ...urea, es_fertilizante: false, unid: 'LT' } as unknown as ProductoConCosto;
     expect(calcularLinea({ ...base, producto: otro, tramos: [t(150, 2)] })).toEqual(calcularLinea({ ...base, producto: otro }));
+  });
+});
+
+describe('mesesDeTasa', () => {
+  it('mes completo, el parcial sube', () => {
+    for (const [d, m] of [[30, 1], [60, 2], [90, 3], [120, 4], [150, 5], [180, 6], [360, 12], [1, 1], [31, 2], [45, 2], [76, 3]]) expect(mesesDeTasa(d)).toBe(m);
+  });
+  it('sin plazo válido = 0', () => {
+    for (const d of [0, -5, NaN]) expect(mesesDeTasa(d)).toBe(0);
+  });
+  it('textoMesesTasa', () => {
+    expect(textoMesesTasa(30)).toBe('1 mes de tasa');
+    expect(textoMesesTasa(76)).toBe('3 meses de tasa');
+    expect(textoMesesTasa(0)).toBe('');
   });
 });

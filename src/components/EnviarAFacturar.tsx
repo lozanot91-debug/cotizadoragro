@@ -4,7 +4,7 @@ import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { registrarCambio } from '@/lib/historial';
-import { ivaDeLinea } from '@/lib/calculations';
+import { ivaDeLinea, textoMesesTasa } from '@/lib/calculations';
 import { textoFlete } from '@/lib/fleteTramos';
 import { normalizarParams, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
@@ -288,7 +288,7 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                         {(c.tipo === 'financiado' || c.tipo === 'tarjeta') && <>
                           <Campo label="Vencimiento">
                             <input type="date" min={hoyAR()} value={vencimientoDesdeDias(hoyAR(), Math.round(numCampo(c.plazo) ?? 0))} onChange={(e) => setCond(c.id, { plazo: String(diasDesdeVencimiento(hoyAR(), e.target.value)) })} className={inputCls} />
-                            <span className="text-xs text-gray-400">{(numCampo(c.plazo) ?? 0) > 0 ? `(${Math.round(numCampo(c.plazo) ?? 0)} días)` : '(contado)'}</span>
+                            <span className="text-xs text-gray-400">{(numCampo(c.plazo) ?? 0) > 0 ? `(${Math.round(numCampo(c.plazo) ?? 0)} días${(numCampo(c.tasa) ?? 0) > 0 ? ` · ${textoMesesTasa(Math.round(numCampo(c.plazo) ?? 0))}` : ''})` : '(contado)'}</span>
                           </Campo>
                           <Campo label="Tasa mensual %"><input inputMode="decimal" value={c.tasa} onChange={(e) => setCond(c.id, { tasa: e.target.value })} placeholder="0 = sin interés" className={inputCls} /></Campo>
                         </>}

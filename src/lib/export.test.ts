@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generarWhatsApp, totalesDeCotizacion, condicionTxt } from './export';
+import { generarWhatsApp, totalesDeCotizacion, condicionTxt, financiacionLinea } from './export';
 import { calcularTotalesIva, recargoPorcentaje, toneladasCanje } from './calculations';
 import { parseNumberInput } from './format';
 import type { Cotizacion, CotizacionLinea, Configuracion } from '@/types';
@@ -99,11 +99,19 @@ describe('WhatsApp: unidad en el precio unitario', () => {
 });
 
 describe('financiación y canje', () => {
-  it('recargo = tasa mensual × días / 30', () => {
+  it('recargo = tasa mensual × meses completos (redondeo para arriba)', () => {
     expect(recargoPorcentaje(60, 1.5)).toBe(3);
-    expect(recargoPorcentaje(45, 2)).toBe(3);
+    expect(recargoPorcentaje(45, 2)).toBe(4);
+    expect(recargoPorcentaje(76, 1.5)).toBe(4.5);
     expect(recargoPorcentaje(0, 2)).toBe(0);
     expect(recargoPorcentaje(30, 0)).toBe(0);
+  });
+
+  it('financiacionLinea: plazo no múltiplo de 30 cobra el mes completo', () => {
+    const c = { ...cotiz, tasa_mensual: 1.5, plazo_dias: 0 } as Cotizacion;
+    const f = financiacionLinea(linea({ plazo_dias: 76, precio_usd: 100, total_usd: 100 }), c);
+    expect(f.pct).toBe(4.5);
+    expect(f.total).toBeCloseTo(104.5, 6);
   });
 
   it('el recargo se suma al total, el subtotal sigue siendo contado y el IVA va sobre el precio financiado', () => {
