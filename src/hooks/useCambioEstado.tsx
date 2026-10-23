@@ -70,6 +70,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
 
   /** Abre el modal de confirmación. Devuelve false si el cambio no se puede ni pedir. */
   async function solicitarCambioEstado(cotiz: Cotizacion, hacia: EstadoCotizacion): Promise<boolean> {
+    if (guardando) return false; // ya hay un cambio guardándose
     if (cotiz.estado === hacia) return false;
     if (estaCerrada(cotiz.estado) && hacia !== 'En negociación') {
       toast.aviso('Para reabrir una cotización pasala a En negociación.');

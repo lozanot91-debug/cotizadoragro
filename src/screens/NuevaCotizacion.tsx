@@ -313,6 +313,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
         const nuevasLineas: LineaEditable[] = [];
         const posQuitadas: number[] = [];
+        // Los márgenes del cliente se piden una sola vez (antes: una vez por línea)
+        const margenesCli = cotiz.cliente_id ? await data.fetchMargenesCliente(cotiz.cliente_id) : [];
+        const margenCliArr = margenesCli.map((m) => ({ producto_id: m.producto_id, familia: m.familia, margen: m.margen }));
         for (const [pos, l] of origLineas.entries()) {
           const prod = productosLista.find((p) => p.cod === l.cod);
           if (!prod) {
@@ -321,8 +324,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             totalAnt += l.total_usd;
             continue;
           }
-          const margenesCli = cotiz.cliente_id ? await data.fetchMargenesCliente(cotiz.cliente_id) : [];
-          const margenCliArr = margenesCli.map((m) => ({ producto_id: m.producto_id, familia: m.familia, margen: m.margen }));
           const margen = resolverMargen(prod, cfg.margen_general, margenCliArr);
           const costoDisplay = prod.es_fertilizante
             ? (prod.moneda === 'ARS' ? prod.costo / parseFloat(cotiz.tc.toString()) : prod.costo) * 1000

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import CamposCliente from '@/components/CamposCliente';
 import ContactosCliente from '@/components/ContactosCliente';
 import CanjesCliente from '@/components/CanjesCliente';
@@ -156,7 +156,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
     setMargenes(margs);
   }
 
-  const familias = [...new Set(productos.map((p) => p.familia).filter(Boolean))] as string[];
+  const familias = useMemo(() => [...new Set(productos.map((p) => p.familia).filter(Boolean))] as string[], [productos]);
 
   function ultimoContacto(): string | null {
     let max: string | null = null;
@@ -180,7 +180,12 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
     return items.sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 20);
   }
 
-  const filtrados = filtrarClientes(clientes, resumen, { busqueda, estado: filtroEstado, vendedor: filtroVendedor });
+  const filtrados = useMemo(
+    () => filtrarClientes(clientes, resumen, { busqueda, estado: filtroEstado, vendedor: filtroVendedor }),
+    [clientes, resumen, busqueda, filtroEstado, filtroVendedor],
+  );
+  // La línea de tiempo se arma una sola vez, y solo si esa pestaña está abierta
+  const timeline = tabCli === 'timeline' ? timelineItems() : [];
   const hayFiltros = !!busqueda || filtroEstado !== 'vigentes' || !!filtroVendedor;
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
@@ -533,7 +538,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Activity className="w-5 h-5 text-gray-400" /> Línea de tiempo</h3>
             <div className="space-y-3">
-              {timelineItems().map((item, i) => (
+              {timeline.map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
                     {item.icon === 'cotizacion' ? <FileText className="w-4 h-4 text-gray-400" /> : item.icon === 'tarea' ? <CheckSquare className="w-4 h-4 text-emerald-500" /> : <Calendar className="w-4 h-4 text-blue-500" />}
@@ -544,7 +549,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
                   </div>
                 </div>
               ))}
-              {timelineItems().length === 0 && <p className="text-sm text-gray-400">Sin actividad</p>}
+              {timeline.length === 0 && <p className="text-sm text-gray-400">Sin actividad</p>}
             </div>
           </div>
         )}

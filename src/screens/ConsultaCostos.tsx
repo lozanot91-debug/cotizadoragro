@@ -46,9 +46,10 @@ export default function ConsultaCostos() {
     setComparacion(comp);
     if (comp.length > 0) {
       // Actual = lo último de cada fuente; anterior = la lista previa de cada fuente (si la tiene)
+      const cfgMargenes = await data.fetchConfigMargenes(); // una vez, no por cada lista
       const [acts, ants] = await Promise.all([
-        Promise.all(comp.map((c) => data.fetchProductosConCosto(c.actual.id))),
-        Promise.all(comp.map((c) => (c.anterior ? data.fetchProductosConCosto(c.anterior.id) : Promise.resolve([] as ProductoConCosto[])))),
+        Promise.all(comp.map((c) => data.fetchProductosConCosto(c.actual.id, cfgMargenes))),
+        Promise.all(comp.map((c) => (c.anterior ? data.fetchProductosConCosto(c.anterior.id, cfgMargenes) : Promise.resolve([] as ProductoConCosto[])))),
       ]);
       setProductos(unirProductosDeFuentes(comp.map((c, i) => ({ fuenteNombre: c.fuente.nombre, productos: acts[i] }))));
       const mapaAnt = new Map<string, number>();

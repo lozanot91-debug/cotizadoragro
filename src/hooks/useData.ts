@@ -677,7 +677,8 @@ function crearApi() {
     const vigentes = vigentePorFuente(listas);
     const base = opts?.listaIdBase ? listas.find((l) => l.id === opts.listaIdBase) : undefined;
     if (base) vigentes.set(base.fuente_id, base);
-    const grupos = await Promise.all([...vigentes.values()].map((l) => fetchProductosConCosto(l.id)));
+    const cfg = await fetchConfigMargenes(); // una sola vez para todas las fuentes
+    const grupos = await Promise.all([...vigentes.values()].map((l) => fetchProductosConCosto(l.id, cfg)));
     const vistos = new Set<string>();
     const resultado: ProductoConCosto[] = [];
     for (const p of grupos.flat()) {
@@ -702,7 +703,16 @@ function crearApi() {
     await ok(supabase.from('listas_costos').update({ descripcion }).eq('id', listaId));
   }
 
-  async function fetchProductosConCosto(listaId: string): Promise<ProductoConCosto[]> {
+  /** Familias y márgenes por producto: se piden una vez y se pasan a fetchProductosConCosto cuando se piden varias listas. */
+  async function fetchConfigMargenes(): Promise<{ familias: FamiliaConfig[]; margenesProd: MargenProducto[] }> {
+    const [famRes, margProdRes] = await Promise.all([
+      ok(supabase.from('familias_config').select('*')),
+      ok(supabase.from('margenes_producto').select('*')),
+    ]);
+    return { familias: (famRes || []) as FamiliaConfig[], margenesProd: (margProdRes || []) as MargenProducto[] };
+  }
+
+  async function fetchProductosConCosto(listaId: string, cfg?: { familias: FamiliaConfig[]; margenesProd: MargenProducto[] }): Promise<ProductoConCosto[]> {
     // Un solo pedido paginado: costos de la lista con el producto embebido.
     // (Antes se hacía .in('id', [miles de ids]) y la URL se pasaba del límite de largo.)
     const filas = await fetchAllPaged<{ costo: number; producto: Producto | null }>(() =>
@@ -715,13 +725,7 @@ function crearApi() {
 
     if (filas.length === 0) return [];
 
-    const [famRes, margProdRes] = await Promise.all([
-      ok(supabase.from('familias_config').select('*')),
-      ok(supabase.from('margenes_producto').select('*')),
-    ]);
-
-    const familias = (famRes || []) as FamiliaConfig[];
-    const margenesProd = (margProdRes || []) as MargenProducto[];
+    const { familias, margenesProd } = cfg ?? (await fetchConfigMargenes());
 
     const famMap = new Map(familias.map((f) => [f.familia, f]));
     const margProdMap = new Map(margenesProd.map((m) => [m.producto_id, m.margen]));
@@ -1423,10 +1427,13 @@ function crearApi() {
   }
 
   async function getFotoUrls(paths: string[]): Promise<Record<string, string>> {
+    // Una sola llamada para todas las fotos. Una que no se puede firmar no rompe la galería.
     const result: Record<string, string> = {};
-    for (const p of paths) {
-      const url = await getFotoUrl(p);
-      if (url) result[p] = url;
+    if (paths.length === 0) return result;
+    const { data, error } = await supabase.storage.from('visitas-fotos').createSignedUrls(paths, 3600);
+    if (error) console.error('signed urls error', error);
+    for (const f of data || []) {
+      if (f.path && f.signedUrl) result[f.path] = f.signedUrl;
     }
     return result;
   }
@@ -1539,6 +1546,7 @@ function crearApi() {
     contarProductosDeLista,
     actualizarDescripcionLista,
     fetchProductosConCosto,
+    fetchConfigMargenes,
     fetchTarifasFlete,
     fetchConvenios,
     cambiarVigenciaConvenio,
