@@ -273,7 +273,6 @@ export async function construirPDF(
   doc.text(formatUSD(t.total, 2), totalX, y + 0.3, { align: 'right' });
   y += 9;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); color(PDF.suave);
-  doc.text(`Equivale a $ ${formatUSD(t.totalARS, 0)} (TC ${formatUSD(cotiz.tc, 2)})`, totalX, y, { align: 'right' });
   const canje = datosCanje(cotiz, lineas);
   if (canje) {
     y += 7;

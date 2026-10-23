@@ -1234,7 +1234,6 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             {formatUSD(totales.total)}
             <span className="text-2xl font-semibold text-amber-300 ml-2">USD</span>
           </p>
-          <p className="text-emerald-200 text-sm mt-2">$ {formatUSD(totales.totalARS, 0)} al tipo de cambio de la cotización</p>
           {conCanje && canjePrecioNum > 0 && (
             <div className="mt-3 bg-amber-400 text-emerald-950 rounded-lg px-3 py-2">
               <div className="flex items-baseline justify-between gap-3">
