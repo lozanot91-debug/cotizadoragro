@@ -598,55 +598,53 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
           {clientes.length === 0 ? 'Todavía no hay clientes cargados' : 'No se encontraron clientes con esos filtros'}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtrados.map((c) => {
-            const res = resumen[c.id];
-            const vendedor = nombreUsuario(c.vendedor_id);
-            const wa = linkWhatsApp(res?.contacto?.telefono);
-            return (
-              <div
-                key={c.id}
-                className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer ${c.estado === 'Inactivo' ? 'opacity-70' : ''}`}
-                onClick={() => verDetalle(c)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="hidden md:grid grid-cols-[7rem_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(0,1fr)_4.5rem] gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <span>Nº cuenta</span><span>Cliente</span><span>Localidad</span><span>Contacto</span><span>Vendedor</span><span />
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {filtrados.map((c) => {
+              const res = resumen[c.id];
+              const vendedor = nombreUsuario(c.vendedor_id);
+              const wa = linkWhatsApp(res?.contacto?.telefono);
+              const lugar = c.localidad || c.zona || '';
+              return (
+                <li
+                  key={c.id}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[7rem_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(0,1fr)_4.5rem] gap-x-3 gap-y-0.5 items-center px-4 py-2 hover:bg-gray-50 cursor-pointer ${c.estado === 'Inactivo' ? 'opacity-70' : ''}`}
+                  onClick={() => verDetalle(c)}
+                >
+                  <span className="hidden md:block text-xs text-gray-500 truncate">{c.numero_cuenta || '—'}</span>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <h3 className="font-semibold text-gray-800 truncate">{c.nombre}</h3>
+                      <span className="font-medium text-gray-800 text-sm truncate">{c.nombre}</span>
                       <BadgeEstado estado={c.estado} />
                     </div>
-                    <p className="text-xs text-gray-400 flex items-center gap-1 truncate">
-                      {(c.localidad || c.zona) && <><MapPin className="w-3 h-3 flex-shrink-0" /> {c.localidad || c.zona}</>}
-                      {(c.localidad || c.zona) && res?.hectareas ? ' · ' : ''}
-                      {res?.hectareas ? `${formatUSD(res.hectareas, 0)} ha` : ''}
-                      {!c.localidad && !c.zona && !res?.hectareas && c.cuit && `CUIT ${c.cuit}`}
+                    <p className="md:hidden text-xs text-gray-400 truncate">
+                      {[c.numero_cuenta, lugar, res?.contacto?.nombre].filter(Boolean).join(' · ')}
                     </p>
-                    {c.numero_cuenta && <p className="text-xs text-gray-400 truncate">Cta. {c.numero_cuenta}</p>}
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); abrirForm(c); }}
-                    className="p-1 text-gray-300 hover:text-gray-600"
-                    aria-label={`Editar ${c.nombre}`}
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="mt-2 flex items-end justify-between gap-2 text-xs">
-                  <div className="min-w-0 text-gray-600">
+                  <span className="hidden md:block text-xs text-gray-600 truncate">{lugar || '—'}{res?.hectareas ? ` · ${formatUSD(res.hectareas, 0)} ha` : ''}</span>
+                  <span className="hidden md:block text-xs text-gray-600 truncate">
                     {res?.contacto
-                      ? <p className="truncate"><span className="font-medium text-gray-700">{res.contacto.nombre}</span>{res.contacto.cargo && <span className="text-gray-400"> · {res.contacto.cargo}</span>}</p>
-                      : <p className="text-gray-400">Sin contacto</p>}
-                    <p className="text-gray-400 truncate">{vendedor ? `Vendedor: ${vendedor}` : 'Sin vendedor asignado'}</p>
+                      ? <>{res.contacto.nombre}{res.contacto.cargo && <span className="text-gray-400"> · {res.contacto.cargo}</span>}</>
+                      : <span className="text-gray-400">Sin contacto</span>}
+                  </span>
+                  <span className="hidden md:block text-xs text-gray-500 truncate">{vendedor || 'Sin vendedor'}</span>
+                  <div className="flex items-center justify-end gap-1 col-start-2 row-start-1 md:col-start-auto md:row-start-auto">
+                    {wa && (
+                      <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100" aria-label={`WhatsApp a ${res?.contacto?.nombre}`} title={`WhatsApp a ${res?.contacto?.nombre}`}>
+                        <MessageCircle className="w-4 h-4" />
+                      </a>
+                    )}
+                    <button onClick={(e) => { e.stopPropagation(); abrirForm(c); }} className="p-1.5 text-gray-300 hover:text-gray-600" aria-label={`Editar ${c.nombre}`}>
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  {wa && (
-                    <a href={wa} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex-shrink-0 p-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100" aria-label={`WhatsApp a ${res?.contacto?.nombre}`} title={`WhatsApp a ${res?.contacto?.nombre}`}>
-                      <MessageCircle className="w-4 h-4" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
