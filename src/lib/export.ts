@@ -301,8 +301,6 @@ export async function construirPDF(
       opciones.forEach((o, j) => doc.text(recortar(doc, o.nombre, anchoCol - 3.5), xCol(j), y, { align: 'right' }));
       y += 7.5;
     };
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); color(PDF.suave);
-    doc.text('Elegí la forma de pago que más te convenga; los precios son por unidad.', margin, y - 7);
     encabezadoOpciones();
     matriz.forEach(({ linea, celdas }, i) => {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9);

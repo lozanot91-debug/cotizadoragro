@@ -49,7 +49,6 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
         <div className="overflow-y-auto px-5 py-3">
           {filas.length === 0 ? <p className="text-sm text-gray-500 py-4">La cotización no tiene productos.</p> : totsOp.length > 0 ? (
             <div>
-              <p className="text-[11px] text-gray-400 mb-1">Elegí la forma de pago que más te convenga; los precios son por unidad, en USD.</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
