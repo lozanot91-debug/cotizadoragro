@@ -68,6 +68,25 @@ export function precioConMargen(costoUSD: number, margen: number): number {
   return costoUSD / denom;
 }
 
+export const MARGEN_MAX = 95;
+
+/** Rango de precio posible para un costo: [margen 0, margen tope]. */
+export function limitesPrecio(costo: number): { min: number; max: number } {
+  return { min: costo, max: precioConMargen(costo, MARGEN_MAX) };
+}
+
+/**
+ * Inversa exacta de precioConMargen: margen (sobre precio) que da `precio` con `costo`.
+ * El precio se acota a [costo, tope] para que el margen quede en 0..95. Sin redondeo.
+ * null si no se puede calcular (costo o precio <= 0, o no finitos).
+ */
+export function margenDesdePrecio(costo: number, precio: number): number | null {
+  if (!Number.isFinite(costo) || !Number.isFinite(precio) || costo <= 0 || precio <= 0) return null;
+  const { min, max } = limitesPrecio(costo);
+  const p = Math.min(max, Math.max(min, precio));
+  return Math.min(MARGEN_MAX, Math.max(0, (1 - costo / p) * 100));
+}
+
 export function buscarTarifa(km: number, tarifas: TarifaFlete[]): number | null {
   if (km <= 0) return 0;
   const kmRedondeado = Math.ceil(km);

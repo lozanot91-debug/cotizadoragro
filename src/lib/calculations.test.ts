@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularLinea, buscarTarifa, mesesDeTasa, textoMesesTasa } from './calculations';
+import { calcularLinea, buscarTarifa, mesesDeTasa, textoMesesTasa, margenDesdePrecio, precioConMargen, limitesPrecio } from './calculations';
 import type { ProductoConCosto, TarifaFlete } from '@/types';
 
 const tarifas: TarifaFlete[] = [
@@ -66,5 +66,33 @@ describe('mesesDeTasa', () => {
     expect(textoMesesTasa(30)).toBe('1 mes de tasa');
     expect(textoMesesTasa(76)).toBe('3 meses de tasa');
     expect(textoMesesTasa(0)).toBe('');
+  });
+});
+
+describe('margenDesdePrecio', () => {
+  it('round-trip exacto dentro del rango', () => {
+    for (const [c, p] of [[6, 6.52], [100, 130], [0.37, 0.41], [1500, 1650.5], [6, 6]]) {
+      const m = margenDesdePrecio(c, p)!;
+      expect(precioConMargen(c, m)).toBeCloseTo(p, 9);
+    }
+  });
+  it('total = cantidad x precio tipeado', () => {
+    const m = margenDesdePrecio(6, 6.52)!;
+    expect(Math.round(precioConMargen(6, m) * 12.5 * 100) / 100).toBe(Math.round(6.52 * 12.5 * 100) / 100);
+  });
+  it('acota al piso (margen 0) y al tope (margen 95)', () => {
+    expect(margenDesdePrecio(6, 5)).toBe(0);
+    expect(margenDesdePrecio(6, 1000)).toBeCloseTo(95, 9);
+    expect(margenDesdePrecio(6, 1000)!).toBeLessThanOrEqual(95);
+    expect(precioConMargen(6, margenDesdePrecio(6, 5)!)).toBe(6);
+    expect(precioConMargen(6, margenDesdePrecio(6, 1000)!)).toBeCloseTo(120, 9);
+    expect(limitesPrecio(6).max).toBeCloseTo(120, 9);
+  });
+  it('null si no se puede calcular', () => {
+    expect(margenDesdePrecio(0, 5)).toBeNull();
+    expect(margenDesdePrecio(5, 0)).toBeNull();
+    expect(margenDesdePrecio(-1, 5)).toBeNull();
+    expect(margenDesdePrecio(5, NaN)).toBeNull();
+    expect(margenDesdePrecio(Infinity, 5)).toBeNull();
   });
 });

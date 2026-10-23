@@ -3,7 +3,7 @@ import { elegirConvenio, elegirConvenioVigente } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
-import { calcularLinea, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, resolverMargen, ivaDeLinea } from '@/lib/calculations';
+import { calcularLinea, limitesPrecio, margenDesdePrecio, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, resolverMargen, ivaDeLinea } from '@/lib/calculations';
 import { PARAMS_CANJE_BASE, netoPorTn, normalizarParams, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
@@ -45,6 +45,9 @@ interface LineaEditable {
   /** Plazo de pago de esta línea en días (0 = contado). */
   plazo: number;
   plazoStr: string;
+  /** Precio tipeado a mano (sin flete). undefined = se muestra el derivado de costo y margen. */
+  precioStr?: string;
+  precioAviso?: 'sin-costo' | 'piso' | 'tope';
 }
 
 const CULTIVOS = ['Soja', 'Trigo', 'Maíz', 'Girasol', 'Cebada'];
@@ -565,7 +568,29 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     actualizarLinea(key, { cantidadStr: value, cantidad: parseNumberInput(value) });
   }
   function handleMargenChange(key: string, value: string) {
-    actualizarLinea(key, { margenStr: value, margen: parseNumberInput(value) });
+    actualizarLinea(key, { margenStr: value, margen: parseNumberInput(value), precioStr: undefined, precioAviso: undefined });
+  }
+  /** Precio del producto (sin flete) tipeado a mano: recalcula el margen con el costo actual. */
+  function handlePrecioChange(key: string, value: string) {
+    const l = lineasCalc.find((x) => x.key === key);
+    if (!l) return;
+    const precio = parseNumberInput(value);
+    const m = margenDesdePrecio(l.costoUSD, precio);
+    if (m === null) {
+      actualizarLinea(key, { precioStr: value, precioAviso: l.costoUSD <= 0 ? 'sin-costo' : undefined });
+      return;
+    }
+    const { min, max } = limitesPrecio(l.costoUSD);
+    actualizarLinea(key, {
+      precioStr: value, margen: m, margenStr: formatInputNumber(m, 2),
+      precioAviso: precio < min ? 'piso' : precio > max ? 'tope' : undefined,
+    });
+  }
+  /** Al salir del input se muestra el valor ya acotado. */
+  function handlePrecioBlur(key: string) {
+    const l = lineasCalc.find((x) => x.key === key);
+    if (!l || l.precioStr === undefined) return;
+    actualizarLinea(key, { precioStr: undefined, ...(parseNumberInput(l.precioStr) ? {} : { precioAviso: undefined }) });
   }
   /** IVA sugerido según el tipo de producto (config). Se puede editar en cada línea. */
   function ivaSugerido(esFertilizante: boolean): number {
@@ -586,7 +611,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     actualizarLinea(key, { ivaStr: value, iva: Math.min(100, Math.max(0, n)) });
   }
   function handleCostoChange(key: string, value: string) {
-    actualizarLinea(key, { costoStr: value, costoOverrideUSD: parseNumberInput(value) });
+    actualizarLinea(key, { costoStr: value, costoOverrideUSD: parseNumberInput(value), precioStr: undefined, precioAviso: undefined });
   }
   function restablecerCosto(key: string) {
     const linea = lineas.find((l) => l.key === key);
@@ -594,7 +619,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     const costoLista = linea.producto.es_fertilizante
       ? (linea.producto.moneda === 'ARS' ? linea.producto.costo / tcNum : linea.producto.costo) * 1000
       : (linea.producto.moneda === 'ARS' ? linea.producto.costo / tcNum : linea.producto.costo);
-    actualizarLinea(key, { costoOverrideUSD: null, costoStr: formatInputNumber(costoLista, 2) });
+    actualizarLinea(key, { costoOverrideUSD: null, costoStr: formatInputNumber(costoLista, 2), precioStr: undefined, precioAviso: undefined });
   }
 
   async function seleccionarCliente(cliente: Cliente) {
@@ -778,7 +803,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     setLineas((ls) => ls.map((l) => {
       const a = porKey.get(l.key);
       if (!a) return l;
-      return { ...l, costoOverrideUSD: a.costo, costoStr: formatInputNumber(a.costo, 2), producto: a.proveedor ? { ...l.producto, proveedor: a.proveedor } : l.producto };
+      return { ...l, costoOverrideUSD: a.costo, costoStr: formatInputNumber(a.costo, 2), precioStr: undefined, precioAviso: undefined, producto: a.proveedor ? { ...l.producto, proveedor: a.proveedor } : l.producto };
     }));
     setPedidoPorMarcar(pedido.id);
     toast.exito(`${auto ? 'La mesa cargó los costos y se aplicaron solos' : 'Costos aplicados'} (${aplicar.length} producto${aplicar.length === 1 ? '' : 's'}). Revisá margen y flete y guardá.`);
@@ -1208,7 +1233,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
                     <td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
-                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap">{formatUSD(l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD)}<span className="text-xs font-normal text-gray-400"> /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">producto {formatUSD(l.precioUSD)} + flete {formatUSD(l.fleteUSD)}</span>}{l.recargoPct > 0 && l.totalUSD > 0 && <span className="block text-xs font-medium text-emerald-700">con tasa {formatUSD((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalFinanciado / l.totalUSD))} /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>}</td>
+                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap"><input type="text" inputMode="decimal" value={l.precioStr ?? formatUSD(l.precioUSD)} disabled={esReadOnly} aria-label={`Precio USD de ${l.producto.producto}`} onChange={(e) => handlePrecioChange(l.key, e.target.value)} onBlur={() => handlePrecioBlur(l.key)} className="w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs font-normal text-gray-400"> /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>{l.precioAviso === 'sin-costo' && <span className="block text-xs font-normal text-gray-400">Cargá el costo primero</span>}{l.precioAviso === 'piso' && <span className="block text-xs font-normal text-gray-400">El precio no puede ser menor al costo</span>}{l.precioAviso === 'tope' && <span className="block text-xs font-normal text-gray-400">Tope: margen 95 %</span>}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">producto {formatUSD(l.precioUSD)} + flete {formatUSD(l.fleteUSD)} = {formatUSD(l.precioConFlete)}</span>}{l.recargoPct > 0 && l.totalUSD > 0 && <span className="block text-xs font-medium text-emerald-700">con tasa {formatUSD((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalFinanciado / l.totalUSD))} /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>}</td>
                     <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmFaltante && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="date" min={fecha} value={vencimientoDesdeDias(fecha, l.plazo)} disabled={esReadOnly} aria-label={`Vencimiento de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-36 px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} /><span className="block text-xs text-gray-400">{l.plazo === 0 ? 'contado' : `(${l.plazo} días${tasaNum > 0 ? ` · ${textoMesesTasa(l.plazo)}` : ''})`}</span></td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}
