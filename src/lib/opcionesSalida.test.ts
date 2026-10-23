@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { opcionesParaMostrar, filasMatriz, totalesOpciones } from './opcionesSalida';
+import { opcionesParaMostrar, filasMatriz, totalesOpciones, avisoFormasDePago } from './opcionesSalida';
 import { calcularOpcion } from './opcionesPago';
 import { financiacionLinea } from './export';
 import type { Cotizacion, CotizacionLinea, OpcionPago } from '@/types';
@@ -44,5 +44,13 @@ describe('filasMatriz y totales', () => {
     expect(t.map((x) => x.opcion.id)).toEqual(['principal', 'o2']);
     expect(t[1].totales).toEqual(calcularOpcion(c, lineas, alt).totales);
     expect(t[1].totales.recargo).toBeGreaterThan(0);
+  });
+});
+
+describe('avisoFormasDePago', () => {
+  it('avisa con la cantidad (con la principal) solo si hay opciones sin elegir', () => {
+    expect(avisoFormasDePago(con({ opciones_pago: [principal, alt], opcion_elegida: null }))).toBe('2 formas de pago · sin elegir');
+    expect(avisoFormasDePago(con({ opciones_pago: [principal, alt], opcion_elegida: 'o2' }))).toBeNull();
+    expect(avisoFormasDePago(con({}))).toBeNull();
   });
 });

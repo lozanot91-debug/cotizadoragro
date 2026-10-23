@@ -16,6 +16,12 @@ export function opcionesParaMostrar(cotiz: Cotizacion): OpcionPago[] {
   return [principal, ...otras].slice(0, MAX_OPCIONES);
 }
 
+/** Texto del aviso del listado: cantidad de formas de pago (con la principal) si el cliente todavía no eligió; si no, null. */
+export function avisoFormasDePago(cotiz: Cotizacion): string | null {
+  const n = opcionesParaMostrar(cotiz).length;
+  return n > 0 ? `${n} formas de pago · sin elegir` : null;
+}
+
 export interface CeldaOpcion {
   precioUnit: number;
   total: number;

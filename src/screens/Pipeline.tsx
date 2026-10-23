@@ -9,6 +9,7 @@ import { estaCerrada } from '@/lib/estados';
 import { useCambioEstado } from '@/hooks/useCambioEstado';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { avisoFormasDePago } from '@/lib/opcionesSalida';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida'];
@@ -257,6 +258,7 @@ export default function Pipeline({ onEdit }: Props) {
                           <div className="flex items-center gap-1 flex-wrap mt-1">
                             <span className="text-xs text-gray-400">Pond: {formatUSD(c.subtotal_usd * prob / 100, 0)}</span>
                             {tp > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">{tp} tarea{tp !== 1 ? 's' : ''}</span>}
+                            {avisoFormasDePago(c) && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">{avisoFormasDePago(c)}</span>}
                             {sr && <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> sin respuesta</span>}
                             {vr <= 3 && vr >= 0 && c.estado !== 'Ganada' && c.estado !== 'Perdida' && <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Vence en {vr}d</span>}
                             {vr < 0 && c.estado !== 'Ganada' && c.estado !== 'Perdida' && <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Vencida</span>}

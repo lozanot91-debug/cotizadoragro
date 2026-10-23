@@ -141,6 +141,9 @@ export function cabeceraRecotizada(
     total_usd: r.totales.total,
     total_ars: r.totales.totalARS,
     notas: cotiz.notas,
+    // Las líneas quedan en el mismo orden (los plazos de las opciones siguen alineados). Con forma de pago
+    // ya elegida la copia lleva esos plazos en sus líneas y no hereda opciones; la nueva nace sin elegir.
+    ...(cotiz.opcion_elegida || !cotiz.opciones_pago?.length ? {} : { opciones_pago: cotiz.opciones_pago }),
     cotizacion_origen_id: cotiz.id,
     // El convenio con el que se calculó el flete (si el original dejó de estar vigente, el predeterminado)
     convenio_flete_id: datos.convenioFleteId ?? null,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detalleGanada, lineasGanadas, montoGanado, motivosDePerdida, noGanados, subtotalGanado, validarGanada, type Reales } from './ganadaParcial';
+import { calcularOpcion } from './opcionesPago';
 
 const L = (id: string, producto: string, cantidad: number, precio: number, flete = 0) => ({
   id, cod: id.toUpperCase(), producto, cantidad, precio_usd: precio, flete_usd: flete, total_usd: (precio + flete) * cantidad,
@@ -70,5 +71,30 @@ describe('montoGanado', () => {
     expect(montoGanado({ estado: 'Ganada', subtotal_usd: 1000, ganado_usd: 700 })).toBe(700);
     expect(montoGanado({ estado: 'Ganada', subtotal_usd: 1000, ganado_usd: null })).toBe(1000);
     expect(montoGanado({ estado: 'Perdida', subtotal_usd: 1000, ganado_usd: null })).toBe(0);
+  });
+});
+
+describe('ganada con opciones de pago', () => {
+  const lsFin = [{ ...urea, plazo_dias: 0 }, { ...gli, plazo_dias: 0 }];
+  const cab = { fecha: '2026-10-07', tc: 1000, con_iva: true, iva: 21, tasa_mensual: 0 } as never;
+  const ops = [
+    { id: 'principal', nombre: 'Contado', tasa_mensual: 0, plazos: [0, 0] },
+    { id: 'o2', nombre: 'Cosecha', tasa_mensual: 2, plazos: [0, 150] },
+  ];
+  it('elegir una u otra opción no cambia lo ganado (subtotal), solo recargo, IVA y total', () => {
+    const r: Reales = { u: { cantidad: 20, precio: 620, motivo: 'Precio' } };
+    const [a, b] = ops.map((o) => calcularOpcion(cab, lsFin as never, o).totales);
+    expect(a.subtotal).toBeCloseTo(b.subtotal, 6);
+    expect(a.subtotal).toBeCloseTo(subtotalGanado(lsFin, null), 6);
+    expect(b.recargo).toBeGreaterThan(a.recargo);
+    expect(b.total).toBeGreaterThan(a.total);
+    // lo ganado sale de las líneas (cantidades/precios), no de las opciones
+    expect(subtotalGanado(lsFin, r)).toBeCloseTo(638 * 20 + 2320, 6);
+  });
+  it('perdidas y monto ganado no dependen de las opciones', () => {
+    const c = { estado: 'Perdida' as const, motivo_perdida: 'Precio', subtotal_usd: 1000, ganado_usd: null, no_ganado: null };
+    const conOps = { ...c, opciones_pago: ops, opcion_elegida: null };
+    expect(motivosDePerdida([conOps])).toEqual(motivosDePerdida([c]));
+    expect(montoGanado({ estado: 'Ganada', subtotal_usd: 1000, ganado_usd: 700, ...{ opciones_pago: ops } } as never)).toBe(700);
   });
 });

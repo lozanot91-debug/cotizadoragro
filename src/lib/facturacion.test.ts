@@ -206,3 +206,11 @@ describe('vencimientos en el texto de WhatsApp', () => {
     expect(textoWhatsAppFacturacion({ url, nombre: 'N' })).not.toContain('encimiento');
   });
 });
+
+describe('lineasDesdeCotizacion con opciones de pago', () => {
+  it('toma los plazos de las líneas (opción elegida) e ignora opciones_pago', () => {
+    const l = { cotizacion_id: 'c', producto_id: 'p', familia: null, proveedor: null, costo_lista_usd: 1, costo_editado: false, total_usd: 0, orden: 0, id: 'a', cod: 'X', producto: 'X', unid: 'LT', es_fertilizante: false, cantidad: 1, costo_usd: 1, precio_usd: 2, flete_usd: 0, con_flete: false, margen: 50, iva: 21, plazo_dias: 150 };
+    const r = lineasDesdeCotizacion([l] as never[], null, () => 21);
+    expect(r[0].plazo_dias).toBe(150);
+  });
+});

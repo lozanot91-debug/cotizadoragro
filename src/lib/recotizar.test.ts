@@ -152,3 +152,29 @@ describe('recotizar', () => {
     expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v', convenioFleteId: 'conv-678' }).convenio_flete_id).toBe('conv-678');
   });
 });
+
+describe('recotizar con opciones de pago', () => {
+  const opciones = [
+    { id: 'principal', nombre: 'Contado', tasa_mensual: 0, plazos: [0, 0] },
+    { id: 'o2', nombre: 'Cosecha', tasa_mensual: 2, plazos: [0, 150] },
+  ];
+  const dos = [linea({ id: 'l1', orden: 0 }), linea({ id: 'l2', orden: 1, cod: 'UREA2', producto_id: 'p1' })];
+  it('sin elegir copia las opciones y la nueva nace sin elegir; líneas en el mismo orden', () => {
+    const c = cotiz({ opciones_pago: opciones, opcion_elegida: null });
+    const r = recotizar({ cotiz: c, lineas: dos, productos: [prod({})], tarifas, config });
+    expect(r.lineas).toHaveLength(2);
+    const h = cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v' });
+    expect(h.opciones_pago).toEqual(opciones);
+    expect(h.opcion_elegida).toBeUndefined();
+  });
+  it('con opción elegida no hereda opciones', () => {
+    const c = cotiz({ opciones_pago: opciones, opcion_elegida: 'o2' });
+    const r = recotizar({ cotiz: c, lineas: dos, productos: [prod({})], tarifas, config });
+    expect(cabeceraRecotizada(c, r, { fecha: '2026-10-08', vigenciaDias: 15, listaId: 'v' }).opciones_pago).toBeUndefined();
+  });
+  it('los totales de la cabecera siguen el recargo de la opción actual (plazos de las líneas)', () => {
+    const c = cotiz({ tasa_mensual: 2, opciones_pago: opciones, opcion_elegida: 'o2' });
+    const r = recotizar({ cotiz: c, lineas: [linea({ plazo_dias: 150 })], productos: [prod({})], tarifas, config });
+    expect(r.totales.recargo).toBeGreaterThan(0);
+  });
+});

@@ -88,13 +88,24 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
 
   async function confirmar(datos: DatosConfirmacion) {
     if (!pedido || guardando) return;
-    const { cotiz, hacia } = pedido;
+    const { hacia } = pedido;
+    let { cotiz, lineas } = pedido;
     setGuardando(true);
     try {
+      // Ganada con formas de pago sin elegir: primero se guarda la elegida y se relee todo, así las
+      // cantidades reales, el ganado y los cobros salen de las líneas y la cabecera de esa opción.
+      if (hacia === 'Ganada' && datos.opcionElegida) {
+        await data.elegirOpcionPago(cotiz.id, datos.opcionElegida);
+        const [cFresca, lFresca] = await Promise.all([data.fetchCotizacion(cotiz.id), data.fetchLineas(cotiz.id)]);
+        if (!cFresca) throw new Error('La cotización ya no existe. Actualizá la pantalla.');
+        cotiz = { ...cotiz, ...cFresca };
+        lineas = lFresca;
+        setPedido({ ...pedido, cotiz, lineas });
+      }
       let cantidadesReales: Reales | undefined;
       if (hacia === 'Ganada') {
-        cantidadesReales = realesDesdeFormulario(pedido.lineas, datos.cantidadesReales);
-        const error = validarGanada(pedido.lineas, cantidadesReales);
+        cantidadesReales = realesDesdeFormulario(lineas, datos.cantidadesReales);
+        const error = validarGanada(lineas, cantidadesReales);
         if (error) { toast.aviso(error); return; }
       }
 
@@ -102,9 +113,9 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
         motivo: datos.motivo,
         comentario: datos.comentario,
         cantidadesReales,
-        ganadoUsd: cantidadesReales ? subtotalGanado(pedido.lineas, cantidadesReales) : undefined,
+        ganadoUsd: cantidadesReales ? subtotalGanado(lineas, cantidadesReales) : undefined,
         noGanado: cantidadesReales
-          ? noGanados(pedido.lineas, cantidadesReales).map(({ cod, producto, cantidad, cotizada, usd, motivo }) => ({ cod, producto, cantidad, cotizada, usd, motivo }))
+          ? noGanados(lineas, cantidadesReales).map(({ cod, producto, cantidad, cotizada, usd, motivo }) => ({ cod, producto, cantidad, cotizada, usd, motivo }))
           : undefined,
       });
 
@@ -113,7 +124,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       else if (esReapertura(anterior, hacia)) {
         detalle = `Reabierta: ${datos.comentario}`;
         if (anterior === 'Perdida' && motivoAnterior) detalle += ` · Motivo de pérdida anterior: ${motivoAnterior}`;
-      } else if (hacia === 'Ganada' && cantidadesReales) detalle = detalleGanada(pedido.lineas, cantidadesReales);
+      } else if (hacia === 'Ganada' && cantidadesReales) detalle = detalleGanada(lineas, cantidadesReales);
 
       await registrarCambio({
         tipo: 'estado',
@@ -129,7 +140,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
 
       // Precios de la competencia que se cargaron al cerrar (no frena el cambio de estado si falla)
       if (hacia === 'Perdida' || hacia === 'Ganada') {
-        const filas = filasDesdeCierre(cotiz, pedido.lineas, datos.competencia.competidor, datos.competencia.precios,
+        const filas = filasDesdeCierre(cotiz, lineas, datos.competencia.competidor, datos.competencia.precios,
           hacia === 'Perdida' ? 'perdida' : 'ganada_parcial', hoyAR(), usuario?.nombre || '');
         try {
           if (await data.guardarPreciosCompetencia(filas)) toast.exito(`Se guardó el precio de ${datos.competencia.competidor.trim()} (${filas.length} ${filas.length === 1 ? 'producto' : 'productos'}).`);
@@ -142,7 +153,7 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
       try {
         if (hacia === 'Ganada' && (await data.contarCobranzas(cotiz.id)) === 0) {
           // Solo se cobra lo que realmente se ganó
-          const cobros = generarCobranzas(cotiz, lineasGanadas(pedido.lineas, cantidadesReales), hoyAR());
+          const cobros = generarCobranzas(cotiz, lineasGanadas(lineas, cantidadesReales), hoyAR());
           await data.crearCobranzas(cobros.map((c) => ({ cotizacion_id: cotiz.id, ...c })));
           if (cobros.length > 0) toast.exito(cobros.length === 1 ? 'Se cargó 1 cobro en Cobranzas.' : `Se cargaron ${cobros.length} cobros en Cobranzas.`);
         } else if (anterior === 'Ganada') {

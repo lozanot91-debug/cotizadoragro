@@ -28,7 +28,7 @@ import { ultimaCotizacion, type LineaDeCliente } from '@/lib/historialCliente';
 import { ultimoPorCod } from '@/lib/competencia';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import OpcionesPagoEditor from '@/components/OpcionesPagoEditor';
-import { calcularOpcion, normalizarOpciones, opcionPrincipalDesdeLineas, ID_PRINCIPAL } from '@/lib/opcionesPago';
+import { alinearOpcionesTrasQuitar, calcularOpcion, normalizarOpciones, opcionPrincipalDesdeLineas, ID_PRINCIPAL } from '@/lib/opcionesPago';
 import { opcionesAEditor, opcionesParaGuardar, editorAOpciones, firmaExtras, type OpcionEditable } from '@/lib/opcionesEditor';
 
 interface LineaEditable {
@@ -319,9 +319,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         let totalAnt = 0;
 
         const nuevasLineas: LineaEditable[] = [];
-        for (const l of origLineas) {
+        const posQuitadas: number[] = [];
+        for (const [pos, l] of origLineas.entries()) {
           const prod = productosLista.find((p) => p.cod === l.cod);
           if (!prod) {
+            posQuitadas.push(pos);
             faltantes.push(`${l.producto} (${l.cod})`);
             totalAnt += l.total_usd;
             continue;
@@ -360,6 +362,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           });
         }
         setLineas(nuevasLineas);
+        // Con forma de pago ya elegida la copia lleva esos plazos en sus líneas y no copia opciones
+        setOpcionesEd(cotiz.opcion_elegida ? [] : opcionesAEditor(alinearOpcionesTrasQuitar(cotiz.opciones_pago ?? [], posQuitadas), nuevasLineas.map((l) => l.key)));
         setProductosFaltantes(faltantes);
 
         // Build comparison

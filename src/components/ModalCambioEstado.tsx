@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { Check, Loader2, TrendingDown, TrendingUp, Unlock, XCircle } from 'lucide-react';
 import type { Cotizacion, CotizacionLinea, EstadoCotizacion } from '@/types';
-import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
+import { formatUSD, formatInputNumber, parseNumberInput, formatDate } from '@/lib/format';
+import { calcularOpcion } from '@/lib/opcionesPago';
+import { opcionesParaMostrar, pctFinanciacion } from '@/lib/opcionesSalida';
+import { vencimientoDesdeDias } from '@/lib/fechas';
 import { subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import { MOTIVOS_PERDIDA, esReapertura, motivoFinal } from '@/lib/estados';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -14,6 +17,8 @@ export interface DatosConfirmacion {
   cantidadesReales: Record<string, { cantidad: string; precio: string; motivo: string }>;
   /** Precio de la competencia (opcional), cuando se pierde por precio o competencia */
   competencia: { competidor: string; precios: Record<string, string> };
+  /** Ganada con opciones de pago sin elegir: la que eligió el cliente (obligatoria) */
+  opcionElegida?: string;
 }
 
 interface FilaReal { cantidad: string; precio: string; motivo: string; otro: string }
@@ -57,6 +62,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
     });
     return inicial;
   });
+  const [opcionId, setOpcionId] = useState('');
   const [competidor, setCompetidor] = useState('');
   const [preciosComp, setPreciosComp] = useState<Record<string, string>>({});
   const cambiarFila = (id: string, cambios: Partial<FilaReal>) => setReales((prev) => ({ ...prev, [id]: { ...prev[id], ...cambios } }));
@@ -77,11 +83,14 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
       return r && r.cantidad < l.cantidad - 0.005 && MOTIVOS_CON_COMPETENCIA.includes(reales[l.id]?.motivo || '');
     }) : [];
 
+  // Ganada con varias formas de pago sin elegir: hay que decir cuál eligió el cliente
+  const opcionesElegir = hacia === 'Ganada' ? opcionesParaMostrar(cotiz) : [];
   const reabre = esReapertura(cotiz.estado, hacia);
   const falta =
     (hacia === 'Perdida' && !motivoFinal(motivo, otroMotivo)) ||
     (reabre && !comentario.trim()) ||
-    !!errorGanada;
+    !!errorGanada ||
+    (opcionesElegir.length > 0 && !opcionId);
 
   const color = hacia === 'Perdida' ? 'bg-red-100' : hacia === 'Ganada' ? 'bg-emerald-100' : hacia === 'En negociación' ? 'bg-amber-100' : 'bg-blue-100';
 
@@ -133,6 +142,31 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
               rows={3} placeholder="¿Por qué se reabre?"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none mb-3 resize-none" />
           </>
+        )}
+
+        {opcionesElegir.length > 0 && (
+          <fieldset className="mb-4">
+            <legend className="text-sm font-medium text-gray-700 mb-2">¿Qué forma de pago eligió el cliente? <span className="text-red-500">*</span></legend>
+            <div className="space-y-2">
+              {opcionesElegir.map((op) => {
+                const { totales } = calcularOpcion(cotiz, lineas, op);
+                const maxPlazo = Math.max(0, ...op.plazos);
+                return (
+                  <label key={op.id} className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer ${opcionId === op.id ? 'border-emerald-500 bg-emerald-50/60' : 'border-gray-200'}`}>
+                    <input type="radio" name="opcion-pago" value={op.id} checked={opcionId === op.id} onChange={() => setOpcionId(op.id)} className="mt-1 accent-emerald-600" />
+                    <span className="flex-1 text-sm text-gray-800">
+                      <span className="font-medium">{op.nombre}</span> · USD {formatUSD(totales.total, 2)}
+                      {maxPlazo > 0 && (
+                        <span className="block text-xs text-gray-400">
+                          Incluye {formatUSD(pctFinanciacion(totales), 1)} % de financiación · vence el {formatDate(vencimientoDesdeDias(cotiz.fecha, maxPlazo))}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
         )}
 
         {esGanada && (
@@ -223,6 +257,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
               comentario: comentario.trim(),
               cantidadesReales: Object.fromEntries(Object.entries(reales).map(([id, f]) => [id, { cantidad: f.cantidad, precio: f.precio, motivo: motivoFinal(f.motivo, f.otro) }])),
               competencia: { competidor, precios: Object.fromEntries(lineasComp.map((l) => [l.id, preciosComp[l.id] || ''])) },
+              opcionElegida: opcionesElegir.length > 0 ? opcionId : undefined,
             })}
             disabled={falta || guardando}
             className={`px-4 py-2 text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2 ${hacia === 'Perdida' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}

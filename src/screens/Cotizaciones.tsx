@@ -9,6 +9,7 @@ import { diasDesde } from '@/lib/fechas';
 import { useCambioEstado } from '@/hooks/useCambioEstado';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { avisoFormasDePago } from '@/lib/opcionesSalida';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida', 'Vencida'];
@@ -161,6 +162,9 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
                         <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" /> sin respuesta
                         </span>
+                      )}
+                      {avisoFormasDePago(c) && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">{avisoFormasDePago(c)}</span>
                       )}
                       {readOnly && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium flex items-center gap-1">
