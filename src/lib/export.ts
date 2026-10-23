@@ -171,7 +171,6 @@ export async function construirPDF(
   dato('Fecha', formatDate(cotiz.fecha), margin, y);
   dato('Válida hasta', `${formatDate(fechaVencimiento(cotiz))}  (${cotiz.vigencia_dias} días)`, colDer, y);
   y += 11;
-  dato('Tipo de cambio', `$ ${formatUSD(cotiz.tc, 2)}`, margin, y);
   const flete = textoFlete(cotiz);
   if (flete) dato('Flete', flete, colDer, y);
   y += 15;
