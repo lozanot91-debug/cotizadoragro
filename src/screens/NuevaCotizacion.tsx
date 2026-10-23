@@ -5,6 +5,7 @@ import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
 import { hidratarLineaGuardada } from '@/lib/hidratarCotizacion';
+import { firmaDeFlete, conFleteGuardado } from '@/lib/fleteCongelado';
 import { calcularLinea, limitesPrecio, margenDesdePrecio, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, esContado, resolverMargen, ivaDeLinea } from '@/lib/calculations';
 import { PARAMS_CANJE_BASE, netoPorTn, normalizarParams, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
@@ -91,6 +92,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Flete guardado por línea (clave de línea → USD/tn) de la cotización que se está editando, y la huella del flete al abrirla
+  const [fletesGuardados, setFletesGuardados] = useState<Record<string, number> | null>(null);
+  const [firmaFlete0, setFirmaFlete0] = useState<string | null>(null);
 
   const [clienteId, setClienteId] = useState('');
   const [clienteBusqueda, setClienteBusqueda] = useState('');
@@ -171,6 +175,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   }
 
   const cargar = useCallback(async () => {
+    setFletesGuardados(null);
+    setFirmaFlete0(null);
     const [cfg, lista, convs, cls] = await Promise.all([
       data.fetchConfig(),
       data.fetchListaVigente(),
@@ -284,6 +290,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           };
         });
         setLineas(lineasEdit);
+        // El flete guardado se mantiene mientras no se toque nada que lo afecte (la planilla de hoy no la mueve)
+        setFletesGuardados(Object.fromEntries(lineasEdit.map((l, i) => [l.key, lins[i].flete_usd ?? 0])));
         // Las líneas vienen ordenadas por `orden`: los plazos de cada opción se atan a la clave de su línea
         setOpcionesEd(opcionesAEditor(cotiz.opciones_pago, lineasEdit.map((l) => l.key)));
       }
@@ -461,6 +469,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   const tcNum = parseNumberInput(tc);
   const tcFleteNum = parseNumberInput(tcFlete) || tcNum;
+  const firmaFlete = useMemo(
+    () => firmaDeFlete({ modalidad, km: kmNum, kmCorto: kmCortoNum, tcFlete: tcFleteNum, aforoTn: aforoNum, aforoCortoTn: aforoCortoNum, tnCargadas, convenioId, convenioCortoId }),
+    [modalidad, kmNum, kmCortoNum, tcFleteNum, aforoNum, aforoCortoNum, tnCargadas, convenioId, convenioCortoId],
+  );
+  // Al terminar de abrir una cotización guardada se anota la huella del flete: mientras no cambie, rige el flete guardado
+  useEffect(() => {
+    if (fletesGuardados && firmaFlete0 === null && !loading) setFirmaFlete0(firmaFlete);
+  }, [fletesGuardados, firmaFlete0, firmaFlete, loading]);
+  const fleteCongelado = !!fletesGuardados && firmaFlete0 !== null && firmaFlete === firmaFlete0;
   /** Plazo por defecto (botones rápidos): se aplica a las líneas nuevas y a todas al tocarlo. */
   const plazoNum = Math.max(0, parseInt(plazo) || 0);
 
@@ -469,13 +486,16 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       const costoListaTn = l.producto.es_fertilizante
         ? (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo) * 1000
         : (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo);
-      const calc = calcularLinea({
+      const calcVivo = calcularLinea({
         producto: l.producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
         tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD,
       });
+      const calc = fleteCongelado
+        ? conFleteGuardado(calcVivo, fletesGuardados?.[l.key], { cantidad: l.cantidad, conFlete: l.conFlete, esFertilizante: !!l.producto.es_fertilizante })
+        : calcVivo;
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
-  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum]);
+  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum, fleteCongelado, fletesGuardados]);
 
   useEffect(() => {
     let vivo = true;
