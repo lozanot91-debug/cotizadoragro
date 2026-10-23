@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
-import { registrarCambio } from '@/lib/historial';
+import { registrarCambio, registrarCambios } from '@/lib/historial';
 import { vencimientos, vigenciaExtendida, tieneTareaPendiente, tareaDeVencimiento, mensajeRecordatorio, type Vencimiento } from '@/lib/vencimientos';
 import { formatUSD, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
@@ -43,12 +43,11 @@ export default function Vencimientos({ onEdit }: { onEdit: (id: string) => void 
     if (vs.length === 0) return;
     setTrabajando(clave);
     try {
-      for (const v of vs) {
-        const t = tareaDeVencimiento(v, hoy);
-        const creada = await data.createTarea({ ...t, asignado_a: usuario.nombre });
-        if (creada) setTareas((prev) => [...prev, creada]);
-        await registrarCambio({ tipo: 'tarea', cotizacion_id: v.cotiz.id, entidad: t.titulo, campo: 'creación', valor_nuevo: hoy, detalle: 'Seguimiento por vencimiento' });
-      }
+      // Todas las tareas en un solo insert y todo el historial en otro
+      const nuevas = vs.map((v) => ({ v, t: tareaDeVencimiento(v, hoy) }));
+      const creadas = await data.createTareas(nuevas.map(({ t }) => ({ ...t, asignado_a: usuario.nombre })));
+      if (creadas.length > 0) setTareas((prev) => [...prev, ...creadas]);
+      await registrarCambios(nuevas.map(({ v, t }) => ({ tipo: 'tarea', cotizacion_id: v.cotiz.id, entidad: t.titulo, campo: 'creación', valor_nuevo: hoy, detalle: 'Seguimiento por vencimiento' })));
       toast.exito(vs.length === 1 ? 'Tarea de seguimiento creada.' : `${vs.length} tareas de seguimiento creadas.`);
     } catch (e) {
       toast.error(e);

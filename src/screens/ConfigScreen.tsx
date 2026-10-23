@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '@/hooks/useData';
-import { supabase } from '@/lib/supabase';
 import { parsearMargenesExcel } from '@/lib/excel';
 import type { FamiliaConfig, MargenProducto, Configuracion, ConvenioFlete } from '@/types';
 import { Save, Upload, Loader2, Check, AlertCircle, Plus, Trash2 } from 'lucide-react';
@@ -66,8 +65,8 @@ export default function ConfigScreen() {
       { clave: 'formas_pago_parametros', valor: JSON.stringify(normalizarFormasPago(config.formas_pago_parametros)) },
     ];
     const cambios: CambioHistorial[] = [];
+    await data.updateConfigVarias(updates);
     for (const u of updates) {
-      await data.updateConfig(u.clave, u.valor);
       if (u.clave === 'margen_general' && prev.margen_general !== config.margen_general) {
         cambios.push({ tipo: 'margen', campo: 'margen general', entidad: 'General', valor_anterior: fmtMargen(prev.margen_general), valor_nuevo: fmtMargen(config.margen_general) });
       }
@@ -134,15 +133,19 @@ export default function ConfigScreen() {
       const margenesProdExistentes = await data.fetchMargenesProducto();
       const margProdMap = new Map(margenesProdExistentes.map((m) => [m.producto_id, m.margen]));
 
+      // Una consulta por lote de códigos (en vez de una por fila) y los márgenes se guardan juntos al final
+      const prodPorCod = await data.fetchProductosPorCodigos(margenes.filter((m) => m.cod).map((m) => m.cod as string));
+      const margenesAGuardar: { producto_id: string; margen: number }[] = [];
+
       for (const m of margenes) {
         if (m.cod) {
-          const { data: prod } = await supabase.from('productos').select('id, producto').eq('cod', m.cod).maybeSingle();
+          const prod = prodPorCod.get(m.cod);
           if (prod) {
             const prev = margProdMap.get(prod.id);
             if (prev !== m.margen) {
               cambios.push({ tipo: 'margen', entidad: `Producto ${m.cod}`, campo: 'margen', valor_anterior: prev !== undefined ? fmtMargen(prev) : null, valor_nuevo: fmtMargen(m.margen) });
             }
-            await data.upsertMargenProducto(prod.id, m.margen);
+            margenesAGuardar.push({ producto_id: prod.id, margen: m.margen });
             actualizadas++;
           } else {
             noEncontrados++;
@@ -163,6 +166,7 @@ export default function ConfigScreen() {
           }
         }
       }
+      await data.upsertMargenesProducto(margenesAGuardar);
       if (cambios.length > 0) {
         cambios.push({ tipo: 'margen', campo: 'importación Excel', valor_nuevo: `${actualizadas} actualizados, ${creadas} creados, ${noEncontrados} no encontrados`, detalle: 'Importación masiva de márgenes' });
         await registrarCambios(cambios);

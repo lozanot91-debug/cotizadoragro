@@ -580,6 +580,12 @@ function crearApi() {
     await ok(supabase.from('configuracion').upsert({ clave, valor }));
   }
 
+  /** Guarda varias claves de configuración en una sola llamada. */
+  async function updateConfigVarias(items: { clave: string; valor: string }[]) {
+    if (items.length === 0) return;
+    await ok(supabase.from('configuracion').upsert(items));
+  }
+
   async function fetchFamiliasConfig(): Promise<FamiliaConfig[]> {
     const data = await ok(supabase.from('familias_config').select('*').order('familia'));
     return (data || []) as FamiliaConfig[];
@@ -852,6 +858,23 @@ function crearApi() {
     return data as Cotizacion | null;
   }
 
+  /** Líneas de varias cotizaciones juntas (en lotes de 100), agrupadas por cotización y ordenadas por `orden`. */
+  async function fetchLineasDeCotizaciones(ids: string[]): Promise<Map<string, CotizacionLinea[]>> {
+    const porCotiz = new Map<string, CotizacionLinea[]>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const lote = ids.slice(i, i + 100);
+      const filas = await fetchAllPaged<CotizacionLinea>(() =>
+        supabase.from('cotizacion_lineas').select('*').in('cotizacion_id', lote).order('cotizacion_id').order('orden') as unknown as AnyFilter
+      );
+      for (const l of filas) {
+        const arr = porCotiz.get(l.cotizacion_id) ?? [];
+        arr.push(l);
+        porCotiz.set(l.cotizacion_id, arr);
+      }
+    }
+    return porCotiz;
+  }
+
   async function fetchLineas(cotizacionId: string): Promise<CotizacionLinea[]> {
     const data = await ok(supabase
       .from('cotizacion_lineas')
@@ -895,14 +918,17 @@ function crearApi() {
     const op = (cotiz.opciones_pago ?? []).find((o) => o.id === (opcionId ?? ID_PRINCIPAL));
     if (!op) throw new ErrorApp('Esa opción de pago ya no existe. Actualizá la pantalla.');
     const { cotizPatch, lineasPatch } = aplicarOpcion(cotiz, lineas, op, opcionId);
-    for (const { index, plazo_dias } of lineasPatch) {
-      const l = lineas[index];
-      if (l && l.plazo_dias !== plazo_dias) {
-        await ok(supabase.from('cotizacion_lineas').update({ plazo_dias }).eq('id', l.id));
-      }
-    }
+    // Todo junto en la base (una sola transacción): o se aplican las líneas y la cabecera, o nada
+    const cambiosLineas = lineasPatch
+      .map(({ index, plazo_dias }) => ({ l: lineas[index], plazo_dias }))
+      .filter(({ l, plazo_dias }) => l && l.plazo_dias !== plazo_dias)
+      .map(({ l, plazo_dias }) => ({ id: l.id, plazo_dias }));
     const data = await ok(
-      supabase.from('cotizaciones').update({ ...cotizPatch, updated_at: new Date().toISOString() }).eq('id', cotizId).select('*').maybeSingle()
+      supabase.rpc('aplicar_opcion_pago', {
+        p_id: cotizId,
+        p_lineas: cambiosLineas as unknown as Record<string, unknown>[],
+        p_cab: cotizPatch as unknown as Record<string, unknown>,
+      })
     );
     invalidarCotizaciones();
     if (!data) throw new ErrorApp('No se pudo guardar la opción elegida.');
@@ -975,6 +1001,24 @@ function crearApi() {
 
   async function upsertMargenProducto(producto_id: string, margen: number) {
     await ok(supabase.from('margenes_producto').upsert({ producto_id, margen }));
+  }
+
+  /** Varios márgenes por producto en lotes de 500 (en vez de uno por uno). */
+  async function upsertMargenesProducto(filas: { producto_id: string; margen: number }[]) {
+    for (let i = 0; i < filas.length; i += 500) {
+      await ok(supabase.from('margenes_producto').upsert(filas.slice(i, i + 500)));
+    }
+  }
+
+  /** Productos por código en lotes de 200 (en vez de una consulta por código). Devuelve cod → { id, producto }. */
+  async function fetchProductosPorCodigos(cods: string[]): Promise<Map<string, { id: string; producto: string }>> {
+    const mapa = new Map<string, { id: string; producto: string }>();
+    const unicos = [...new Set(cods)];
+    for (let i = 0; i < unicos.length; i += 200) {
+      const filas = (await ok(supabase.from('productos').select('id, cod, producto').in('cod', unicos.slice(i, i + 200)))) as { id: string; cod: string; producto: string }[] | null;
+      for (const f of filas || []) mapa.set(f.cod, { id: f.id, producto: f.producto });
+    }
+    return mapa;
   }
 
   async function deleteMargenProducto(id: string) {
@@ -1283,6 +1327,13 @@ function crearApi() {
     return (data || []) as Tarea[];
   }
 
+  /** Crea varias tareas en una sola llamada. */
+  async function createTareas(tareas: Partial<Tarea>[]): Promise<Tarea[]> {
+    if (tareas.length === 0) return [];
+    const data = await ok(supabase.from('tareas').insert(tareas).select());
+    return (data || []) as Tarea[];
+  }
+
   async function createTarea(tarea: Partial<Tarea>): Promise<Tarea | null> {
     const data = await ok(supabase.from('tareas').insert(tarea).select().maybeSingle());
     return data as Tarea | null;
@@ -1472,6 +1523,7 @@ function crearApi() {
     fetchUsuarios,
     actualizarUsuario,
     updateConfig,
+    updateConfigVarias,
     fetchFamiliasConfig,
     upsertFamiliaConfig,
     updateFamiliaMargen,
@@ -1508,12 +1560,15 @@ function crearApi() {
     fetchCobranzasPendientes,
     fetchCotizacion,
     fetchLineas,
+    fetchLineasDeCotizaciones,
     saveCotizacion,
     elegirOpcionPago,
     cambiarEstadoCotizacion,
     fetchCotizacionesConCostoEditado,
     fetchMargenesProducto,
     upsertMargenProducto,
+    upsertMargenesProducto,
+    fetchProductosPorCodigos,
     deleteMargenProducto,
     cargarLista,
     cotizacionesAfectadas,
@@ -1541,6 +1596,7 @@ function crearApi() {
     fetchTareasByCotizacion,
     fetchTareasByCliente,
     createTarea,
+    createTareas,
     updateTarea,
     deleteTarea,
     fetchVisitas,

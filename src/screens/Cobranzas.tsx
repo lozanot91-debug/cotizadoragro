@@ -97,13 +97,15 @@ export default function Cobranzas({ onEdit }: { onEdit: (cotizId: string) => voi
   async function cargarGanadas() {
     setTrabajando('ganadas');
     try {
-      let n = 0;
-      for (const c of ganadasSinCobros) {
-        const lineas = await data.fetchLineas(c.id);
+      // Las líneas de todas las cotizaciones en pocas consultas y los cobros en un solo insert
+      const lineasPorCotiz = await data.fetchLineasDeCotizaciones(ganadasSinCobros.map((c) => c.id));
+      const filas = ganadasSinCobros.flatMap((c) => {
+        const lineas = lineasPorCotiz.get(c.id) ?? [];
         const nuevos = generarCobranzas(c, lineasGanadas(lineas, c.cantidades_reales), fechaDeTimestamp(c.updated_at));
-        await data.crearCobranzas(nuevos.map((x) => ({ cotizacion_id: c.id, ...x })));
-        n += nuevos.length;
-      }
+        return nuevos.map((x) => ({ cotizacion_id: c.id, ...x }));
+      });
+      await data.crearCobranzas(filas);
+      const n = filas.length;
       toast.exito(`Se cargaron ${n} cobros de cotizaciones ya ganadas.`);
       await load();
     } catch (e) { toast.error(e); } finally { setTrabajando(null); }
