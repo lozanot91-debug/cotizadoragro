@@ -4,6 +4,7 @@
  * - WFS: los datos de una parcela (partida, nomenclatura, rural/urbana, superficie y contorno en GeoJSON).
  */
 import type { GeoPoligono } from '@/types';
+import { senalConTimeout } from '@/lib/timeout';
 
 export const ARBA_WMS = 'https://geo.arba.gov.ar/geoserver/idera/wms';
 export const ARBA_WFS = 'https://geo.arba.gov.ar/geoserver/idera/wfs';
@@ -142,7 +143,7 @@ export function urlParcelaPorPartida(partida: string): string {
 }
 
 async function pedir(url: string, signal?: AbortSignal): Promise<ParcelaArba[]> {
-  const r = await fetch(url, { signal });
+  const r = await fetch(url, { signal: senalConTimeout(15000, signal) });
   if (!r.ok) throw new Error(`ARBA respondió ${r.status}`);
   return parsearParcelas(await r.json());
 }

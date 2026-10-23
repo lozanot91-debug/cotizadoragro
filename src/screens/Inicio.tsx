@@ -1,3 +1,4 @@
+import { useToast } from '@/components/Toast';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { montoGanado } from '@/lib/ganadaParcial';
 import AvisosPush from '@/components/AvisosPush';
@@ -28,6 +29,7 @@ interface Props {
 export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedidoBadge = 0 }: Props) {
   const data = useData();
   const { usuario } = useAuth();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<Configuracion | null>(null);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
@@ -168,11 +170,18 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
   }, [cotizaciones, config, mesActual]);
 
   async function marcarTareaHecha(id: string) {
-    await data.updateTarea(id, {
-      estado: 'Hecha',
-      completada_at: new Date().toISOString(),
-    });
+    // Optimista: la tarea desaparece de la lista al instante; si falla, vuelve y se avisa
+    const anterior = tareasPendientes;
     setTareasPendientes((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await data.updateTarea(id, {
+        estado: 'Hecha',
+        completada_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      setTareasPendientes(anterior);
+      toast.error(e);
+    }
   }
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;

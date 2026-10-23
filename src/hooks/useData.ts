@@ -45,6 +45,7 @@ import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
 import { hoyAR, sumarDias } from '@/lib/fechas';
+import { conTimeout } from '@/lib/timeout';
 import { queryClient, CLAVE_CLIENTES, CLAVE_COTIZACIONES, invalidarClientes, invalidarCotizaciones } from '@/lib/queryClient';
 import { paramsDesdeConfig, type ParamsCanje } from '@/lib/canje';
 import { paramsFormasPagoDesdeConfig, type ParamsFormasPago } from '@/lib/formasPago';
@@ -120,7 +121,7 @@ function crearApi() {
    */
   async function fetchTipoCambioBNA(): Promise<TipoCambioBNA | null> {
     try {
-      const { data, error } = await supabase.functions.invoke('tc-bna', { body: {} });
+      const { data, error } = await conTimeout(supabase.functions.invoke('tc-bna', { body: {} }), 8000);
       if (error || !data || !(Number(data.venta) > 0)) return null;
       return { fecha: data.fecha, compra: Number(data.compra), venta: Number(data.venta), desactualizado: !!data.desactualizado };
     } catch {
@@ -416,7 +417,7 @@ function crearApi() {
 
   /** Se manda a sí mismo el resumen por notificación (prueba). */
   async function enviarmeResumen(): Promise<{ enviados: number; motivo?: string }> {
-    const { data, error } = await supabase.functions.invoke('resumen-semanal', { body: { prueba: true } });
+    const { data, error } = await conTimeout(supabase.functions.invoke('resumen-semanal', { body: { prueba: true } }), 30000);
     if (error) throw new ErrorApp('No se pudo mandar el resumen.', error);
     return data as { enviados: number; motivo?: string };
   }
@@ -482,7 +483,7 @@ function crearApi() {
   /** Pide releer las pizarras (la función solo lo hace si la última lectura tiene más de 4 h). true si trajo datos nuevos. */
   async function actualizarPizarras(): Promise<boolean> {
     try {
-      const { data, error } = await supabase.functions.invoke('pizarra-granos', { body: { accion: 'actualizar' } });
+      const { data, error } = await conTimeout(supabase.functions.invoke('pizarra-granos', { body: { accion: 'actualizar' } }), 40000);
       return !error && !!data && !data.fresco && Number(data.filas) > 0;
     } catch {
       return false;

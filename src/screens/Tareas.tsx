@@ -1,3 +1,4 @@
+import { useToast } from '@/components/Toast';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
@@ -67,6 +68,7 @@ function descargarICS(tarea: Tarea) {
 export default function Tareas() {
   const data = useData();
   const { usuario } = useAuth();
+  const toast = useToast();
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
@@ -149,25 +151,43 @@ export default function Tareas() {
 
   async function completarTarea() {
     if (!modalCompletar) return;
-    await data.updateTarea(modalCompletar.id, { estado: 'Hecha', completada_at: new Date().toISOString(), resultado: completarForm.resultado || null });
-    await registrarCambio({ tipo: 'tarea', cotizacion_id: modalCompletar.cotizacion_id || undefined, entidad: modalCompletar.titulo, campo: 'finalización', valor_anterior: 'Pendiente', valor_nuevo: 'Hecha', detalle: completarForm.resultado || undefined });
-    if (completarForm.agendarProxima) {
-      await data.createTarea({
-        titulo: `Seguimiento: ${modalCompletar.titulo}`, tipo: 'Seguimiento', prioridad: modalCompletar.prioridad,
-        fecha_vencimiento: completarForm.proximaFecha, asignado_a: modalCompletar.asignado_a || usuario.nombre,
-        creada_por: usuario.nombre, cotizacion_id: modalCompletar.cotizacion_id, cliente_id: modalCompletar.cliente_id,
-      });
-    }
+    const t = modalCompletar;
+    const form = completarForm;
+    const completada_at = new Date().toISOString();
+    // Optimista: la tarea pasa a Hecha al instante; si falla, vuelve y se avisa
+    const anterior = tareas;
+    setTareas((prev) => prev.map((x) => (x.id === t.id ? { ...x, estado: 'Hecha', completada_at, resultado: form.resultado || null } : x)));
     setModalCompletar(null);
     setCompletarForm({ resultado: '', agendarProxima: false, proximaFecha: addDays(3) });
-    load();
+    try {
+      await data.updateTarea(t.id, { estado: 'Hecha', completada_at, resultado: form.resultado || null });
+      await registrarCambio({ tipo: 'tarea', cotizacion_id: t.cotizacion_id || undefined, entidad: t.titulo, campo: 'finalización', valor_anterior: 'Pendiente', valor_nuevo: 'Hecha', detalle: form.resultado || undefined });
+      if (form.agendarProxima) {
+        await data.createTarea({
+          titulo: `Seguimiento: ${t.titulo}`, tipo: 'Seguimiento', prioridad: t.prioridad,
+          fecha_vencimiento: form.proximaFecha, asignado_a: t.asignado_a || usuario.nombre,
+          creada_por: usuario.nombre, cotizacion_id: t.cotizacion_id, cliente_id: t.cliente_id,
+        });
+        load(); // la tarea nueva sí hay que traerla
+      }
+    } catch (e) {
+      setTareas(anterior);
+      toast.error(e);
+    }
   }
 
   async function eliminarTarea() {
     if (!modalEliminar) return;
-    await data.deleteTarea(modalEliminar.id);
+    const t = modalEliminar;
+    const anterior = tareas;
+    setTareas((prev) => prev.filter((x) => x.id !== t.id));
     setModalEliminar(null);
-    load();
+    try {
+      await data.deleteTarea(t.id);
+    } catch (e) {
+      setTareas(anterior);
+      toast.error(e);
+    }
   }
 
   async function editarTarea() {

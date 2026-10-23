@@ -1,3 +1,4 @@
+import { useToast } from '@/components/Toast';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
@@ -30,6 +31,7 @@ interface Props {
 
 export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
   const data = useData();
+  const toast = useToast();
   const [cotizaciones, setCotizaciones] = useState<(Cotizacion & { cliente?: Cliente })[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroCliente, setFiltroCliente] = useState('');
@@ -91,10 +93,17 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
   async function confirmarEliminar() {
     if (!modalEliminar) return;
     const c = modalEliminar;
-    await data.deleteCotizacion(c.id);
-    await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(c)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(c), valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.subtotal_usd)} USD)` });
+    // Optimista: sale de la lista al instante; si falla, vuelve y se avisa
+    const anterior = cotizaciones;
+    setCotizaciones((prev) => prev.filter((x) => x.id !== c.id));
     setModalEliminar(null);
-    load();
+    try {
+      await data.deleteCotizacion(c.id);
+      await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(c)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(c), valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.subtotal_usd)} USD)` });
+    } catch (e) {
+      setCotizaciones(anterior);
+      toast.error(e);
+    }
   }
 
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
