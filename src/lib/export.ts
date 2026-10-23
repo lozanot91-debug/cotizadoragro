@@ -8,7 +8,7 @@ import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { fechaVencimiento } from '@/lib/vencimientos';
 import { LOGO_CERES_TOLVAS } from '@/assets/logoCeresTolvas';
 import { nombreCotizacion, archivoCotizacion } from '@/lib/nombreCotizacion';
-import { opcionesParaMostrar, filasMatriz, totalesOpciones, unidadLinea, pctFinanciacion } from '@/lib/opcionesSalida';
+import { opcionesParaMostrar, filasMatriz, totalesOpciones, tasasIvaOpciones, unidadLinea } from '@/lib/opcionesSalida';
 import { calcularOpcion } from '@/lib/opcionesPago';
 
 function tasaTxt(t: number): string {
@@ -177,102 +177,184 @@ export async function construirPDF(
   if (flete) dato('Flete', flete, colDer, y);
   y += 15;
 
-  // Tabla de productos. Columnas: x = borde derecho de cada columna numérica
-  const conFin = hayFinanciacion(cotiz, lineas);
-  const cols = [
-    { label: 'Producto', x: margin + 2.5, align: 'left' as const },
-    { label: 'Cant.', x: conFin ? 84 : 97, align: 'right' as const },
-    { label: 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
-    { label: 'Pago', x: 132, align: 'right' as const },
-    { label: 'IVA %', x: 150, align: 'right' as const },
-    { label: cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', x: derecha - 2.5, align: 'right' as const },
-  ].filter((c) => (cotiz.con_iva || c.label !== 'IVA %') && (conFin || c.label !== 'Pago'));
-  const iCant = 1, iPrecio = 2;
-  const iPago = cols.findIndex((c) => c.label === 'Pago');
-  const iIva = cols.findIndex((c) => c.label === 'IVA %');
-  const iTotal = cols.length - 1;
-  const anchoProducto = cols[iCant].x - cols[0].x - 18;
-
-  const encabezadoTabla = () => {
-    relleno(PDF.cultivo800);
-    doc.rect(margin, y - 4.8, pageWidth - 2 * margin, 7.5, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
-    cols.forEach((c) => doc.text(c.label, c.x, y, { align: c.align }));
-    y += 7.5;
-  };
-  encabezadoTabla();
-
-  lineas.forEach((linea, i) => {
-    // Nombres largos: hasta dos renglones; si no entra, el segundo termina en "…"
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    let nombre = doc.splitTextToSize(linea.producto, anchoProducto) as string[];
-    if (nombre.length > 2) nombre = [nombre[0], recortar(doc, nombre.slice(1).join(' '), anchoProducto)];
-    const extra = (nombre.length - 1) * 4;
-    const altoFila = 10.5 + extra;
-    if (y + altoFila > 272) {
-      doc.addPage();
-      y = 20;
-      encabezadoTabla();
-    }
-    if (i % 2 === 1) {
-      relleno(PDF.cultivo50);
-      doc.rect(margin, y - 4.6, pageWidth - 2 * margin, altoFila, 'F');
-    }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); color(PDF.texto);
-    doc.text(nombre, cols[0].x, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
-    // El flete y la financiación van incluidos en el precio: al cliente no se le muestran por separado
-    const fin = financiacionLinea(linea, cotiz);
-    doc.text(formatUSD(fin.precioUnit, 2), cols[iPrecio].x, y, { align: 'right' });
-    if (iPago >= 0) {
-      // La columna es angosta: en el PDF va solo la fecha de vencimiento
-      doc.setFontSize(8);
-      doc.text(fin.plazo > 0 ? formatearFecha(sumarDias(cotiz.fecha, fin.plazo)) : 'Contado', cols[iPago].x, y, { align: 'right' });
-      doc.setFontSize(9);
-    }
-    if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
-    doc.setFont('helvetica', 'bold');
-    doc.text(formatUSD(fin.total, 2), cols[iTotal].x, y, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
-    const unidad = linea.es_fertilizante ? 'tn' : (linea.unid || '').toLowerCase();
-    doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), cols[0].x, y + 4 + extra);
-    if (unidad) {
-      doc.text(unidad, cols[iCant].x, y + 4, { align: 'right' });
-      doc.text(`USD/${unidad}`, cols[iPrecio].x, y + 4, { align: 'right' });
-    }
-    y += altoFila;
-  });
-
-  // Totales, alineados a la derecha
-  const t = totalesDeCotizacion(cotiz, lineas);
-  if (y > 225) { doc.addPage(); y = 25; }
-  y += 3;
-  const anchoCaja = 82;
-  const xCaja = derecha - anchoCaja;
-  const labelX = xCaja + 4;
+  const opciones = opcionesParaMostrar(cotiz);
   const totalX = derecha - 3;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); color(PDF.texto);
-  if (cotiz.con_iva) {
-    doc.text('Subtotal', labelX, y);
-    doc.text(formatUSD(t.subtotal + t.recargo, 2), totalX, y, { align: 'right' });
-    y += 5;
-    t.desglose.forEach((d) => {
-      doc.text(`IVA ${tasaTxt(d.tasa)} %`, labelX, y);
-      doc.text(formatUSD(d.iva, 2), totalX, y, { align: 'right' });
-      y += 5;
+  if (opciones.length === 0) {
+    // Tabla de productos. Columnas: x = borde derecho de cada columna numérica
+    const conFin = hayFinanciacion(cotiz, lineas);
+    const cols = [
+      { label: 'Producto', x: margin + 2.5, align: 'left' as const },
+      { label: 'Cant.', x: conFin ? 84 : 97, align: 'right' as const },
+      { label: 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
+      { label: 'Pago', x: 132, align: 'right' as const },
+      { label: 'IVA %', x: 150, align: 'right' as const },
+      { label: cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', x: derecha - 2.5, align: 'right' as const },
+    ].filter((c) => (cotiz.con_iva || c.label !== 'IVA %') && (conFin || c.label !== 'Pago'));
+    const iCant = 1, iPrecio = 2;
+    const iPago = cols.findIndex((c) => c.label === 'Pago');
+    const iIva = cols.findIndex((c) => c.label === 'IVA %');
+    const iTotal = cols.length - 1;
+    const anchoProducto = cols[iCant].x - cols[0].x - 18;
+
+    const encabezadoTabla = () => {
+      relleno(PDF.cultivo800);
+      doc.rect(margin, y - 4.8, pageWidth - 2 * margin, 7.5, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+      cols.forEach((c) => doc.text(c.label, c.x, y, { align: c.align }));
+      y += 7.5;
+    };
+    encabezadoTabla();
+
+    lineas.forEach((linea, i) => {
+      // Nombres largos: hasta dos renglones; si no entra, el segundo termina en "…"
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      let nombre = doc.splitTextToSize(linea.producto, anchoProducto) as string[];
+      if (nombre.length > 2) nombre = [nombre[0], recortar(doc, nombre.slice(1).join(' '), anchoProducto)];
+      const extra = (nombre.length - 1) * 4;
+      const altoFila = 10.5 + extra;
+      if (y + altoFila > 272) {
+        doc.addPage();
+        y = 20;
+        encabezadoTabla();
+      }
+      if (i % 2 === 1) {
+        relleno(PDF.cultivo50);
+        doc.rect(margin, y - 4.6, pageWidth - 2 * margin, altoFila, 'F');
+      }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); color(PDF.texto);
+      doc.text(nombre, cols[0].x, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
+      // El flete y la financiación van incluidos en el precio: al cliente no se le muestran por separado
+      const fin = financiacionLinea(linea, cotiz);
+      doc.text(formatUSD(fin.precioUnit, 2), cols[iPrecio].x, y, { align: 'right' });
+      if (iPago >= 0) {
+        // La columna es angosta: en el PDF va solo la fecha de vencimiento
+        doc.setFontSize(8);
+        doc.text(fin.plazo > 0 ? formatearFecha(sumarDias(cotiz.fecha, fin.plazo)) : 'Contado', cols[iPago].x, y, { align: 'right' });
+        doc.setFontSize(9);
+      }
+      if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.text(formatUSD(fin.total, 2), cols[iTotal].x, y, { align: 'right' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
+      const unidad = linea.es_fertilizante ? 'tn' : (linea.unid || '').toLowerCase();
+      doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), cols[0].x, y + 4 + extra);
+      if (unidad) {
+        doc.text(unidad, cols[iCant].x, y + 4, { align: 'right' });
+        doc.text(`USD/${unidad}`, cols[iPrecio].x, y + 4, { align: 'right' });
+      }
+      y += altoFila;
     });
+
+    // Totales, alineados a la derecha
+    const t = totalesDeCotizacion(cotiz, lineas);
+    if (y > 225) { doc.addPage(); y = 25; }
+    y += 3;
+    const anchoCaja = 82;
+    const xCaja = derecha - anchoCaja;
+    const labelX = xCaja + 4;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); color(PDF.texto);
+    if (cotiz.con_iva) {
+      doc.text('Subtotal', labelX, y);
+      doc.text(formatUSD(t.subtotal + t.recargo, 2), totalX, y, { align: 'right' });
+      y += 5;
+      t.desglose.forEach((d) => {
+        doc.text(`IVA ${tasaTxt(d.tasa)} %`, labelX, y);
+        doc.text(formatUSD(d.iva, 2), totalX, y, { align: 'right' });
+        y += 5;
+      });
+    }
+    y += 2.5;
+    relleno(PDF.cultivo800);
+    doc.rect(xCaja, y - 5.5, anchoCaja, 9, 'F');
+    relleno(PDF.trigo);
+    doc.rect(xCaja, y - 5.5, 1.4, 9, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+    doc.text(cotiz.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)', labelX, y, { charSpace: 0.3 });
+    doc.setFontSize(13);
+    doc.text(formatUSD(t.total, 2), totalX, y + 0.3, { align: 'right' });
+    y += 9;
+  } else {
+    // Con opciones de pago (el cliente todavía no eligió): un solo cuadro, artículo x opción, con sus totales
+    const matriz = filasMatriz(cotiz, lineas);
+    const tots = totalesOpciones(cotiz, lineas);
+    const n = opciones.length;
+    const anchoArt = 56;
+    const xCant = margin + anchoArt + 16; // borde derecho de "Cant."
+    const inicioOp = xCant + 3;
+    const anchoCol = (derecha - inicioOp) / n;
+    const xCol = (j: number) => inicioOp + (j + 1) * anchoCol - 2.5; // borde derecho de la columna j
+    const texto = (j: number, i: number) => `${formatUSD(matriz[i].celdas[j].precioUnit, 2)} /${unidadLinea(matriz[i].linea) || 'un'}`;
+    // Achica la letra (sin recortar números) hasta que entre el texto más ancho de cada columna
+    let tamPrecio = 9;
+    doc.setFont('helvetica', 'normal');
+    const entra = () => matriz.every((_, i) => opciones.every((__, j) => { doc.setFontSize(tamPrecio); return doc.getTextWidth(texto(j, i)) <= anchoCol - 3.5; }));
+    while (tamPrecio > 6 && !entra()) tamPrecio -= 0.5;
+
+    const encabezadoOpciones = () => {
+      relleno(PDF.cultivo800);
+      doc.rect(margin, y - 4.8, pageWidth - 2 * margin, 7.5, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+      doc.text('Producto', margin + 2.5, y);
+      doc.text('Cant.', xCant, y, { align: 'right' });
+      opciones.forEach((o, j) => doc.text(recortar(doc, o.nombre, anchoCol - 3.5), xCol(j), y, { align: 'right' }));
+      y += 7.5;
+    };
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); color(PDF.suave);
+    doc.text('Elegí la forma de pago que más te convenga; los precios son por unidad.', margin, y - 7);
+    encabezadoOpciones();
+    matriz.forEach(({ linea, celdas }, i) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      let nombre = doc.splitTextToSize(linea.producto, anchoArt - 4) as string[];
+      if (nombre.length > 2) nombre = [nombre[0], recortar(doc, nombre.slice(1).join(' '), anchoArt - 4)];
+      const extra = (nombre.length - 1) * 4;
+      const altoFila = 10.5 + extra;
+      if (y + altoFila > 272) { doc.addPage(); y = 20; encabezadoOpciones(); }
+      if (i % 2 === 1) { relleno(PDF.cultivo50); doc.rect(margin, y - 4.6, pageWidth - 2 * margin, altoFila, 'F'); }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); color(PDF.texto);
+      doc.text(nombre, margin + 2.5, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(formatUSD(linea.cantidad, 2), xCant, y, { align: 'right' });
+      celdas.forEach((c, j) => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(tamPrecio); color(PDF.texto);
+        doc.text(texto(j, i), xCol(j), y, { align: 'right' });
+        doc.setFontSize(7); color(PDF.suave);
+        doc.text(c.plazo > 0 ? `vence ${formatearFecha(c.vence)}` : 'contado', xCol(j), y + 4, { align: 'right' });
+      });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
+      doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), margin + 2.5, y + 4 + extra);
+      const unidad = unidadLinea(linea);
+      if (unidad) doc.text(unidad, xCant, y + 4, { align: 'right' });
+      y += altoFila;
+    });
+    // Totales por opción: mismas etiquetas que el bloque de totales común
+    const tasas = tasasIvaOpciones(tots);
+    const filasTot = (cotiz.con_iva ? 1 + tasas.length : 0) + 1;
+    if (y + 3 + filasTot * 5 + 12 > 272) { doc.addPage(); y = 25; }
+    y += 3;
+    trazo(PDF.linea); doc.line(margin, y - 3, derecha, y - 3);
+    const fila = (label: string, valor: (j: number) => string) => {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); color(PDF.texto);
+      doc.text(label, margin + 2.5, y);
+      opciones.forEach((_, j) => doc.text(valor(j), xCol(j), y, { align: 'right' }));
+      y += 5;
+    };
+    if (cotiz.con_iva) {
+      fila('Subtotal', (j) => formatUSD(tots[j].totales.subtotal + tots[j].totales.recargo, 2));
+      tasas.forEach((tasa) => fila(`IVA ${tasaTxt(tasa)} %`, (j) => formatUSD(tots[j].totales.desglose.find((d) => d.tasa === tasa)?.iva ?? 0, 2)));
+    }
+    y += 2.5;
+    relleno(PDF.cultivo800);
+    doc.rect(margin, y - 5.5, pageWidth - 2 * margin, 9, 'F');
+    relleno(PDF.trigo);
+    doc.rect(margin, y - 5.5, 1.4, 9, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+    doc.text(cotiz.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)', margin + 4, y, { charSpace: 0.3 });
+    doc.setFontSize(Math.min(11, tamPrecio + 2));
+    opciones.forEach((_, j) => doc.text(formatUSD(tots[j].totales.total, 2), xCol(j), y + 0.3, { align: 'right' }));
+    y += 9;
   }
-  y += 2.5;
-  relleno(PDF.cultivo800);
-  doc.rect(xCaja, y - 5.5, anchoCaja, 9, 'F');
-  relleno(PDF.trigo);
-  doc.rect(xCaja, y - 5.5, 1.4, 9, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
-  doc.text(cotiz.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)', labelX, y, { charSpace: 0.3 });
-  doc.setFontSize(13);
-  doc.text(formatUSD(t.total, 2), totalX, y + 0.3, { align: 'right' });
-  y += 9;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); color(PDF.suave);
   const canje = datosCanje(cotiz, lineas);
   if (canje) {
@@ -285,79 +367,6 @@ export async function construirPDF(
     if (canje.conIva && !cotiz.con_iva) {
       y += 4;
       doc.text(`sobre el total con IVA de USD ${formatUSD(canje.monto)}`, totalX, y, { align: 'right' });
-    }
-  }
-
-  // Opciones de pago (solo si el cliente todavía no eligió): matriz artículo x opción
-  const opciones = opcionesParaMostrar(cotiz);
-  if (opciones.length > 1) {
-    const matriz = filasMatriz(cotiz, lineas);
-    const tots = totalesOpciones(cotiz, lineas);
-    const n = opciones.length;
-    const anchoArt = 50;
-    const anchoCol = (pageWidth - 2 * margin - anchoArt) / n;
-    const xCol = (j: number) => margin + anchoArt + (j + 1) * anchoCol - 2.5; // borde derecho de la columna j
-    const texto = (j: number, i: number) => `${formatUSD(matriz[i].celdas[j].precioUnit, 2)} /${unidadLinea(matriz[i].linea) || 'un'}`;
-    // Achica la letra (sin recortar números) hasta que entre el texto más ancho de cada columna
-    let tamPrecio = 9;
-    doc.setFont('helvetica', 'normal');
-    const entra = () => matriz.every((_, i) => opciones.every((__, j) => { doc.setFontSize(tamPrecio); return doc.getTextWidth(texto(j, i)) <= anchoCol - 3.5; }));
-    while (tamPrecio > 6 && !entra()) tamPrecio -= 0.5;
-
-    const encabezadoOpciones = () => {
-      relleno(PDF.cultivo800);
-      doc.rect(margin, y - 4.8, pageWidth - 2 * margin, 7.5, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
-      doc.text('Artículo', margin + 2.5, y);
-      opciones.forEach((o, j) => doc.text(recortar(doc, o.nombre, anchoCol - 3.5), xCol(j), y, { align: 'right' }));
-      y += 7.5;
-    };
-    y += 12;
-    if (y > 200) { doc.addPage(); y = 25; }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); color(PDF.cultivo700);
-    doc.text('Opciones de pago', margin, y);
-    y += 4.5;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); color(PDF.suave);
-    doc.text('Elegí la que más te convenga; los precios son por unidad.', margin, y);
-    y += 8;
-    encabezadoOpciones();
-    matriz.forEach(({ linea, celdas }, i) => {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-      let nombre = doc.splitTextToSize(linea.producto, anchoArt - 4) as string[];
-      if (nombre.length > 2) nombre = [nombre[0], recortar(doc, nombre.slice(1).join(' '), anchoArt - 4)];
-      const altoFila = 10.5 + (nombre.length - 1) * 4;
-      if (y + altoFila > 272) { doc.addPage(); y = 20; encabezadoOpciones(); }
-      if (i % 2 === 1) { relleno(PDF.cultivo50); doc.rect(margin, y - 4.6, pageWidth - 2 * margin, altoFila, 'F'); }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); color(PDF.texto);
-      doc.text(nombre, margin + 2.5, y);
-      celdas.forEach((c, j) => {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(tamPrecio); color(PDF.texto);
-        doc.text(texto(j, i), xCol(j), y, { align: 'right' });
-        doc.setFontSize(7); color(PDF.suave);
-        doc.text(c.plazo > 0 ? `vence ${formatearFecha(c.vence)}` : 'contado', xCol(j), y + 4, { align: 'right' });
-      });
-      y += altoFila;
-    });
-    // Totales por opción
-    const filasTot = cotiz.con_iva ? 3 : 1;
-    if (y + 6 + filasTot * 5 + 10 > 272) { doc.addPage(); y = 25; }
-    y += 3;
-    trazo(PDF.linea); doc.line(margin, y - 3, derecha, y - 3);
-    const fila = (label: string, valor: (j: number) => string, negrita = false) => {
-      doc.setFont('helvetica', negrita ? 'bold' : 'normal'); doc.setFontSize(negrita ? 9.5 : 9); color(negrita ? PDF.cultivo800 : PDF.texto);
-      doc.text(label, margin + 2.5, y);
-      opciones.forEach((_, j) => doc.text(valor(j), xCol(j), y, { align: 'right' }));
-      y += 5;
-    };
-    if (cotiz.con_iva) {
-      fila('Subtotal', (j) => formatUSD(tots[j].totales.subtotal + tots[j].totales.recargo, 2));
-      fila('IVA', (j) => formatUSD(tots[j].totales.iva, 2));
-    }
-    fila(cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', (j) => formatUSD(tots[j].totales.total, 2), true);
-    if (tots.some((x) => x.totales.recargo > 0)) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
-      tots.forEach((x, j) => { if (x.totales.recargo > 0) doc.text(`Incluye ${tasaTxt(pctFinanciacion(x.totales))} % de financiación`, xCol(j), y, { align: 'right' }); });
-      y += 4;
     }
   }
 

@@ -5,7 +5,7 @@ import { financiacionLinea, ivaLinea } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { formatDate, formatUSD } from '@/lib/format';
-import { filasMatriz, totalesOpciones, unidadLinea, pctFinanciacion } from '@/lib/opcionesSalida';
+import { filasMatriz, totalesOpciones, tasasIvaOpciones, unidadLinea } from '@/lib/opcionesSalida';
 import type { Cotizacion, CotizacionLinea } from '@/types';
 
 const fmt = (n: number, d = 2) => formatUSD(n, d);
@@ -47,7 +47,53 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
         </div>
 
         <div className="overflow-y-auto px-5 py-3">
-          {filas.length === 0 ? <p className="text-sm text-gray-500 py-4">La cotización no tiene productos.</p> : (
+          {filas.length === 0 ? <p className="text-sm text-gray-500 py-4">La cotización no tiene productos.</p> : totsOp.length > 0 ? (
+            <div>
+              <p className="text-[11px] text-gray-400 mb-1">Elegí la forma de pago que más te convenga; los precios son por unidad, en USD.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
+                    <th className="text-left py-2 font-medium">Producto</th>
+                    <th className="text-right py-2 pl-3 font-medium">Cant.</th>
+                    {totsOp.map(({ opcion }) => <th key={opcion.id} className="text-right py-2 pl-3 font-medium whitespace-nowrap">{opcion.nombre}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {matriz.map(({ linea, celdas }) => (
+                      <tr key={linea.id} className="border-b border-gray-100 align-top">
+                        <td className="py-2 pr-2 text-gray-800">{linea.producto}</td>
+                        <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(linea.cantidad, linea.cantidad % 1 === 0 ? 0 : 2)} {unidadLinea(linea) || 'un'}</td>
+                        {celdas.map((ce, j) => (
+                          <td key={j} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
+                            {fmt(ce.precioUnit)}<span className="text-[11px] text-gray-400"> /{unidadLinea(linea) || 'un'}</span>
+                            <p className="text-[11px] text-gray-400">{ce.plazo > 0 ? `vence ${formatearFecha(ce.vence)}` : 'contado'}</p>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    {c.con_iva && (
+                      <tr className="text-gray-600">
+                        <td className="py-1 pr-2" colSpan={2}>Subtotal</td>
+                        {totsOp.map(({ opcion, totales }) => <td key={opcion.id} className="py-1 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(totales.subtotal + totales.recargo)}</td>)}
+                      </tr>
+                    )}
+                    {c.con_iva && tasasIvaOpciones(totsOp).map((tasa) => (
+                      <tr key={tasa} className="text-gray-600">
+                        <td className="py-1 pr-2" colSpan={2}>IVA {fmt(tasa, 1)} %</td>
+                        {totsOp.map(({ opcion, totales }) => <td key={opcion.id} className="py-1 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(totales.desglose.find((d) => d.tasa === tasa)?.iva ?? 0)}</td>)}
+                      </tr>
+                    ))}
+                    <tr className="font-semibold text-gray-800 border-t border-gray-200">
+                      <td className="py-2 pr-2" colSpan={2}>{c.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)'}</td>
+                      {totsOp.map(({ opcion, totales }) => <td key={opcion.id} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(totales.total)}</td>)}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <>
             <table className="w-full text-sm">
               <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
                 <th className="text-left py-2 font-medium">Insumo</th>
@@ -69,49 +115,13 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                 ))}
               </tbody>
             </table>
-          )}
           <p className="text-[11px] text-gray-400 mt-2">Precios en USD sin IVA, con flete y financiación incluidos.</p>
-          {totsOp.length > 1 && (
-            <div className="mt-4">
-              <p className="text-sm font-semibold text-gray-800">Opciones de pago</p>
-              <p className="text-[11px] text-gray-400 mb-1">Elegí la que más te convenga; los precios son por unidad.</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
-                    <th className="text-left py-2 font-medium">Insumo</th>
-                    {totsOp.map(({ opcion }) => <th key={opcion.id} className="text-right py-2 pl-3 font-medium whitespace-nowrap">{opcion.nombre}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {matriz.map(({ linea, celdas }) => (
-                      <tr key={linea.id} className="border-b border-gray-100 align-top">
-                        <td className="py-2 pr-2 text-gray-800">{linea.producto}</td>
-                        {celdas.map((ce, j) => (
-                          <td key={j} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
-                            {fmt(ce.precioUnit)}<span className="text-[11px] text-gray-400"> /{unidadLinea(linea) || 'un'}</span>
-                            <p className="text-[11px] text-gray-400">{ce.plazo > 0 ? `vence ${formatearFecha(ce.vence)}` : 'contado'}</p>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="font-medium">
-                      <td className="py-2 pr-2 text-gray-800">{c.con_iva ? 'Total con IVA' : 'Total sin IVA'}</td>
-                      {totsOp.map(({ opcion, totales }) => (
-                        <td key={opcion.id} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
-                          USD {fmt(totales.total)}
-                          {totales.recargo > 0 && <p className="text-[11px] font-normal text-gray-400">Incluye {fmt(pctFinanciacion(totales), 1)} % de financiación</p>}
-                        </td>
-                      ))}
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
+            </>
           )}
         </div>
 
         <div className="border-t border-gray-100 px-5 py-3 space-y-1 text-sm">
+          {totsOp.length === 0 && <>
           <div className="flex justify-between text-gray-600"><span>Subtotal{t.recargo > 0 ? ' (con financiación)' : ''}</span><span className="tabular-nums">{fmt(t.subtotal + t.recargo)}</span></div>
           {t.desglose.filter((d) => d.iva > 0).map((d) => (
             <div key={d.tasa} className="flex justify-between text-gray-600"><span>IVA {fmt(d.tasa, 1)} %</span><span className="tabular-nums">{fmt(d.iva)}</span></div>
@@ -121,6 +131,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
             <span className="cifra text-2xl text-emerald-800">USD {fmt(t.total)}</span>
           </div>
           {!c.con_iva && <p className="text-[11px] text-gray-400">La cotización se mandó sin IVA (total USD {fmt(t.subtotal + t.recargo)}); para el canje se suma el IVA de cada producto.</p>}
+          </>}
           <div className="flex justify-end gap-2 pt-2">
             {onAbrir && <button onClick={onAbrir} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><ExternalLink className="w-4 h-4" /> Abrir cotización</button>}
             <button onClick={onCerrar} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">Listo</button>

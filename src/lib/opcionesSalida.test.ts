@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { opcionesParaMostrar, filasMatriz, totalesOpciones, avisoFormasDePago } from './opcionesSalida';
+import { opcionesParaMostrar, filasMatriz, totalesOpciones, tasasIvaOpciones, avisoFormasDePago } from './opcionesSalida';
 import { calcularOpcion } from './opcionesPago';
 import { financiacionLinea } from './export';
 import type { Cotizacion, CotizacionLinea, OpcionPago } from '@/types';
@@ -44,6 +44,15 @@ describe('filasMatriz y totales', () => {
     expect(t.map((x) => x.opcion.id)).toEqual(['principal', 'o2']);
     expect(t[1].totales).toEqual(calcularOpcion(c, lineas, alt).totales);
     expect(t[1].totales.recargo).toBeGreaterThan(0);
+  });
+});
+
+describe('tasasIvaOpciones', () => {
+  it('une y ordena las tasas de IVA de todas las opciones', () => {
+    const c = con({ opciones_pago: [principal, alt] });
+    const ls = [linea({ id: 'a', iva: 21 }), linea({ id: 'b', iva: 10.5, total_usd: 200, precio_usd: 200 })];
+    expect(tasasIvaOpciones(totalesOpciones(c, ls))).toEqual([10.5, 21]);
+    expect(tasasIvaOpciones([])).toEqual([]);
   });
 });
 

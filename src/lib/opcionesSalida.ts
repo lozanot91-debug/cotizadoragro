@@ -54,3 +54,7 @@ export const unidadLinea = (l: CotizacionLinea): string => (l.es_fertilizante ? 
 
 /** % de financiación incluido sobre el subtotal. */
 export const pctFinanciacion = (t: TotalesIva): number => (t.subtotal > 0 ? (t.recargo / t.subtotal) * 100 : 0);
+
+/** Tasas de IVA presentes en las opciones (unión, ordenadas), para armar las filas de IVA de los totales. */
+export const tasasIvaOpciones = (tots: { totales: TotalesIva }[]): number[] =>
+  [...new Set(tots.flatMap((x) => x.totales.desglose.map((d) => d.tasa)))].sort((a, b) => a - b);
