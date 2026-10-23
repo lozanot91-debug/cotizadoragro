@@ -433,38 +433,12 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     'Total USD': l.total_usd,
   }));
 
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Cotización');
-
-  // Hoja de resumen
-  const resumen = [{
-    'Cotización': nombreCotizacion(cotiz),
-    'Fecha': cotiz.fecha,
-    'Cliente': cotiz.cliente_nombre,
-    'KM': cotiz.km,
-    'Modalidad de flete': nombreModalidad(cotiz.flete_modalidad),
-    ...(cotiz.aforo_tn && cotiz.flete_modalidad !== 'largo_corto' ? { 'Aforo tramo principal (tn)': cotiz.aforo_tn } : {}),
-    ...(cotiz.aforo_corto_tn ? { 'Aforo tramo corto (tn)': cotiz.aforo_corto_tn } : {}),
-    ...(cotiz.flete_modalidad === 'largo_corto' ? { 'KM corto': Number(cotiz.km_corto) || 0 } : {}),
-    ...(t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
-    ...(cotiz.con_iva
-      ? {
-          'Subtotal USD': t.subtotal,
-          ...Object.fromEntries(t.desglose.map((d) => [`IVA ${tasaTxt(d.tasa)}% USD`, d.iva])),
-          'IVA total USD': t.iva,
-          'Total USD': t.total,
-        }
-      : { 'Total USD (sin IVA)': t.total }),
-    ...(datosCanje(cotiz, lineas) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje neto USD/tn': datosCanje(cotiz, lineas)!.neto, 'Canje monto USD': datosCanje(cotiz, lineas)!.monto, 'Canje tn': datosCanje(cotiz, lineas)!.tn, ...(cotiz.canje_params?.destino ? { 'Canje destino': cotiz.canje_params.destino } : {}) } : {}),
-    'Estado': cotiz.estado,
-  }];
-  const wsResumen = XLSX.utils.json_to_sheet(resumen);
-  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
-
-  // Opciones de pago (hoja aparte, solo si el cliente todavía no eligió)
+  // Con opciones de pago (el cliente todavía no eligió) una sola hoja: la matriz comparativa, como en el PDF
   const opcionesXl = opcionesParaMostrar(cotiz);
-  if (opcionesXl.length > 1) {
+  const conOpcionesXl = opcionesXl.length > 1;
+
+  const wb = XLSX.utils.book_new();
+  if (conOpcionesXl) {
     const matriz = filasMatriz(cotiz, lineas);
     const tots = totalesOpciones(cotiz, lineas);
     const aoa: (string | number)[][] = [
@@ -479,8 +453,36 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     aoa.push(filaTot('Subtotal', (t) => t.subtotal), filaTot('Financiación', (t) => t.recargo));
     if (cotiz.con_iva) aoa.push(filaTot('IVA', (t) => t.iva));
     aoa.push(filaTot(cotiz.con_iva ? 'Total' : 'Total (sin IVA)', (t) => t.total));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Opciones de pago');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Cotización');
+  } else {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Cotización');
   }
+
+  // Hoja de resumen
+  const resumen = [{
+    'Cotización': nombreCotizacion(cotiz),
+    'Fecha': cotiz.fecha,
+    'Cliente': cotiz.cliente_nombre,
+    'KM': cotiz.km,
+    'Modalidad de flete': nombreModalidad(cotiz.flete_modalidad),
+    ...(cotiz.aforo_tn && cotiz.flete_modalidad !== 'largo_corto' ? { 'Aforo tramo principal (tn)': cotiz.aforo_tn } : {}),
+    ...(cotiz.aforo_corto_tn ? { 'Aforo tramo corto (tn)': cotiz.aforo_corto_tn } : {}),
+    ...(cotiz.flete_modalidad === 'largo_corto' ? { 'KM corto': Number(cotiz.km_corto) || 0 } : {}),
+    // Con opciones los importes dependen de la opción: están en la hoja Cotización
+    ...(!conOpcionesXl && t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
+    ...(conOpcionesXl ? {} : cotiz.con_iva
+      ? {
+          'Subtotal USD': t.subtotal,
+          ...Object.fromEntries(t.desglose.map((d) => [`IVA ${tasaTxt(d.tasa)}% USD`, d.iva])),
+          'IVA total USD': t.iva,
+          'Total USD': t.total,
+        }
+      : { 'Total USD (sin IVA)': t.total }),
+    ...(datosCanje(cotiz, lineas) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje neto USD/tn': datosCanje(cotiz, lineas)!.neto, 'Canje monto USD': datosCanje(cotiz, lineas)!.monto, 'Canje tn': datosCanje(cotiz, lineas)!.tn, ...(cotiz.canje_params?.destino ? { 'Canje destino': cotiz.canje_params.destino } : {}) } : {}),
+    'Estado': cotiz.estado,
+  }];
+  const wsResumen = XLSX.utils.json_to_sheet(resumen);
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
 
   XLSX.writeFile(wb, `Cotizacion_${archivoCotizacion(cotiz)}.xlsx`);
 }
@@ -502,7 +504,11 @@ export function generarWhatsApp(
   if (opcionesParaMostrar(cotiz).length === 0 && !conFin) msg += `Forma de pago: ${textoFormaPago(cotiz, lineas)}\n`;
   msg += `\n`;
 
-  lineas.forEach((l) => {
+  // Con opciones de pago (el cliente todavía no eligió) se muestran solo las opciones, sin el bloque principal aparte
+  const opcionesWa = opcionesParaMostrar(cotiz);
+  const conOpcionesWa = opcionesWa.length > 1;
+
+  if (!conOpcionesWa) lineas.forEach((l) => {
     // Flete y financiación van incluidos en el precio de cada fila
     const fin = financiacionLinea(l, cotiz);
     const pago = conFin ? ` · ${condicionTxt(fin.plazo, cotiz.fecha)}` : '';
@@ -515,7 +521,10 @@ export function generarWhatsApp(
   });
 
   const t = totalesDeCotizacion(cotiz, lineas);
-  if (cotiz.con_iva) {
+  // Con opciones, los importes de cada una van en su bloque, más abajo
+  if (conOpcionesWa) {
+    // (nada acá)
+  } else if (cotiz.con_iva) {
     msg += `\nSubtotal: ${formatUSD(t.subtotal + t.recargo)} USD\n`;
     t.desglose.forEach((d) => {
       msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
@@ -524,15 +533,9 @@ export function generarWhatsApp(
   } else {
     msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
   }
-  const canje = datosCanje(cotiz, lineas);
-  if (canje) {
-    msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}*\n(${canje.detalle}${canje.conIva && !cotiz.con_iva ? `; sobre el total con IVA de USD ${formatUSD(canje.monto)}` : ''})\n`;
-  }
-
-  const opcionesWa = opcionesParaMostrar(cotiz);
-  if (opcionesWa.length > 1) {
-    msg += `\n*Opciones de pago*\n`;
-    opcionesWa.slice(1).forEach((op) => {
+  if (conOpcionesWa) {
+    msg += `*Opciones de pago*\n`;
+    opcionesWa.forEach((op) => {
       const r = calcularOpcion(cotiz, lineas, op);
       const hayPlazo = r.lineas.some((x) => !esContado(x.plazo));
       msg += `\n*${op.nombre}*\n`;
@@ -544,6 +547,11 @@ export function generarWhatsApp(
       });
       msg += `*Total: ${formatUSD(r.totales.total)} USD*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
     });
+  }
+
+  const canje = datosCanje(cotiz, lineas);
+  if (canje) {
+    msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}*\n(${canje.detalle}${canje.conIva && !cotiz.con_iva ? `; sobre el total con IVA de USD ${formatUSD(canje.monto)}` : ''})\n`;
   }
 
   return msg;

@@ -221,16 +221,20 @@ describe('WhatsApp con opciones de pago', () => {
     { id: 'principal', nombre: 'Contado', tasa_mensual: 0, plazos: [0, 0] },
     { id: 'o2', nombre: 'Cosecha', tasa_mensual: 2, plazos: [0, 150] },
   ];
-  it('agrega el bloque de la alternativa sin tocar el texto principal', () => {
+  it('con opciones muestra solo las opciones: sin bloque principal aparte ni total suelto', () => {
     const sin = generarWhatsApp(cotiz, ls, config);
     const con = generarWhatsApp({ ...cotiz, opciones_pago: ops } as Cotizacion, ls, config);
     expect(sin).not.toContain('Opciones de pago');
-    // sin opciones, el encabezado lleva "Forma de pago"; con opciones va en la matriz
-    expect(con.startsWith(sin.replace(/Forma de pago: .*\n/, ''))).toBe(true);
     expect(con).toContain('*Opciones de pago*');
+    // la opción principal también se muestra como una opción más
+    expect(con).toContain('*Contado*');
     expect(con).toContain('*Cosecha*');
     expect(con).toContain('vence 06/03/2027 (150 días)');
-    expect(con).not.toContain('*Contado*');
+    // cada artículo aparece una vez por opción (2), no tres (principal aparte + 2)
+    expect(con.split('• Glifo').length - 1).toBe(2);
+    // el encabezado se mantiene, sin la línea "Forma de pago" (va en cada opción)
+    expect(con).toContain('Cotización ');
+    expect(con).not.toContain('Forma de pago:');
   });
   it('si el cliente eligió una, el texto queda igual', () => {
     const sin = generarWhatsApp(cotiz, ls, config);
