@@ -176,6 +176,14 @@ export interface RefCotizacion {
   cliente_nombre?: string | null;
 }
 
+/** Alternativa de pago de una cotización: plazo por línea (por posición/orden) y tasa mensual propia. */
+export interface OpcionPago {
+  id: string;
+  nombre: string;
+  tasa_mensual: number;
+  plazos: number[];
+}
+
 export interface Cotizacion {
   id: string;
   /** Número global interno (no se muestra). */
@@ -195,6 +203,10 @@ export interface Cotizacion {
   tasa_mensual: number;
   /** Recargo por financiación en USD, sin IVA. */
   recargo_usd: number;
+  /** Alternativas de pago sobre las mismas líneas (la primera es 'principal'). Vacío = sin opciones. */
+  opciones_pago?: OpcionPago[];
+  /** Id de la opción que eligió el cliente (null = todavía no eligió). */
+  opcion_elegida?: string | null;
   /** Canje: cultivo y precio de referencia (USD/tn). Precio 0 = sin canje. */
   canje_cultivo: string | null;
   canje_precio_usd: number;

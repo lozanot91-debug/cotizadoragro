@@ -1,6 +1,7 @@
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { supabase } from '@/lib/supabase';
 import { esFertilizante } from '@/lib/calculations';
+import { aplicarOpcion } from '@/lib/opcionesPago';
 import { fuentePrincipal, listasVigentes, vigentePorFuente } from '@/lib/fuentesLista';
 import type {
   FuenteLista,
@@ -861,6 +862,30 @@ function crearApi() {
   }
 
   /**
+   * Elige una opción de pago: pisa los plazos de las líneas y la cabecera con los de esa opción
+   * (el subtotal no cambia). Primero las líneas y después la cabecera. Lanza ErrorApp si falla.
+   */
+  async function elegirOpcionPago(cotizId: string, opcionId: string): Promise<Cotizacion> {
+    const cotiz = await fetchCotizacion(cotizId);
+    if (!cotiz) throw new ErrorApp('La cotización ya no existe. Actualizá la pantalla.');
+    const lineas = await fetchLineas(cotizId);
+    const op = (cotiz.opciones_pago ?? []).find((o) => o.id === opcionId);
+    if (!op) throw new ErrorApp('Esa opción de pago ya no existe. Actualizá la pantalla.');
+    const { cotizPatch, lineasPatch } = aplicarOpcion(cotiz, lineas, op);
+    for (const { index, plazo_dias } of lineasPatch) {
+      const l = lineas[index];
+      if (l && l.plazo_dias !== plazo_dias) {
+        await ok(supabase.from('cotizacion_lineas').update({ plazo_dias }).eq('id', l.id));
+      }
+    }
+    const data = await ok(
+      supabase.from('cotizaciones').update({ ...cotizPatch, updated_at: new Date().toISOString() }).eq('id', cotizId).select('*').maybeSingle()
+    );
+    if (!data) throw new ErrorApp('No se pudo guardar la opción elegida.');
+    return data as unknown as Cotizacion;
+  }
+
+  /**
    * Cambia el estado de una cotización haciendo cumplir las reglas (src/lib/estados.ts):
    * Perdida exige motivo; desde Ganada/Perdida solo se reabre a En negociación con comentario.
    * Lee el estado actual de la base (no el de la pantalla) y falla si alguien lo cambió en el medio.
@@ -1397,6 +1422,7 @@ function crearApi() {
     fetchCotizacion,
     fetchLineas,
     saveCotizacion,
+    elegirOpcionPago,
     cambiarEstadoCotizacion,
     fetchCotizacionesConCostoEditado,
     fetchMargenesProducto,
