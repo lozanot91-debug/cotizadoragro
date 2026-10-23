@@ -365,7 +365,6 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
           'Total USD': t.total,
         }
       : { 'Total USD (sin IVA)': t.total }),
-    'Total ARS': t.totalARS,
     ...(datosCanje(cotiz, lineas) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje neto USD/tn': datosCanje(cotiz, lineas)!.neto, 'Canje monto USD': datosCanje(cotiz, lineas)!.monto, 'Canje tn': datosCanje(cotiz, lineas)!.tn, ...(cotiz.canje_params?.destino ? { 'Canje destino': cotiz.canje_params.destino } : {}) } : {}),
     'Estado': cotiz.estado,
   }];
@@ -413,7 +412,6 @@ export function generarWhatsApp(
   } else {
     msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
   }
-  msg += `Total ARS: $${formatUSD(t.totalARS, 0)}\n`;
   const canje = datosCanje(cotiz, lineas);
   if (canje) {
     msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}*\n(${canje.detalle}${canje.conIva && !cotiz.con_iva ? `; sobre el total con IVA de USD ${formatUSD(canje.monto)}` : ''})\n`;
