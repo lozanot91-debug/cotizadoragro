@@ -1,3 +1,4 @@
+import { vaciarCache } from '@/lib/queryClient';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, llegoPorRecuperacion } from '@/lib/supabase';
@@ -80,6 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const userId = sesion?.user.id ?? null;
+
+  // Al entrar, salir o cambiar de cuenta se vacía la caché de datos: nadie ve datos de otra sesión
+  useEffect(() => { vaciarCache(); }, [userId]);
   const email = sesion?.user.email ?? '';
 
   useEffect(() => {

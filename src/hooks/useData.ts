@@ -45,6 +45,7 @@ import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
 import { hoyAR, sumarDias } from '@/lib/fechas';
+import { queryClient, CLAVE_CLIENTES, CLAVE_COTIZACIONES, invalidarClientes, invalidarCotizaciones } from '@/lib/queryClient';
 import { paramsDesdeConfig, type ParamsCanje } from '@/lib/canje';
 import { paramsFormasPagoDesdeConfig, type ParamsFormasPago } from '@/lib/formasPago';
 import { usuarioActual } from '@/lib/usuarioActual';
@@ -508,9 +509,11 @@ function crearApi() {
     const actual = (await ok(supabase.from('cotizaciones').select('estado').eq('id', id).maybeSingle())) as { estado: string } | null;
     if (!actual) throw new ErrorApp('La cotización ya no existe.');
     if (actual.estado === 'Ganada' || actual.estado === 'Perdida') throw new ErrorApp(`La cotización está ${actual.estado}: no se puede cambiar. Reabrila o duplicala.`);
-    return (await ok(supabase.from('cotizaciones')
+    const actualizada = (await ok(supabase.from('cotizaciones')
       .update({ canje_cultivo: canje.cultivo, canje_precio_usd: canje.precio, canje_params: canje.params, updated_at: new Date().toISOString() })
       .eq('id', id).select('*').single())) as Cotizacion;
+    invalidarCotizaciones();
+    return actualizada;
   }
 
   /** Cotizaciones del cliente que tienen canje (para mostrarlas junto al historial de la calculadora). */
@@ -795,21 +798,31 @@ function crearApi() {
   }
 
   async function fetchClientes(): Promise<Cliente[]> {
-    const data = await ok(supabase.from('clientes').select('*').order('nombre'));
-    return (data || []) as Cliente[];
+    return queryClient.fetchQuery({
+      queryKey: CLAVE_CLIENTES,
+      queryFn: async () => {
+        const data = await ok(supabase.from('clientes').select('*').order('nombre'));
+        return (data || []) as Cliente[];
+      },
+    });
   }
 
   async function createCliente(cliente: Omit<Cliente, 'id' | 'created_by' | 'created_at'>): Promise<Cliente | null> {
     const data = await ok(supabase.from('clientes').insert(cliente).select().maybeSingle()).catch(errorCuentaRepetida);
+    invalidarClientes();
     return data as Cliente | null;
   }
 
   async function updateCliente(id: string, updates: Partial<Cliente>) {
     await ok(supabase.from('clientes').update(updates).eq('id', id)).catch(errorCuentaRepetida);
+    invalidarClientes();
+    invalidarCotizaciones(); // las cotizaciones traen el cliente embebido
   }
 
   async function deleteCliente(id: string) {
     await ok(supabase.from('clientes').delete().eq('id', id));
+    invalidarClientes();
+    invalidarCotizaciones();
   }
 
   async function fetchMargenesCliente(clienteId: string): Promise<MargenCliente[]> {
@@ -826,10 +839,12 @@ function crearApi() {
   }
 
   async function fetchCotizaciones(): Promise<(Cotizacion & { cliente?: Cliente })[]> {
-    const data = await fetchAllPaged<Cotizacion & { cliente?: Cliente }>(() =>
-      supabase.from('cotizaciones').select('*, cliente:clientes(*)').order('numero', { ascending: false }) as unknown as AnyFilter
-    );
-    return data;
+    return queryClient.fetchQuery({
+      queryKey: CLAVE_COTIZACIONES,
+      queryFn: () => fetchAllPaged<Cotizacion & { cliente?: Cliente }>(() =>
+        supabase.from('cotizaciones').select('*, cliente:clientes(*)').order('numero', { ascending: false }) as unknown as AnyFilter
+      ),
+    });
   }
 
   async function fetchCotizacion(id: string): Promise<Cotizacion | null> {
@@ -863,6 +878,7 @@ function crearApi() {
         p_lineas: lineas as unknown as Record<string, unknown>[],
       })
     );
+    invalidarCotizaciones();
     if (!data) throw new ErrorApp('El servidor no devolvió la cotización guardada.');
     return data as unknown as Cotizacion;
   }
@@ -888,6 +904,7 @@ function crearApi() {
     const data = await ok(
       supabase.from('cotizaciones').update({ ...cotizPatch, updated_at: new Date().toISOString() }).eq('id', cotizId).select('*').maybeSingle()
     );
+    invalidarCotizaciones();
     if (!data) throw new ErrorApp('No se pudo guardar la opción elegida.');
     return data as unknown as Cotizacion;
   }
@@ -939,6 +956,7 @@ function crearApi() {
     if (!filas || filas.length === 0) {
       throw new ErrorApp('La cotización cambió de estado mientras la editabas. Actualizá la pantalla y probá de nuevo.');
     }
+    invalidarCotizaciones();
     return { anterior, motivoAnterior: actual.motivo_perdida ?? null };
   }
 
@@ -1064,6 +1082,7 @@ function crearApi() {
   /** Cambia la vigencia (en días desde la fecha de la cotización). */
   async function actualizarVigencia(id: string, vigenciaDias: number) {
     await ok(supabase.from('cotizaciones').update({ vigencia_dias: vigenciaDias }).eq('id', id));
+    invalidarCotizaciones();
   }
 
   /** La lista inmediatamente anterior a una fecha (para comparar precios). */
@@ -1372,14 +1391,17 @@ function crearApi() {
   // ============ COTIZACION EXTRAS ============
   async function updateCotizacionProbabilidad(id: string, probabilidad: number | null) {
     await ok(supabase.from('cotizaciones').update({ probabilidad, updated_at: new Date().toISOString() }).eq('id', id));
+    invalidarCotizaciones();
   }
 
   async function updateCotizacionFechaCierre(id: string, fecha: string | null) {
     await ok(supabase.from('cotizaciones').update({ fecha_cierre_estimada: fecha, updated_at: new Date().toISOString() }).eq('id', id));
+    invalidarCotizaciones();
   }
 
   async function deleteCotizacion(id: string) {
     await ok(supabase.from('cotizaciones').delete().eq('id', id));
+    invalidarCotizaciones();
   }
 
   return {
