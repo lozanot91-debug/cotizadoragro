@@ -1247,6 +1247,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       )}
 
       {/* Tabla de líneas */}
+      {lineas.length > 0 && lineas.some((l) => !(l.cantidad > 0)) && (
+        <div className="bg-sky-50 border border-sky-200 text-sky-800 text-sm rounded-xl px-4 py-2">
+          {lineas.every((l) => !(l.cantidad > 0))
+            ? 'Sin cantidades: se emite solo el precio unitario y no cuenta en el pipeline ni en las estadísticas. Para marcarla ganada o perdida, completá las cantidades.'
+            : 'Las líneas sin cantidad se emiten solo con el precio unitario y no suman al total.'}
+        </div>
+      )}
       {lineas.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">

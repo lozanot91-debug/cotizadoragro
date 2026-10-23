@@ -1,3 +1,4 @@
+import { esSoloPrecios } from '@/lib/soloPrecios';
 import { useToast } from '@/components/Toast';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { montoGanado } from '@/lib/ganadaParcial';
@@ -138,11 +139,13 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
         countAbierto: 0,
         countGanado: 0,
       };
+    // Las cotizaciones sin cantidades (solo precios) no cuentan en los indicadores del pipeline
     const abiertas = cotizaciones.filter(
       (c) =>
-        c.estado === 'Borrador' ||
-        c.estado === 'Enviada' ||
-        c.estado === 'En negociación'
+        !esSoloPrecios(c) &&
+        (c.estado === 'Borrador' ||
+          c.estado === 'Enviada' ||
+          c.estado === 'En negociación')
     );
     const totalAbierto = abiertas.reduce((s, c) => s + c.subtotal_usd, 0);
     const valorPonderado = abiertas.reduce((s, c) => {

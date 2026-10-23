@@ -241,3 +241,19 @@ describe('WhatsApp con opciones de pago', () => {
     expect(generarWhatsApp({ ...cotiz, opciones_pago: ops, opcion_elegida: 'o2' } as Cotizacion, ls, config)).toBe(sin);
   });
 });
+
+describe('WhatsApp sin cantidades (solo precios)', () => {
+  it('con todas las líneas en 0 informa solo el precio unitario, sin cantidad ni total', () => {
+    const msg = generarWhatsApp(cotiz, [linea({ producto: 'Glifo', cantidad: 0, total_usd: 0 })], config);
+    expect(msg).toContain('• Glifo');
+    expect(msg).toContain('USD/');
+    expect(msg).not.toContain('Total:');
+    expect(msg).not.toContain('×');
+  });
+  it('con una línea sin cantidad y otra con, la primera va sin total y la segunda completa', () => {
+    const msg = generarWhatsApp(cotiz, [linea({ producto: 'Glifo', cantidad: 0, total_usd: 0 }), linea({ producto: 'Urea', cantidad: 2, total_usd: 200 })], config);
+    expect(msg).toContain('2 ');
+    expect(msg.split('×').length - 1).toBe(1);
+    expect(msg).toContain('Total:');
+  });
+});

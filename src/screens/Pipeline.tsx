@@ -1,3 +1,4 @@
+import { esSoloPrecios } from '@/lib/soloPrecios';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { montoGanado } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
@@ -55,7 +56,8 @@ export default function Pipeline({ onEdit }: Props) {
       data.fetchConfig(), data.fetchCotizaciones(), data.fetchTareas(),
     ]);
     setConfig(cfg);
-    setCotizaciones(cotizs);
+    // Las cotizaciones sin cantidades (solo precios) no cuentan en el pipeline
+    setCotizaciones(cotizs.filter((c) => !esSoloPrecios(c)));
     setTareas(tars);
   }, []);
 

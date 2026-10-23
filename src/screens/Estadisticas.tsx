@@ -1,3 +1,4 @@
+import { esSoloPrecios } from '@/lib/soloPrecios';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { montoGanado, motivosDePerdida } from '@/lib/ganadaParcial';
 import { useData } from '@/hooks/useData';
@@ -14,7 +15,8 @@ export default function Estadisticas() {
 
   const cargar = useCallback(async () => {
     const cotizs = await data.fetchCotizaciones();
-    setCotizaciones(cotizs);
+    // Las cotizaciones sin cantidades (solo precios) no cuentan en las estadísticas
+    setCotizaciones(cotizs.filter((c) => !esSoloPrecios(c)));
   }, []);
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);

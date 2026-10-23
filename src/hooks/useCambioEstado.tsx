@@ -1,3 +1,4 @@
+import { esSoloPrecios, MENSAJE_COMPLETAR_CANTIDADES } from '@/lib/soloPrecios';
 import { useState, type ReactNode } from 'react';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
@@ -72,6 +73,11 @@ export function useCambioEstado({ onCambiado }: { onCambiado: () => void }): {
   async function solicitarCambioEstado(cotiz: Cotizacion, hacia: EstadoCotizacion): Promise<boolean> {
     if (guardando) return false; // ya hay un cambio guardándose
     if (cotiz.estado === hacia) return false;
+    // Una cotización de solo precios (sin cantidades) no se puede cerrar: primero se completan las cantidades
+    if ((hacia === 'Ganada' || hacia === 'Perdida') && esSoloPrecios(cotiz)) {
+      toast.aviso(MENSAJE_COMPLETAR_CANTIDADES);
+      return false;
+    }
     if (estaCerrada(cotiz.estado) && hacia !== 'En negociación') {
       toast.aviso('Para reabrir una cotización pasala a En negociación.');
       return false;

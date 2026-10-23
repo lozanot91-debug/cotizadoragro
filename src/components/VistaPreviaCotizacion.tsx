@@ -1,3 +1,4 @@
+import { sinCantidad, todasSinCantidad } from '@/lib/soloPrecios';
 import { useEffect } from 'react';
 import { X, FileText, ExternalLink } from 'lucide-react';
 import { calcularTotalesIva, esContado } from '@/lib/calculations';
@@ -32,6 +33,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
   const matriz = filasMatriz(c, lineas);
   const totsOp = totalesOpciones(c, lineas);
   const hayPlazos = filas.some((f) => !esContado(f.fin.plazo));
+  const soloPrecios = todasSinCantidad(lineas); // sin cantidades: se informa solo el precio unitario
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={`Vista previa de ${nombreCotizacion(c)}`}>
@@ -61,7 +63,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                     {matriz.map(({ linea, celdas }) => (
                       <tr key={linea.id} className="border-b border-gray-100 align-top">
                         <td className="py-2 pr-2 text-gray-800">{linea.producto}</td>
-                        <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(linea.cantidad, linea.cantidad % 1 === 0 ? 0 : 2)} {unidadLinea(linea) || 'un'}</td>
+                        <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{sinCantidad(linea) ? '—' : `${fmt(linea.cantidad, linea.cantidad % 1 === 0 ? 0 : 2)} ${unidadLinea(linea) || 'un'}`}</td>
                         {celdas.map((ce, j) => (
                           <td key={j} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
                             {fmt(ce.precioUnit)}<span className="text-[11px] text-gray-400"> /{unidadLinea(linea) || 'un'}</span>
@@ -71,7 +73,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
+                  {!soloPrecios && <tfoot>
                     {c.con_iva && (
                       <tr className="text-gray-600">
                         <td className="py-1 pr-2" colSpan={2}>Subtotal</td>
@@ -88,7 +90,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                       <td className="py-2 pr-2" colSpan={2}>{c.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)'}</td>
                       {totsOp.map(({ opcion, totales }) => <td key={opcion.id} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(totales.total)}</td>)}
                     </tr>
-                  </tfoot>
+                  </tfoot>}
                 </table>
               </div>
             </div>
@@ -97,9 +99,9 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
             <table className="w-full text-sm">
               <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
                 <th className="text-left py-2 font-medium">Insumo</th>
-                <th className="text-right py-2 font-medium">Cantidad</th>
+                {!soloPrecios && <th className="text-right py-2 font-medium">Cantidad</th>}
                 <th className="text-right py-2 pl-3 font-medium">Precio</th>
-                <th className="text-right py-2 pl-3 font-medium">Total</th>
+                {!soloPrecios && <th className="text-right py-2 pl-3 font-medium">Total</th>}
               </tr></thead>
               <tbody>
                 {filas.map(({ l, fin, iva }) => (
@@ -108,9 +110,9 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                       <p className="text-gray-800">{l.producto}</p>
                       <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${!esContado(fin.plazo) ? `vence ${formatearFecha(sumarDias(c.fecha, fin.plazo))} (${fin.plazo} días)` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
                     </td>
-                    <td className="py-2 text-right tabular-nums whitespace-nowrap">{fmt(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} {l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</td>
+                    {!soloPrecios && <td className="py-2 text-right tabular-nums whitespace-nowrap">{sinCantidad(l) ? '—' : `${fmt(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} ${l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}`}</td>}
                     <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnit)}<span className="text-[11px] text-gray-400"> /{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></td>
-                    <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap font-medium">{fmt(fin.total)}</td>
+                    {!soloPrecios && <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap font-medium">{sinCantidad(l) ? '—' : fmt(fin.total)}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -121,7 +123,8 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
         </div>
 
         <div className="border-t border-gray-100 px-5 py-3 space-y-1 text-sm">
-          {totsOp.length === 0 && <>
+          {soloPrecios && <p className="text-sm text-gray-500">Sin cantidades: se informa solo el precio unitario.</p>}
+          {totsOp.length === 0 && !soloPrecios && <>
           <div className="flex justify-between text-gray-600"><span>Subtotal{t.recargo > 0 ? ' (con financiación)' : ''}</span><span className="tabular-nums">{fmt(t.subtotal + t.recargo)}</span></div>
           {t.desglose.filter((d) => d.iva > 0).map((d) => (
             <div key={d.tasa} className="flex justify-between text-gray-600"><span>IVA {fmt(d.tasa, 1)} %</span><span className="tabular-nums">{fmt(d.iva)}</span></div>
