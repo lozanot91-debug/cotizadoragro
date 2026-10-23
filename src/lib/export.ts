@@ -442,8 +442,6 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     'Cotización': nombreCotizacion(cotiz),
     'Fecha': cotiz.fecha,
     'Cliente': cotiz.cliente_nombre,
-    'Tipo de cambio': cotiz.tc,
-    'TC flete': cotiz.tc_flete || cotiz.tc,
     'KM': cotiz.km,
     'Modalidad de flete': nombreModalidad(cotiz.flete_modalidad),
     ...(cotiz.aforo_tn && cotiz.flete_modalidad !== 'largo_corto' ? { 'Aforo tramo principal (tn)': cotiz.aforo_tn } : {}),
@@ -496,7 +494,6 @@ export function generarWhatsApp(
   msg += `Cotización ${nombreCotizacion(cotiz)}\n`;
   msg += `Fecha: ${formatDate(cotiz.fecha)}\n`;
   msg += `Cliente: ${cotiz.cliente_nombre || '-'}\n`;
-  msg += `Tipo de cambio: $${cotiz.tc}\n`;
   const fleteTxt = textoFlete(cotiz);
   if (fleteTxt) msg += `Flete: ${fleteTxt}\n`;
   msg += `Vigencia: ${cotiz.vigencia_dias} días\n`;
