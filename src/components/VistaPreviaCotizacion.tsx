@@ -5,6 +5,7 @@ import { financiacionLinea, ivaLinea } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { formatDate, formatUSD } from '@/lib/format';
+import { filasMatriz, totalesOpciones, unidadLinea, pctFinanciacion } from '@/lib/opcionesSalida';
 import type { Cotizacion, CotizacionLinea } from '@/types';
 
 const fmt = (n: number, d = 2) => formatUSD(n, d);
@@ -28,6 +29,8 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
 
   const filas = lineas.map((l) => ({ l, fin: financiacionLinea(l, c), iva: ivaLinea(l, c) }));
   const t = calcularTotalesIva(filas.map(({ l, fin, iva }) => ({ totalUSD: l.total_usd, ivaPercent: iva, recargoPct: fin.pct })), c.tc);
+  const matriz = filasMatriz(c, lineas);
+  const totsOp = totalesOpciones(c, lineas);
   const hayPlazos = filas.some((f) => f.fin.plazo > 0);
 
   return (
@@ -68,6 +71,44 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
             </table>
           )}
           <p className="text-[11px] text-gray-400 mt-2">Precios en USD sin IVA, con flete y financiación incluidos.</p>
+          {totsOp.length > 1 && (
+            <div className="mt-4">
+              <p className="text-sm font-semibold text-gray-800">Opciones de pago</p>
+              <p className="text-[11px] text-gray-400 mb-1">Elegí la que más te convenga; los precios son por unidad.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-xs text-gray-500 border-b border-gray-200">
+                    <th className="text-left py-2 font-medium">Insumo</th>
+                    {totsOp.map(({ opcion }) => <th key={opcion.id} className="text-right py-2 pl-3 font-medium whitespace-nowrap">{opcion.nombre}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {matriz.map(({ linea, celdas }) => (
+                      <tr key={linea.id} className="border-b border-gray-100 align-top">
+                        <td className="py-2 pr-2 text-gray-800">{linea.producto}</td>
+                        {celdas.map((ce, j) => (
+                          <td key={j} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
+                            {fmt(ce.precioUnit)}<span className="text-[11px] text-gray-400"> /{unidadLinea(linea) || 'un'}</span>
+                            <p className="text-[11px] text-gray-400">{ce.plazo > 0 ? `vence ${formatearFecha(ce.vence)}` : 'contado'}</p>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-medium">
+                      <td className="py-2 pr-2 text-gray-800">{c.con_iva ? 'Total con IVA' : 'Total sin IVA'}</td>
+                      {totsOp.map(({ opcion, totales }) => (
+                        <td key={opcion.id} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
+                          USD {fmt(totales.total)}
+                          {totales.recargo > 0 && <p className="text-[11px] font-normal text-gray-400">Incluye {fmt(pctFinanciacion(totales), 1)} % de financiación</p>}
+                        </td>
+                      ))}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-gray-100 px-5 py-3 space-y-1 text-sm">

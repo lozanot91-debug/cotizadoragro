@@ -176,3 +176,25 @@ describe('condicionTxt', () => {
     expect(condicionTxt(90, '2026-12-01')).toBe('vence 01/03/2027 (90 días)');
   });
 });
+
+describe('WhatsApp con opciones de pago', () => {
+  const ls = [linea({ producto: 'Glifo', total_usd: 100 }), linea({ producto: 'Urea', total_usd: 200, precio_usd: 200 })];
+  const ops = [
+    { id: 'principal', nombre: 'Contado', tasa_mensual: 0, plazos: [0, 0] },
+    { id: 'o2', nombre: 'Cosecha', tasa_mensual: 2, plazos: [0, 150] },
+  ];
+  it('agrega el bloque de la alternativa sin tocar el texto principal', () => {
+    const sin = generarWhatsApp(cotiz, ls, config);
+    const con = generarWhatsApp({ ...cotiz, opciones_pago: ops } as Cotizacion, ls, config);
+    expect(sin).not.toContain('Opciones de pago');
+    expect(con.startsWith(sin)).toBe(true);
+    expect(con).toContain('*Opciones de pago*');
+    expect(con).toContain('*Cosecha*');
+    expect(con).toContain('vence 06/03/2027 (150 días)');
+    expect(con).not.toContain('*Contado*');
+  });
+  it('si el cliente eligió una, el texto queda igual', () => {
+    const sin = generarWhatsApp(cotiz, ls, config);
+    expect(generarWhatsApp({ ...cotiz, opciones_pago: ops, opcion_elegida: 'o2' } as Cotizacion, ls, config)).toBe(sin);
+  });
+});

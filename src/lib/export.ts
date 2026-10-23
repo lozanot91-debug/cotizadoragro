@@ -8,6 +8,8 @@ import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { fechaVencimiento } from '@/lib/vencimientos';
 import { LOGO_CERES_TOLVAS } from '@/assets/logoCeresTolvas';
 import { nombreCotizacion, archivoCotizacion } from '@/lib/nombreCotizacion';
+import { opcionesParaMostrar, filasMatriz, totalesOpciones, unidadLinea, pctFinanciacion } from '@/lib/opcionesSalida';
+import { calcularOpcion } from '@/lib/opcionesPago';
 
 function tasaTxt(t: number): string {
   return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(t || 0);
@@ -286,6 +288,79 @@ export async function construirPDF(
     }
   }
 
+  // Opciones de pago (solo si el cliente todavía no eligió): matriz artículo x opción
+  const opciones = opcionesParaMostrar(cotiz);
+  if (opciones.length > 1) {
+    const matriz = filasMatriz(cotiz, lineas);
+    const tots = totalesOpciones(cotiz, lineas);
+    const n = opciones.length;
+    const anchoArt = 50;
+    const anchoCol = (pageWidth - 2 * margin - anchoArt) / n;
+    const xCol = (j: number) => margin + anchoArt + (j + 1) * anchoCol - 2.5; // borde derecho de la columna j
+    const texto = (j: number, i: number) => `${formatUSD(matriz[i].celdas[j].precioUnit, 2)} /${unidadLinea(matriz[i].linea) || 'un'}`;
+    // Achica la letra (sin recortar números) hasta que entre el texto más ancho de cada columna
+    let tamPrecio = 9;
+    doc.setFont('helvetica', 'normal');
+    const entra = () => matriz.every((_, i) => opciones.every((__, j) => { doc.setFontSize(tamPrecio); return doc.getTextWidth(texto(j, i)) <= anchoCol - 3.5; }));
+    while (tamPrecio > 6 && !entra()) tamPrecio -= 0.5;
+
+    const encabezadoOpciones = () => {
+      relleno(PDF.cultivo800);
+      doc.rect(margin, y - 4.8, pageWidth - 2 * margin, 7.5, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+      doc.text('Artículo', margin + 2.5, y);
+      opciones.forEach((o, j) => doc.text(recortar(doc, o.nombre, anchoCol - 3.5), xCol(j), y, { align: 'right' }));
+      y += 7.5;
+    };
+    y += 12;
+    if (y > 200) { doc.addPage(); y = 25; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); color(PDF.cultivo700);
+    doc.text('Opciones de pago', margin, y);
+    y += 4.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); color(PDF.suave);
+    doc.text('Elegí la que más te convenga; los precios son por unidad.', margin, y);
+    y += 8;
+    encabezadoOpciones();
+    matriz.forEach(({ linea, celdas }, i) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      let nombre = doc.splitTextToSize(linea.producto, anchoArt - 4) as string[];
+      if (nombre.length > 2) nombre = [nombre[0], recortar(doc, nombre.slice(1).join(' '), anchoArt - 4)];
+      const altoFila = 10.5 + (nombre.length - 1) * 4;
+      if (y + altoFila > 272) { doc.addPage(); y = 20; encabezadoOpciones(); }
+      if (i % 2 === 1) { relleno(PDF.cultivo50); doc.rect(margin, y - 4.6, pageWidth - 2 * margin, altoFila, 'F'); }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); color(PDF.texto);
+      doc.text(nombre, margin + 2.5, y);
+      celdas.forEach((c, j) => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(tamPrecio); color(PDF.texto);
+        doc.text(texto(j, i), xCol(j), y, { align: 'right' });
+        doc.setFontSize(7); color(PDF.suave);
+        doc.text(c.plazo > 0 ? `vence ${formatearFecha(c.vence)}` : 'contado', xCol(j), y + 4, { align: 'right' });
+      });
+      y += altoFila;
+    });
+    // Totales por opción
+    const filasTot = cotiz.con_iva ? 3 : 1;
+    if (y + 6 + filasTot * 5 + 10 > 272) { doc.addPage(); y = 25; }
+    y += 3;
+    trazo(PDF.linea); doc.line(margin, y - 3, derecha, y - 3);
+    const fila = (label: string, valor: (j: number) => string, negrita = false) => {
+      doc.setFont('helvetica', negrita ? 'bold' : 'normal'); doc.setFontSize(negrita ? 9.5 : 9); color(negrita ? PDF.cultivo800 : PDF.texto);
+      doc.text(label, margin + 2.5, y);
+      opciones.forEach((_, j) => doc.text(valor(j), xCol(j), y, { align: 'right' }));
+      y += 5;
+    };
+    if (cotiz.con_iva) {
+      fila('Subtotal', (j) => formatUSD(tots[j].totales.subtotal + tots[j].totales.recargo, 2));
+      fila('IVA', (j) => formatUSD(tots[j].totales.iva, 2));
+    }
+    fila(cotiz.con_iva ? 'Total USD' : 'Total USD (sin IVA)', (j) => formatUSD(tots[j].totales.total, 2), true);
+    if (tots.some((x) => x.totales.recargo > 0)) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
+      tots.forEach((x, j) => { if (x.totales.recargo > 0) doc.text(`Incluye ${tasaTxt(pctFinanciacion(x.totales))} % de financiación`, xCol(j), y, { align: 'right' }); });
+      y += 4;
+    }
+  }
+
   // Notas
   if (cotiz.notas) {
     y += 10;
@@ -370,6 +445,26 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
   const wsResumen = XLSX.utils.json_to_sheet(resumen);
   XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
 
+  // Opciones de pago (hoja aparte, solo si el cliente todavía no eligió)
+  const opcionesXl = opcionesParaMostrar(cotiz);
+  if (opcionesXl.length > 1) {
+    const matriz = filasMatriz(cotiz, lineas);
+    const tots = totalesOpciones(cotiz, lineas);
+    const aoa: (string | number)[][] = [
+      ['Artículo', 'Cantidad', 'Unidad', ...opcionesXl.flatMap((o) => [`${o.nombre} · Plazo (días)`, `${o.nombre} · Vencimiento`, `${o.nombre} · Precio USD/unid`, `${o.nombre} · Total USD`])],
+      ...matriz.map(({ linea, celdas }) => [
+        linea.producto, linea.cantidad, linea.unid,
+        ...celdas.flatMap((c) => [c.plazo, c.vence ? formatearFecha(c.vence) : '', c.precioUnit, c.total]),
+      ]),
+    ];
+    const filaTot = (label: string, v: (t: TotalesIva) => number) =>
+      [label, '', '', ...tots.flatMap((x) => ['', '', '', v(x.totales)])];
+    aoa.push(filaTot('Subtotal', (t) => t.subtotal), filaTot('Financiación', (t) => t.recargo));
+    if (cotiz.con_iva) aoa.push(filaTot('IVA', (t) => t.iva));
+    aoa.push(filaTot(cotiz.con_iva ? 'Total' : 'Total (sin IVA)', (t) => t.total));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Opciones de pago');
+  }
+
   XLSX.writeFile(wb, `Cotizacion_${archivoCotizacion(cotiz)}.xlsx`);
 }
 
@@ -414,6 +509,23 @@ export function generarWhatsApp(
   const canje = datosCanje(cotiz, lineas);
   if (canje) {
     msg += `\n*Equivale a ${formatUSD(canje.tn)} tn de ${canje.cultivo}*\n(${canje.detalle}${canje.conIva && !cotiz.con_iva ? `; sobre el total con IVA de USD ${formatUSD(canje.monto)}` : ''})\n`;
+  }
+
+  const opcionesWa = opcionesParaMostrar(cotiz);
+  if (opcionesWa.length > 1) {
+    msg += `\n*Opciones de pago*\n`;
+    opcionesWa.slice(1).forEach((op) => {
+      const r = calcularOpcion(cotiz, lineas, op);
+      const hayPlazo = r.lineas.some((x) => x.plazo > 0);
+      msg += `\n*${op.nombre}*\n`;
+      lineas.forEach((l, i) => {
+        const x = r.lineas[i];
+        const pago = hayPlazo ? ` · ${condicionTxt(x.plazo, cotiz.fecha)}` : '';
+        const u = unidadLinea(l) || 'un';
+        msg += `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${formatUSD(x.precioUnit)} USD/${u} = ${formatUSD(x.total)} USD\n`;
+      });
+      msg += `*Total: ${formatUSD(r.totales.total)} USD*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
+    });
   }
 
   return msg;
