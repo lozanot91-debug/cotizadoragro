@@ -1,7 +1,7 @@
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { supabase } from '@/lib/supabase';
 import { esFertilizante } from '@/lib/calculations';
-import { aplicarOpcion } from '@/lib/opcionesPago';
+import { aplicarOpcion, ID_PRINCIPAL } from '@/lib/opcionesPago';
 import { fuentePrincipal, listasVigentes, vigentePorFuente } from '@/lib/fuentesLista';
 import type {
   FuenteLista,
@@ -864,14 +864,15 @@ function crearApi() {
   /**
    * Elige una opción de pago: pisa los plazos de las líneas y la cabecera con los de esa opción
    * (el subtotal no cambia). Primero las líneas y después la cabecera. Lanza ErrorApp si falla.
+   * opcionId null = "volver a las opciones": restaura la foto 'principal' y deja opcion_elegida en NULL.
    */
-  async function elegirOpcionPago(cotizId: string, opcionId: string): Promise<Cotizacion> {
+  async function elegirOpcionPago(cotizId: string, opcionId: string | null): Promise<Cotizacion> {
     const cotiz = await fetchCotizacion(cotizId);
     if (!cotiz) throw new ErrorApp('La cotización ya no existe. Actualizá la pantalla.');
     const lineas = await fetchLineas(cotizId);
-    const op = (cotiz.opciones_pago ?? []).find((o) => o.id === opcionId);
+    const op = (cotiz.opciones_pago ?? []).find((o) => o.id === (opcionId ?? ID_PRINCIPAL));
     if (!op) throw new ErrorApp('Esa opción de pago ya no existe. Actualizá la pantalla.');
-    const { cotizPatch, lineasPatch } = aplicarOpcion(cotiz, lineas, op);
+    const { cotizPatch, lineasPatch } = aplicarOpcion(cotiz, lineas, op, opcionId);
     for (const { index, plazo_dias } of lineasPatch) {
       const l = lineas[index];
       if (l && l.plazo_dias !== plazo_dias) {

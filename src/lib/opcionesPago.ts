@@ -46,7 +46,8 @@ export function calcularOpcion(
   };
 }
 
-export function aplicarOpcion(cotiz: Cotizacion, lineas: CotizacionLinea[], op: OpcionPago) {
+/** `elegida`: id que queda en opcion_elegida (por defecto el de la opción; null = el cliente todavía no eligió). */
+export function aplicarOpcion(cotiz: Cotizacion, lineas: CotizacionLinea[], op: OpcionPago, elegida: string | null = op.id) {
   const { totales } = calcularOpcion(cotiz, lineas, op);
   return {
     cotizPatch: {
@@ -56,7 +57,7 @@ export function aplicarOpcion(cotiz: Cotizacion, lineas: CotizacionLinea[], op: 
       iva_usd: totales.iva,
       total_usd: totales.total,
       total_ars: totales.totalARS,
-      opcion_elegida: op.id,
+      opcion_elegida: elegida,
     },
     lineasPatch: op.plazos.slice(0, lineas.length).map((plazo_dias, index) => ({ index, plazo_dias })),
   };

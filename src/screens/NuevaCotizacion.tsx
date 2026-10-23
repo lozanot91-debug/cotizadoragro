@@ -9,7 +9,7 @@ import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
 import { generarPDF, generarExcel, generarWhatsApp } from '@/lib/export';
 import { registrarCambio, registrarCambios, fmtMargen, type CambioHistorial } from '@/lib/historial';
-import type { Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio, PrecioCompetencia } from '@/types';
+import type { OpcionPago, Campo, ModalidadFlete, Planta, ConvenioFlete, TipoCambioBNA, ProductoConCosto, Cliente, CotizacionLinea, Cotizacion, Configuracion, TarifaFlete, HistorialCambio, PedidoPrecio, PrecioCompetencia } from '@/types';
 import PanelPedidoMesa from '@/components/PanelPedidoMesa';
 import FleteCotizacion from '@/components/FleteCotizacion';
 import EnviarAFacturar from '@/components/EnviarAFacturar';
@@ -27,6 +27,9 @@ import ComparadorFormasPago from '@/components/ComparadorFormasPago';
 import { ultimaCotizacion, type LineaDeCliente } from '@/lib/historialCliente';
 import { ultimoPorCod } from '@/lib/competencia';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import OpcionesPagoEditor from '@/components/OpcionesPagoEditor';
+import { calcularOpcion, normalizarOpciones, opcionPrincipalDesdeLineas, ID_PRINCIPAL } from '@/lib/opcionesPago';
+import { opcionesAEditor, opcionesParaGuardar, editorAOpciones, firmaExtras, type OpcionEditable } from '@/lib/opcionesEditor';
 
 interface LineaEditable {
   key: string;
@@ -109,6 +112,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   // Condiciones de pago: plazo (0 = contado) con tasa mensual, y canje por granos
   const [plazo, setPlazo] = useState('0');
   const [tasaMensual, setTasaMensual] = useState('');
+  /** Opciones de pago NO principales, con los plazos por clave de línea (la principal sale siempre de las líneas). */
+  const [opcionesEd, setOpcionesEd] = useState<OpcionEditable[]>([]);
   /** Lo que se le cotizó antes a este cliente, para mostrar "la última vez" en cada producto. */
   const [historialCliente, setHistorialCliente] = useState<LineaDeCliente[]>([]);
   /** Último precio conocido de la competencia por código (últimos 6 meses) */
@@ -286,6 +291,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           };
         });
         setLineas(lineasEdit);
+        // Las líneas vienen ordenadas por `orden`: los plazos de cada opción se atan a la clave de su línea
+        setOpcionesEd(opcionesAEditor(cotiz.opciones_pago, lineasEdit.map((l) => l.key)));
       }
     } else if (duplicateFromId) {
       // Duplicar: load original and open with vigente lista costs
@@ -655,6 +662,36 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     }));
   }
 
+  // ============ Opciones de pago ============
+  const eleccion = editData?.opcion_elegida ?? null;
+  /** Cabecera mínima para calcular opciones: lo demás sale de las líneas. */
+  function cotizParaOpciones(): Cotizacion {
+    return { ...(editData ?? {}), con_iva: conIva, tc: tcNum, fecha, tasa_mensual: hayFinanciado ? tasaNum : 0, plazo_dias: plazoMax } as Cotizacion;
+  }
+  /** Con elección hecha no se regeneran: se mandan tal cual están guardadas. */
+  function opcionesParaPayload(): { opciones: OpcionPago[]; errores: string[] } {
+    if (eleccion) return { opciones: editData?.opciones_pago ?? [], errores: [] };
+    return opcionesParaGuardar(opcionPrincipalDesdeLineas(cotizParaOpciones(), lineasParaExport()), opcionesEd, lineas.map((l) => l.key));
+  }
+  const hayCambiosSinGuardar = !!editData && (
+    Math.abs(totales.total - editData.total_usd) > 0.01 || Math.abs(totales.subtotal - editData.subtotal_usd) > 0.01 ||
+    plazoMax !== editData.plazo_dias ||
+    firmaExtras(editData.opciones_pago, lineas.length) !== firmaExtras(editorAOpciones(opcionesEd, lineas.map((l) => l.key)), lineas.length)
+  );
+  /** Pasa la cotización a una opción (o vuelve a las opciones con null) y re-lee todo de la base. */
+  async function cambiarOpcionElegida(op: OpcionPago | null) {
+    if (!editId) return;
+    if (hayCambiosSinGuardar) { toast.aviso('Guardá primero la cotización'); return; }
+    if (op && !window.confirm(`¿Pasar la cotización a "${op.nombre}"? Los precios y totales quedan con esa forma de pago.`)) return;
+    try {
+      await data.elegirOpcionPago(editId, op ? op.id : null);
+      await load();
+      toast.exito(op ? `Cotización pasada a "${op.nombre}"` : 'Volvió a las opciones');
+    } catch (e) {
+      toast.error(e);
+    }
+  }
+
   function buildCotizData(): Partial<Cotizacion> {
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
@@ -667,6 +704,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       plazo_dias: plazoMax, tasa_mensual: hayFinanciado ? tasaNum : 0,
       canje_cultivo: conCanje ? canjeNombre : null, canje_precio_usd: conCanje ? canjePrecioNum : 0, canje_params: conCanje ? canjeParamsEf : null,
       total_usd: totales.total, total_ars: totales.totalARS, notas,
+      opciones_pago: opcionesParaPayload().opciones,
       ...(origenId && !editId ? { cotizacion_origen_id: origenId } : {}),
     };
   }
@@ -681,6 +719,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     if (conCanje && (!canjeNombre || canjePrecioNum <= 0)) { setSaveMsg({ type: 'error', text: 'Para el canje cargá el cultivo y el precio del grano (USD/tn), o destildá el canje.' }); setSaving(false); return null; }
     if (kmFaltante) { setSaveMsg({ type: 'error', text: `Hay fertilizantes con flete tildado y falta${faltanKm.length > 1 ? 'n' : ''} ${faltanKm.join(' y ')}. Cargalos o destildá el flete.` }); setSaving(false); return null; }
     if (tarifaFaltante) { setSaveMsg({ type: 'error', text: 'Falta tarifa de flete. No se puede guardar.' }); setSaving(false); return null; }
+
+    const errOpciones = opcionesParaPayload().errores;
+    if (errOpciones.length > 0) { toast.aviso(`Revisá las opciones de pago: ${errOpciones.join('. ')}.`); setSaving(false); return null; }
 
     // If editing, compare with previous lines for historial
     const cambiosHist: CambioHistorial[] = [];
@@ -1246,6 +1287,17 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           </div>
         </div>
       )}
+
+      <OpcionesPagoEditor
+        lineas={lineasCalc.map((l) => ({ key: l.key, producto: l.producto.producto || l.producto.cod, cantidad: l.cantidad, unidad: l.producto.es_fertilizante ? 'tn' : l.producto.unid || '' }))}
+        fecha={fecha} conIva={conIva}
+        principal={(eleccion && normalizarOpciones(editData?.opciones_pago, lineas.length).find((o) => o.id === ID_PRINCIPAL)) || opcionPrincipalDesdeLineas(cotizParaOpciones(), lineasParaExport())}
+        opciones={opcionesEd} onChange={setOpcionesEd} tasaPorDefecto={tasaMensual || '0'}
+        calcular={(op) => calcularOpcion(cotizParaOpciones(), lineasParaExport(), op)}
+        readOnly={esReadOnly || !!eleccion} elegidaId={eleccion}
+        onVolver={editId && eleccion && !esReadOnly ? () => void cambiarOpcionElegida(null) : undefined}
+        onElegir={editId && !eleccion && !esReadOnly && opcionesEd.length > 0 ? (op) => void cambiarOpcionElegida(op) : undefined}
+      />
 
       {/* Resumen y acciones */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
