@@ -44,7 +44,7 @@ import type {
 import type { ProductoLista } from '@/lib/catalogo';
 import type { ResumenCliente } from '@/lib/clientes';
 import { contactoPrincipal, ordenarContactos } from '@/lib/contactos';
-import { hoyAR } from '@/lib/fechas';
+import { hoyAR, sumarDias } from '@/lib/fechas';
 import { paramsDesdeConfig, type ParamsCanje } from '@/lib/canje';
 import { paramsFormasPagoDesdeConfig, type ParamsFormasPago } from '@/lib/formasPago';
 import { usuarioActual } from '@/lib/usuarioActual';
@@ -1153,6 +1153,60 @@ function crearApi() {
     );
   }
 
+  // ---- Consultas acotadas para la pantalla de Inicio (no bajan las tablas enteras) ----
+
+  /**
+   * Solo las cotizaciones que Inicio usa: abiertas, de los últimos 60 días (pipeline, "ya se le cotizó"),
+   * y las del año pasado en la ventana de recompra (aniversario entre -21 y +45 días, con margen).
+   */
+  async function fetchCotizacionesInicio(hoy: string): Promise<(Cotizacion & { cliente?: Cliente })[]> {
+    const recientes = sumarDias(hoy, -62);
+    const anioPasado = sumarDias(hoy, -365);
+    const desdeRecompra = sumarDias(anioPasado, -30);
+    const hastaRecompra = sumarDias(anioPasado, 52);
+    return fetchAllPaged<Cotizacion & { cliente?: Cliente }>(() =>
+      supabase
+        .from('cotizaciones')
+        .select('*, cliente:clientes(*)')
+        .or(`estado.eq.Borrador,estado.eq.Enviada,estado.eq.En negociación,fecha.gte.${recientes},and(fecha.gte.${desdeRecompra},fecha.lte.${hastaRecompra})`)
+        .order('numero', { ascending: false }) as unknown as AnyFilter
+    );
+  }
+
+  /** Tareas ligadas a cotizaciones que sirven para detectar "sin respuesta": pendientes o hechas desde `desdeIso`. */
+  async function fetchTareasParaSinRespuesta(desdeIso: string): Promise<Tarea[]> {
+    const data = await ok(supabase
+      .from('tareas')
+      .select('*')
+      .not('cotizacion_id', 'is', null)
+      .or(`estado.eq.Pendiente,completada_at.gte.${desdeIso}`));
+    return (data || []) as Tarea[];
+  }
+
+  /** Visitas entre dos fechas (inclusive). */
+  async function fetchVisitasEntre(desde: string, hasta: string): Promise<Visita[]> {
+    const data = await ok(supabase
+      .from('visitas')
+      .select('*, cliente:clientes(nombre), cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre)')
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .order('fecha', { ascending: true }));
+    return (data || []) as Visita[];
+  }
+
+  /** Solo los cobros pendientes (los únicos que cuentan en el resumen de Inicio). */
+  async function fetchCobranzasPendientes(): Promise<Cobranza[]> {
+    return fetchAllPaged<Cobranza>(() =>
+      supabase
+        .from('cobranzas')
+        .select('*, cotizacion:cotizaciones(numero, numero_cliente, cliente_nombre, canje_cultivo, canje_precio_usd, canje_params, con_iva)')
+        .eq('estado', 'Pendiente')
+        .order('vencimiento')
+        .order('id') as unknown as AnyFilter
+    );
+  }
+
+
   async function crearCobranzas(filas: { cotizacion_id: string; vencimiento: string; plazo_dias: number; monto_usd: number }[]) {
     if (filas.length === 0) return;
     await ok(supabase.from('cobranzas').insert(filas));
@@ -1426,6 +1480,10 @@ function crearApi() {
     upsertMargenCliente,
     deleteMargenCliente,
     fetchCotizaciones,
+    fetchCotizacionesInicio,
+    fetchTareasParaSinRespuesta,
+    fetchVisitasEntre,
+    fetchCobranzasPendientes,
     fetchCotizacion,
     fetchLineas,
     saveCotizacion,

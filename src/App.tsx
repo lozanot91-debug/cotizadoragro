@@ -5,7 +5,6 @@ import { Loader2 } from 'lucide-react';
 import { ToastProvider } from '@/components/Toast';
 import Layout, { type Screen } from '@/components/Layout';
 import Inicio from '@/screens/Inicio';
-import { vencimientos } from '@/lib/vencimientos';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { lazyConRecarga } from '@/lib/lazy';
 import { supabase } from '@/lib/supabase';
@@ -53,63 +52,31 @@ function AppContent() {
   const [pedidoBadge, setPedidoBadge] = useState(0);
   const [facturaBadge, setFacturaBadge] = useState(0);
 
-  const loadTaskBadge = useCallback(async () => {
-    const hoy = hoyAR();
-    const { count } = await supabase
-      .from('tareas')
-      .select('*', { count: 'exact', head: true })
-      .eq('estado', 'Pendiente')
-      .lte('fecha_vencimiento', hoy);
-    setTaskBadge(count || 0);
+  /** Los 5 contadores del menú, en una sola consulta. */
+  const loadBadges = useCallback(async () => {
+    try {
+      const { data: r, error } = await supabase.rpc('contadores_menu', { p_hoy: hoyAR() });
+      if (error || !r) return;
+      const c = r as { tareas?: number; vencimientos?: number; cobros?: number; pedidos?: number; facturas?: number };
+      setTaskBadge(c.tareas ?? 0);
+      setVencBadge(c.vencimientos ?? 0);
+      setCobroBadge(c.cobros ?? 0);
+      setPedidoBadge(c.pedidos ?? 0);
+      setFacturaBadge(c.facturas ?? 0);
+    } catch {
+      // Los contadores son decorativos: si falla, se dejan como estaban
+    }
   }, []);
 
-  /** Cotizaciones abiertas vencidas o que vencen en los próximos 3 días. */
-  const loadVencBadge = useCallback(async () => {
-    const { data } = await supabase
-      .from('cotizaciones')
-      .select('id, fecha, vigencia_dias, estado, numero')
-      .in('estado', ['Borrador', 'Enviada', 'En negociación'])
-      .limit(1000);
-    setVencBadge(vencimientos((data || []) as never, hoyAR(), 3).length);
-  }, []);
-
-  /** Cobros pendientes que vencen hoy o ya están atrasados. */
-  const loadCobroBadge = useCallback(async () => {
-    const { count } = await supabase
-      .from('cobranzas')
-      .select('*', { count: 'exact', head: true })
-      .eq('estado', 'Pendiente')
-      .lte('vencimiento', hoyAR());
-    setCobroBadge(count || 0);
-  }, []);
-
-  /** Pedidos a mesa con costos cargados sin aplicar, o con corrección pedida. */
-  const loadPedidoBadge = useCallback(async () => {
-    const { count } = await supabase
-      .from('pedidos_precio')
-      .select('*', { count: 'exact', head: true })
-      .or('and(estado.eq.Respondido,aplicado_at.is.null),and(estado.eq.Respondido,correccion_solicitada.eq.true)');
-    setPedidoBadge(count || 0);
-  }, []);
-
-  /** Pedidos de facturación observados: el vendedor tiene que corregirlos y reenviarlos. */
-  const loadFacturaBadge = useCallback(async () => {
-    const { count } = await supabase
-      .from('pedidos_facturacion')
-      .select('*', { count: 'exact', head: true })
-      .eq('estado', 'Observado');
-    setFacturaBadge(count || 0);
-  }, []);
-
-  useEffect(() => { loadTaskBadge(); loadVencBadge(); loadCobroBadge(); loadPedidoBadge(); loadFacturaBadge(); }, [loadTaskBadge, loadVencBadge, loadCobroBadge, loadPedidoBadge, loadFacturaBadge, screen]);
+  useEffect(() => { void loadBadges(); }, [loadBadges, screen]);
 
   // La mesa puede responder mientras la app está abierta: se revisa cada 2 minutos y al volver a la pestaña
   useEffect(() => {
-    const t = setInterval(() => { void loadPedidoBadge(); void loadFacturaBadge(); }, 120000);
-    const alVolver = () => { if (document.visibilityState === 'visible') { void loadPedidoBadge(); void loadFacturaBadge(); } };
+    const t = setInterval(() => { void loadBadges(); }, 120000);
+    const alVolver = () => { if (document.visibilityState === 'visible') void loadBadges(); };
     document.addEventListener('visibilitychange', alVolver);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver); };
-  }, [loadPedidoBadge, loadFacturaBadge]);
+  }, [loadBadges]);
 
   // Al tocar una notificación: llega ?abrir=<id> (app cerrada) o un mensaje del service worker (app abierta)
   useEffect(() => {
@@ -134,12 +101,12 @@ function AppContent() {
       if (d?.tipo === 'abrir-pantalla' && d.pantalla === 'resumen') { setScreen('resumen'); return; }
       if (d?.tipo === 'abrir-cotizacion' && d.cotizacionId) {
         setEditCotizId(d.cotizacionId); setDuplicateFromId(undefined); setScreen('nueva');
-        void loadPedidoBadge();
+        void loadBadges();
       }
     };
     navigator.serviceWorker.addEventListener('message', alMensaje);
     return () => navigator.serviceWorker.removeEventListener('message', alMensaje);
-  }, [loadPedidoBadge]);
+  }, [loadBadges]);
 
   function handleNavigate(s: Screen) {
     setScreen(s);

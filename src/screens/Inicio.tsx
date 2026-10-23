@@ -41,21 +41,24 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
   const mesActual = useMemo(() => mesActualAR(), []);
 
   const cargar = useCallback(async () => {
-    const [cfg, cotizs, tareasPend, todasTareas, visitasData, cobrosData] = await Promise.all([
-      data.fetchConfig(),
-      data.fetchCotizaciones(),
+    // La config va primero porque define cuántos días mira "sin respuesta"
+    const cfg = await data.fetchConfig();
+    const diasSinRespuesta = cfg?.sin_respuesta_dias ?? 30;
+    const desdeIso = new Date(Date.now() - (diasSinRespuesta + 1) * 86400000).toISOString().slice(0, 10);
+    const [cotizs, tareasPend, tareasCotiz, visitasData, cobrosData] = await Promise.all([
+      data.fetchCotizacionesInicio(hoy),
       data.fetchTareasPendientes(),
-      data.fetchTareas(),
-      data.fetchVisitas(),
-      data.fetchCobranzas(),
+      data.fetchTareasParaSinRespuesta(desdeIso),
+      data.fetchVisitasEntre(hoy, manana),
+      data.fetchCobranzasPendientes(),
     ]);
     setConfig(cfg);
     setCotizaciones(cotizs);
     setTareasPendientes(tareasPend);
-    setTareas(todasTareas);
+    setTareas(tareasCotiz);
     setVisitas(visitasData);
     setCobros(cobrosData);
-  }, []);
+  }, [hoy, manana]);
 
   const { load, reintentar, errorCarga } = useCargaSegura(cargar, setLoading);
 
