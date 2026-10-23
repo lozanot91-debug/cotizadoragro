@@ -102,6 +102,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
         await data.updateCliente(editando.id, v.datos);
         const ent = `Cliente ${v.datos.nombre}`;
         if (prev.nombre !== v.datos.nombre) await registrarCambio({ tipo: 'margen', entidad: `Cliente ${prev.nombre}`, campo: 'nombre', valor_anterior: prev.nombre, valor_nuevo: v.datos.nombre });
+        if ((prev.numero_cuenta || null) !== v.datos.numero_cuenta) await registrarCambio({ tipo: 'cliente', entidad: ent, campo: 'número de cuenta', valor_anterior: prev.numero_cuenta || null, valor_nuevo: v.datos.numero_cuenta });
         if (prev.estado !== v.datos.estado) await registrarCambio({ tipo: 'cliente', entidad: ent, campo: 'estado', valor_anterior: prev.estado, valor_nuevo: v.datos.estado });
         if ((prev.vendedor_id || null) !== v.datos.vendedor_id) await registrarCambio({ tipo: 'cliente', entidad: ent, campo: 'vendedor', valor_anterior: nombreUsuario(prev.vendedor_id), valor_nuevo: nombreUsuario(v.datos.vendedor_id) });
         if (detalle?.id === editando.id) setDetalle({ ...detalle, ...v.datos });
@@ -211,6 +212,9 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
               <Campo id="cli-razon" label="Razón social">
                 <input id="cli-razon" value={form.razon_social} onChange={(e) => setForm({ ...form, razon_social: e.target.value })} className={INPUT} placeholder="Ej.: El Ombú S.A." />
               </Campo>
+              <Campo id="cli-cuenta" label="Nº de cuenta">
+                <input id="cli-cuenta" value={form.numero_cuenta} onChange={(e) => setForm({ ...form, numero_cuenta: e.target.value })} className={INPUT} placeholder="Ej: 01-002363" />
+              </Campo>
               <Campo id="cli-cuit" label="CUIT">
                 <input id="cli-cuit" inputMode="numeric" value={form.cuit} onChange={(e) => setForm({ ...form, cuit: e.target.value })} className={INPUT} />
               </Campo>
@@ -317,6 +321,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
                     <BadgeEstado estado={detalle.estado} />
                   </div>
                   {detalle.razon_social && detalle.razon_social !== detalle.nombre && <p className="text-sm text-gray-500">{detalle.razon_social}</p>}
+                  {detalle.numero_cuenta && <p className="text-xs text-gray-400">Cta. {detalle.numero_cuenta}</p>}
                 </div>
                 <div className="flex items-center gap-2">
                   {(() => {
@@ -567,7 +572,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
             type="text"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre, CUIT, localidad, contacto o teléfono..."
+            placeholder="Buscar por nombre, Nº de cuenta, CUIT, localidad, contacto o teléfono..."
             className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
           />
         </div>
@@ -616,6 +621,7 @@ export default function Clientes({ onCalcularCanje, onEditCotiz }: { onCalcularC
                       {res?.hectareas ? `${formatUSD(res.hectareas, 0)} ha` : ''}
                       {!c.localidad && !c.zona && !res?.hectareas && c.cuit && `CUIT ${c.cuit}`}
                     </p>
+                    {c.numero_cuenta && <p className="text-xs text-gray-400 truncate">Cta. {c.numero_cuenta}</p>}
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); abrirForm(c); }}

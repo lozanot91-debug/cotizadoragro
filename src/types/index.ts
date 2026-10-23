@@ -102,6 +102,8 @@ export interface Cliente {
   id: string;
   nombre: string;
   cuit: string | null;
+  /** Nº de cuenta interno (ej. 01-002363). Único entre clientes. */
+  numero_cuenta?: string | null;
   zona: string | null;
   condiciones_pago: string | null;
   razon_social: string | null;

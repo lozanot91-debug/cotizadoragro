@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { coincideCliente } from '@/lib/clientesBusqueda';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free';
@@ -630,7 +631,7 @@ function AgregarACampo({ parcela, yaEn, onCerrar, onGuardado }: { parcela: Parce
 
   const visibles = useMemo(() => {
     const f = filtro.trim().toLowerCase();
-    return f ? clientes.filter((c) => c.nombre.toLowerCase().includes(f) || (c.razon_social ?? '').toLowerCase().includes(f)) : clientes;
+    return f ? clientes.filter((c) => coincideCliente(c, f)) : clientes;
   }, [clientes, filtro]);
 
   const esNuevo = campoId === NUEVO;
@@ -680,7 +681,7 @@ function AgregarACampo({ parcela, yaEn, onCerrar, onGuardado }: { parcela: Parce
           <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} aria-label="Cliente" size={Math.min(6, Math.max(2, visibles.length + 1))}
             className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="" disabled>{clientes.length ? `${visibles.length} cliente${visibles.length === 1 ? '' : 's'}` : 'Cargando…'}</option>
-            {visibles.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            {visibles.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.numero_cuenta ? ` · ${c.numero_cuenta}` : ''}</option>)}
           </select>
         </div>
 
@@ -811,7 +812,7 @@ function ElegirCampo({ titulo, nombreSugerido, onCerrar, onElegido }: { titulo: 
 
   const visibles = useMemo(() => {
     const f = filtro.trim().toLowerCase();
-    return f ? clientes.filter((c) => c.nombre.toLowerCase().includes(f) || (c.razon_social ?? '').toLowerCase().includes(f)) : clientes;
+    return f ? clientes.filter((c) => coincideCliente(c, f)) : clientes;
   }, [clientes, filtro]);
   const cliente = clientes.find((c) => c.id === clienteId);
   const esNuevo = campoId === NUEVO;
@@ -845,7 +846,7 @@ function ElegirCampo({ titulo, nombreSugerido, onCerrar, onElegido }: { titulo: 
           <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} aria-label="Cliente" size={Math.min(6, Math.max(2, visibles.length + 1))}
             className="w-full px-2 py-1 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500">
             <option value="" disabled>{clientes.length ? `${visibles.length} cliente${visibles.length === 1 ? '' : 's'}` : 'Cargando…'}</option>
-            {visibles.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            {visibles.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.numero_cuenta ? ` · ${c.numero_cuenta}` : ''}</option>)}
           </select>
         </div>
         {clienteId && (

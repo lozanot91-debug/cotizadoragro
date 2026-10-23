@@ -1,5 +1,6 @@
 /** Ficha del cliente: formulario, filtros de la lista y búsqueda. */
 import type { Cliente, EstadoCliente } from '@/types';
+import { coincideCliente } from '@/lib/clientesBusqueda';
 
 export const ESTADOS_CLIENTE: EstadoCliente[] = ['Activo', 'Prospecto', 'Inactivo'];
 
@@ -7,6 +8,7 @@ export interface FormCliente {
   nombre: string;
   razon_social: string;
   cuit: string;
+  numero_cuenta: string;
   domicilio: string;
   localidad: string;
   zona: string;
@@ -18,27 +20,28 @@ export interface FormCliente {
 
 export function formClienteVacio(vendedorId = ''): FormCliente {
   return {
-    nombre: '', razon_social: '', cuit: '', domicilio: '', localidad: '', zona: '',
+    nombre: '', razon_social: '', cuit: '', numero_cuenta: '', domicilio: '', localidad: '', zona: '',
     condiciones_pago: '', vendedor_id: vendedorId, estado: 'Activo', observaciones: '',
   };
 }
 
 export function formDeCliente(c: Cliente): FormCliente {
   return {
-    nombre: c.nombre, razon_social: c.razon_social || '', cuit: c.cuit || '', domicilio: c.domicilio || '',
+    nombre: c.nombre, razon_social: c.razon_social || '', cuit: c.cuit || '', numero_cuenta: c.numero_cuenta || '', domicilio: c.domicilio || '',
     localidad: c.localidad || '', zona: c.zona || '', condiciones_pago: c.condiciones_pago || '',
     vendedor_id: c.vendedor_id || '', estado: c.estado || 'Activo', observaciones: c.observaciones || '',
   };
 }
 
 export type DatosCliente = Pick<Cliente,
-  'nombre' | 'razon_social' | 'cuit' | 'domicilio' | 'localidad' | 'zona' | 'condiciones_pago' | 'vendedor_id' | 'estado' | 'observaciones'>;
+  'nombre' | 'razon_social' | 'cuit' | 'numero_cuenta' | 'domicilio' | 'localidad' | 'zona' | 'condiciones_pago' | 'vendedor_id' | 'estado' | 'observaciones'>;
 
 export function validarCliente(f: FormCliente): { ok: true; datos: DatosCliente } | { ok: false; error: string } {
   const t = (s: string) => s.trim() || null;
   const nombre = f.nombre.trim();
   if (!nombre) return { ok: false, error: 'Poné el nombre del cliente.' };
   if ((f.razon_social.trim()).length > 160) return { ok: false, error: 'La razón social es muy larga.' };
+  if (f.numero_cuenta.trim().length > 40) return { ok: false, error: 'El número de cuenta es muy largo.' };
   if ((f.domicilio.trim()).length > 200) return { ok: false, error: 'El domicilio es muy largo.' };
   if ((f.localidad.trim()).length > 120) return { ok: false, error: 'La localidad es muy larga.' };
   if ((f.observaciones.trim()).length > 2000) return { ok: false, error: 'Las observaciones son muy largas (máximo 2000 caracteres).' };
@@ -46,7 +49,7 @@ export function validarCliente(f: FormCliente): { ok: true; datos: DatosCliente 
   return {
     ok: true,
     datos: {
-      nombre, razon_social: t(f.razon_social), cuit: t(f.cuit), domicilio: t(f.domicilio),
+      nombre, razon_social: t(f.razon_social), cuit: t(f.cuit), numero_cuenta: t(f.numero_cuenta), domicilio: t(f.domicilio),
       localidad: t(f.localidad), zona: t(f.zona), condiciones_pago: t(f.condiciones_pago),
       vendedor_id: f.vendedor_id || null, estado: f.estado, observaciones: t(f.observaciones),
     },
@@ -88,7 +91,7 @@ export function filtrarClientes(
     if (f.vendedor === 'sin' ? !!c.vendedor_id : f.vendedor && c.vendedor_id !== f.vendedor) return false;
     if (!q) return true;
     const texto = normalizar([c.nombre, c.razon_social, c.localidad, c.zona, resumen[c.id]?.textoContactos].filter(Boolean).join(' '));
-    if (texto.includes(q)) return true;
+    if (texto.includes(q) || coincideCliente(c, f.busqueda)) return true;
     // Por número: CUIT o teléfono, sin importar guiones y espacios
     if (qDigitos.length >= 4 && qDigitos.length === f.busqueda.replace(/[\s\-./()+]/g, '').length) {
       return [c.cuit, ...(resumen[c.id]?.telefonos || [])].some((x) => (x || '').replace(/\D/g, '').includes(qDigitos));

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { coincideCliente } from '@/lib/clientesBusqueda';
 import { elegirConvenio, elegirConvenioVigente } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
@@ -425,8 +426,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   const clientesFiltrados = useMemo(() => {
     if (!clienteBusqueda) return [];
-    const q = clienteBusqueda.toLowerCase();
-    return clientes.filter((c) => c.nombre.toLowerCase().includes(q)).slice(0, 5);
+    return clientes.filter((c) => coincideCliente(c, clienteBusqueda)).slice(0, 8);
   }, [clienteBusqueda, clientes]);
 
   const productosFiltrados = useMemo(() => {
@@ -1041,7 +1041,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                   {clientesFiltrados.map((c) => (
                     <button key={c.id} onClick={() => seleccionarCliente(c)} className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-sm border-b border-gray-100 last:border-0">
-                      <span className="font-medium">{c.nombre}</span>{c.zona && <span className="text-gray-400 ml-2">{c.zona}</span>}
+                      <span className="font-medium">{c.nombre}</span>{c.numero_cuenta && <span className="text-gray-400 ml-2 text-xs">· {c.numero_cuenta}</span>}{c.zona && <span className="text-gray-400 ml-2">{c.zona}</span>}
                     </button>
                   ))}
                 </div>

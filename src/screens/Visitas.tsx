@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { coincideCliente } from '@/lib/clientesBusqueda';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formatDate } from '@/lib/format';
@@ -264,7 +265,7 @@ export default function Visitas() {
 
   const clientesFiltrados = useMemo(() => {
     if (!clienteBusqueda) return [];
-    return clientes.filter((c) => c.nombre.toLowerCase().includes(clienteBusqueda.toLowerCase())).slice(0, 6);
+    return clientes.filter((c) => coincideCliente(c, clienteBusqueda)).slice(0, 8);
   }, [clientes, clienteBusqueda]);
 
   function renderVisitaCard(v: Visita) {
@@ -398,7 +399,7 @@ export default function Visitas() {
                 <input type="text" value={clienteBusqueda} onChange={(e) => { setClienteBusqueda(e.target.value); setShowClienteResults(true); }} placeholder="Buscar cliente..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none" />
                 {showClienteResults && clientesFiltrados.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                    {clientesFiltrados.map((c) => <button key={c.id} onClick={() => { setForm({ ...form, cliente_id: c.id }); setClienteBusqueda(c.nombre); setShowClienteResults(false); }} className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-sm border-b border-gray-100 last:border-0">{c.nombre}</button>)}
+                    {clientesFiltrados.map((c) => <button key={c.id} onClick={() => { setForm({ ...form, cliente_id: c.id }); setClienteBusqueda(c.nombre); setShowClienteResults(false); }} className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-sm border-b border-gray-100 last:border-0">{c.nombre}{c.numero_cuenta && <span className="text-gray-400 text-xs"> · {c.numero_cuenta}</span>}</button>)}
                   </div>
                 )}
               </div>

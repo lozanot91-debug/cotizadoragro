@@ -788,18 +788,24 @@ function crearApi() {
     return (n as number) ?? 0;
   }
 
+  function errorCuentaRepetida(e: unknown): never {
+    const c = (e instanceof ErrorApp ? e.causa : e) as { code?: string; message?: string } | undefined;
+    if (c?.code === '23505' && /clientes_numero_cuenta_unico/.test(c.message || '')) throw new ErrorApp('Ese número de cuenta ya lo tiene otro cliente', e);
+    throw e;
+  }
+
   async function fetchClientes(): Promise<Cliente[]> {
     const data = await ok(supabase.from('clientes').select('*').order('nombre'));
     return (data || []) as Cliente[];
   }
 
   async function createCliente(cliente: Omit<Cliente, 'id' | 'created_by' | 'created_at'>): Promise<Cliente | null> {
-    const data = await ok(supabase.from('clientes').insert(cliente).select().maybeSingle());
+    const data = await ok(supabase.from('clientes').insert(cliente).select().maybeSingle()).catch(errorCuentaRepetida);
     return data as Cliente | null;
   }
 
   async function updateCliente(id: string, updates: Partial<Cliente>) {
-    await ok(supabase.from('clientes').update(updates).eq('id', id));
+    await ok(supabase.from('clientes').update(updates).eq('id', id)).catch(errorCuentaRepetida);
   }
 
   async function deleteCliente(id: string) {
