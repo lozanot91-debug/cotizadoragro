@@ -2,7 +2,7 @@ import type { OpcionPago } from '@/types';
 import { MAX_OPCIONES, ID_PRINCIPAL, type calcularOpcion } from '@/lib/opcionesPago';
 import { nombreOpcionPorDefecto, nuevoIdOpcion, type OpcionEditable } from '@/lib/opcionesEditor';
 import { diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
-import { textoMesesTasa } from '@/lib/calculations';
+import { textoMesesTasa, esContado } from '@/lib/calculations';
 import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
 
 export interface LineaOpcion { key: string; producto: string; cantidad: number; unidad: string }
@@ -135,7 +135,7 @@ export default function OpcionesPagoEditor({
                               <input type="date" min={fecha} value={vencimientoDesdeDias(fecha, dias)} disabled={readOnly} aria-label={`Vencimiento de ${l.producto} en ${o.nombre}`}
                                 onChange={(e) => cambiar(o.id, { plazoPorKey: { ...o.plazoPorKey, [l.key]: diasDesdeVencimiento(fecha, e.target.value) } })}
                                 className={`w-36 px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${dias > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} />
-                              <span className="block text-xs text-gray-400">{dias === 0 ? 'contado' : `(${dias} días${op.tasa_mensual > 0 ? ` · ${textoMesesTasa(dias)}` : ''})`}</span>
+                              <span className="block text-xs text-gray-400">{dias === 0 ? 'contado' : `(${dias} días${op.tasa_mensual > 0 || esContado(dias) ? ` · ${textoMesesTasa(dias)}` : ''})`}</span>
                             </td>
                             <td className="px-2 py-2 text-right whitespace-nowrap">{r ? formatUSD(r.precioUnit) : '-'}<span className="text-xs text-gray-400"> /{l.unidad}</span></td>
                             <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{r ? formatUSD(r.total) : '-'}</td>

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { X, FileText, ExternalLink } from 'lucide-react';
-import { calcularTotalesIva } from '@/lib/calculations';
-import { financiacionLinea, ivaLinea } from '@/lib/export';
+import { calcularTotalesIva, esContado } from '@/lib/calculations';
+import { financiacionLinea, ivaLinea, textoFormaPago } from '@/lib/export';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { formatDate, formatUSD } from '@/lib/format';
@@ -31,7 +31,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
   const t = calcularTotalesIva(filas.map(({ l, fin, iva }) => ({ totalUSD: l.total_usd, ivaPercent: iva, recargoPct: fin.pct })), c.tc);
   const matriz = filasMatriz(c, lineas);
   const totsOp = totalesOpciones(c, lineas);
-  const hayPlazos = filas.some((f) => f.fin.plazo > 0);
+  const hayPlazos = filas.some((f) => !esContado(f.fin.plazo));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={`Vista previa de ${nombreCotizacion(c)}`}>
@@ -42,6 +42,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
             <p className="text-[11px] uppercase tracking-wider text-gray-400 flex items-center gap-1"><FileText className="w-3.5 h-3.5" /> Cotización</p>
             <h3 className="font-semibold text-gray-900 text-lg truncate">{nombreCotizacion(c)}</h3>
             <p className="text-xs text-gray-500">{formatDate(c.fecha)} · {c.estado} · TC {fmt(c.tc)}{c.canje_precio_usd > 0 ? ` · canje ${c.canje_cultivo || 'grano'} a USD ${fmt(c.canje_precio_usd)}/tn` : ''}</p>
+            {totsOp.length === 0 && filas.length > 0 && <p className="text-xs text-gray-500">Forma de pago: {textoFormaPago(c, lineas)}</p>}
           </div>
           <button onClick={onCerrar} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" aria-label="Cerrar"><X className="w-5 h-5" /></button>
         </div>
@@ -64,7 +65,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                         {celdas.map((ce, j) => (
                           <td key={j} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">
                             {fmt(ce.precioUnit)}<span className="text-[11px] text-gray-400"> /{unidadLinea(linea) || 'un'}</span>
-                            <p className="text-[11px] text-gray-400">{ce.plazo > 0 ? `vence ${formatearFecha(ce.vence)}` : 'contado'}</p>
+                            <p className="text-[11px] text-gray-400">{!esContado(ce.plazo) ? `vence ${formatearFecha(ce.vence)}` : 'contado'}</p>
                           </td>
                         ))}
                       </tr>
@@ -105,7 +106,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                   <tr key={l.id} className="border-b border-gray-100 align-top">
                     <td className="py-2 pr-2">
                       <p className="text-gray-800">{l.producto}</p>
-                      <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${fin.plazo > 0 ? `vence ${formatearFecha(sumarDias(c.fecha, fin.plazo))} (${fin.plazo} días)` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
+                      <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${!esContado(fin.plazo) ? `vence ${formatearFecha(sumarDias(c.fecha, fin.plazo))} (${fin.plazo} días)` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
                     </td>
                     <td className="py-2 text-right tabular-nums whitespace-nowrap">{fmt(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} {l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</td>
                     <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnit)}<span className="text-[11px] text-gray-400"> /{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></td>

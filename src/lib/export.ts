@@ -2,7 +2,7 @@ import type { jsPDF } from 'jspdf';
 import { nombreModalidad, textoFlete } from '@/lib/fleteTramos';
 import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/types';
 import { formatUSD, formatDate } from '@/lib/format';
-import { calcularTotalesIva, recargoPorcentaje, type TotalesIva } from '@/lib/calculations';
+import { calcularTotalesIva, recargoPorcentaje, esContado, type TotalesIva } from '@/lib/calculations';
 import { netoGuardado, resumenLiquidacion, toneladasPorMonto } from '@/lib/canje';
 import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { fechaVencimiento } from '@/lib/vencimientos';
@@ -40,7 +40,18 @@ function hayFinanciacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): boolean 
 
 /** "Contado" o "vence 06/12/2026 (60 días)" (vencimiento = fecha de la cotización + días). */
 export function condicionTxt(plazo: number, base: string): string {
-  return plazo > 0 ? `vence ${formatearFecha(sumarDias(base, plazo))} (${plazo} días)` : 'Contado';
+  return !esContado(plazo) ? `vence ${formatearFecha(sumarDias(base, plazo))} (${plazo} días)` : 'Contado';
+}
+
+/**
+ * Forma de pago para el cliente (cotización sin opciones). Nunca menciona tasa ni financiación.
+ * Mixto: "Según artículo (ver columna Pago)" si la tabla muestra esa columna; si no, "Contado y a plazo según artículo".
+ */
+export function textoFormaPago(cotiz: Cotizacion, lineas: CotizacionLinea[]): string {
+  const plazos = lineas.map((l) => plazoLinea(l, cotiz));
+  if (plazos.every((p) => esContado(p))) return 'Contado';
+  if (plazos.every((p) => p === plazos[0])) return `${plazos[0]} días (vence ${formatearFecha(sumarDias(cotiz.fecha, plazos[0]))})`;
+  return hayFinanciacion(cotiz, lineas) ? 'Según artículo (ver columna Pago)' : 'Contado y a plazo según artículo';
 }
 
 /** Totales calculados desde las líneas (cada una con su IVA y su financiación), para que PDF, WhatsApp y Excel coincidan. */
@@ -174,10 +185,11 @@ export async function construirPDF(
   dato('Válida hasta', `${formatDate(fechaVencimiento(cotiz))}  (${cotiz.vigencia_dias} días)`, colDer, y);
   y += 11;
   const flete = textoFlete(cotiz);
+  const opciones = opcionesParaMostrar(cotiz);
+  if (opciones.length === 0) dato('Forma de pago', textoFormaPago(cotiz, lineas), margin, y);
   if (flete) dato('Flete', flete, colDer, y);
   y += 15;
 
-  const opciones = opcionesParaMostrar(cotiz);
   const totalX = derecha - 3;
   if (opciones.length === 0) {
     // Tabla de productos. Columnas: x = borde derecho de cada columna numérica
@@ -231,7 +243,7 @@ export async function construirPDF(
       if (iPago >= 0) {
         // La columna es angosta: en el PDF va solo la fecha de vencimiento
         doc.setFontSize(8);
-        doc.text(fin.plazo > 0 ? formatearFecha(sumarDias(cotiz.fecha, fin.plazo)) : 'Contado', cols[iPago].x, y, { align: 'right' });
+        doc.text(!esContado(fin.plazo) ? formatearFecha(sumarDias(cotiz.fecha, fin.plazo)) : 'Contado', cols[iPago].x, y, { align: 'right' });
         doc.setFontSize(9);
       }
       if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
@@ -318,7 +330,7 @@ export async function construirPDF(
         doc.setFont('helvetica', 'normal'); doc.setFontSize(tamPrecio); color(PDF.texto);
         doc.text(texto(j, i), xCol(j), y, { align: 'right' });
         doc.setFontSize(7); color(PDF.suave);
-        doc.text(c.plazo > 0 ? `vence ${formatearFecha(c.vence)}` : 'contado', xCol(j), y + 4, { align: 'right' });
+        doc.text(!esContado(c.plazo) ? `vence ${formatearFecha(c.vence)}` : 'contado', xCol(j), y + 4, { align: 'right' });
       });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
       doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), margin + 2.5, y + 4 + extra);
@@ -488,9 +500,11 @@ export function generarWhatsApp(
   const fleteTxt = textoFlete(cotiz);
   if (fleteTxt) msg += `Flete: ${fleteTxt}\n`;
   msg += `Vigencia: ${cotiz.vigencia_dias} días\n`;
+  const conFin = hayFinanciacion(cotiz, lineas);
+  // Con financiación cada fila ya dice su plazo; si no, se aclara acá
+  if (opcionesParaMostrar(cotiz).length === 0 && !conFin) msg += `Forma de pago: ${textoFormaPago(cotiz, lineas)}\n`;
   msg += `\n`;
 
-  const conFin = hayFinanciacion(cotiz, lineas);
   lineas.forEach((l) => {
     // Flete y financiación van incluidos en el precio de cada fila
     const fin = financiacionLinea(l, cotiz);
@@ -523,7 +537,7 @@ export function generarWhatsApp(
     msg += `\n*Opciones de pago*\n`;
     opcionesWa.slice(1).forEach((op) => {
       const r = calcularOpcion(cotiz, lineas, op);
-      const hayPlazo = r.lineas.some((x) => x.plazo > 0);
+      const hayPlazo = r.lineas.some((x) => !esContado(x.plazo));
       msg += `\n*${op.nombre}*\n`;
       lineas.forEach((l, i) => {
         const x = r.lineas[i];

@@ -5,6 +5,7 @@ import { formatUSD, formatInputNumber, parseNumberInput, formatDate } from '@/li
 import { calcularOpcion } from '@/lib/opcionesPago';
 import { opcionesParaMostrar, pctFinanciacion } from '@/lib/opcionesSalida';
 import { vencimientoDesdeDias } from '@/lib/fechas';
+import { esContado } from '@/lib/calculations';
 import { subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
 import { MOTIVOS_PERDIDA, esReapertura, motivoFinal } from '@/lib/estados';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -156,7 +157,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
                     <input type="radio" name="opcion-pago" value={op.id} checked={opcionId === op.id} onChange={() => setOpcionId(op.id)} className="mt-1 accent-emerald-600" />
                     <span className="flex-1 text-sm text-gray-800">
                       <span className="font-medium">{op.nombre}</span> · USD {formatUSD(totales.total, 2)}
-                      {maxPlazo > 0 && (
+                      {!esContado(maxPlazo) && (
                         <span className="block text-xs text-gray-400">
                           Incluye {formatUSD(pctFinanciacion(totales), 1)} % de financiación · vence el {formatDate(vencimientoDesdeDias(cotiz.fecha, maxPlazo))}
                         </span>

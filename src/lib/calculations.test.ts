@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularLinea, buscarTarifa, mesesDeTasa, textoMesesTasa, margenDesdePrecio, precioConMargen, limitesPrecio } from './calculations';
+import { calcularLinea, buscarTarifa, mesesDeTasa, textoMesesTasa, recargoPorcentaje, esContado, DIAS_CONTADO, margenDesdePrecio, precioConMargen, limitesPrecio } from './calculations';
 import type { ProductoConCosto, TarifaFlete } from '@/types';
 
 const tarifas: TarifaFlete[] = [
@@ -57,7 +57,20 @@ describe('calcularLinea aforo por tramo', () => {
 
 describe('mesesDeTasa', () => {
   it('mes completo, el parcial sube', () => {
-    for (const [d, m] of [[30, 1], [60, 2], [90, 3], [120, 4], [150, 5], [180, 6], [360, 12], [1, 1], [31, 2], [45, 2], [76, 3]]) expect(mesesDeTasa(d)).toBe(m);
+    for (const [d, m] of [[30, 1], [60, 2], [90, 3], [120, 4], [150, 5], [180, 6], [360, 12], [11, 1], [31, 2], [45, 2], [76, 3]]) expect(mesesDeTasa(d)).toBe(m);
+  });
+  it('hasta 10 días es contado: 0 meses', () => {
+    expect(DIAS_CONTADO).toBe(10);
+    for (const [d, m] of [[0, 0], [1, 0], [10, 0], [11, 1], [30, 1], [31, 2], [60, 2], [76, 3], [150, 5]]) expect(mesesDeTasa(d)).toBe(m);
+    expect(esContado(10)).toBe(true);
+    expect(esContado(11)).toBe(false);
+  });
+  it('recargoPorcentaje: 10 días sin recargo, 11 días un mes', () => {
+    expect(recargoPorcentaje(10, 1.5)).toBe(0);
+    expect(recargoPorcentaje(11, 1.5)).toBe(1.5);
+  });
+  it('textoMesesTasa de 1 a 10 días dice contado', () => {
+    expect(textoMesesTasa(8)).toContain('contado');
   });
   it('sin plazo válido = 0', () => {
     for (const d of [0, -5, NaN]) expect(mesesDeTasa(d)).toBe(0);

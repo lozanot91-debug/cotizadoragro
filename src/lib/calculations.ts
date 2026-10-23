@@ -222,15 +222,24 @@ export interface TotalesIva {
   ivaEfectivo: number;
 }
 
-/** Meses de tasa: se cobra por mes completo, el parcial se redondea para arriba (76 días = 3). 0 si no hay plazo. */
+/** Hasta este plazo (en días, inclusive) se considera contado: sin tasa de financiación. */
+export const DIAS_CONTADO = 10;
+
+/** Contado: sin plazo o plazo de hasta DIAS_CONTADO días. */
+export function esContado(plazoDias: number): boolean {
+  return !(plazoDias > DIAS_CONTADO);
+}
+
+/** Meses de tasa: se cobra por mes completo, el parcial se redondea para arriba (76 días = 3). 0 si es contado (hasta 10 días). */
 export function mesesDeTasa(plazoDias: number): number {
-  if (!(plazoDias > 0)) return 0;
+  if (esContado(plazoDias)) return 0;
   return Math.ceil(plazoDias / 30);
 }
 
-/** "3 meses de tasa" / "1 mes de tasa"; vacío si no hay plazo. */
+/** "3 meses de tasa" / "1 mes de tasa"; "contado" si el plazo es de 1 a 10 días; vacío si no hay plazo. */
 export function textoMesesTasa(plazoDias: number): string {
   const m = mesesDeTasa(plazoDias);
+  if (m === 0 && plazoDias > 0) return 'contado';
   return m === 0 ? '' : `${m} ${m === 1 ? 'mes' : 'meses'} de tasa`;
 }
 

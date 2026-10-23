@@ -28,6 +28,11 @@ describe('calcularOpcion', () => {
     expect(f.totales.recargo).toBeCloseTo(9, 6);
     expect(f.totales.total).toBeCloseTo(300 * 1.03 * 1.21, 6);
   });
+  it('una celda de 10 días vale lo mismo que contado', () => {
+    const r = calcularOpcion(cotiz, lineas, op({ plazos: [10, 10], tasa_mensual: 1.5 }));
+    expect(r.lineas.every((x) => x.pct === 0)).toBe(true);
+    expect(r.totales.total).toBeCloseTo(calcularOpcion(cotiz, lineas, principal).totales.total, 6);
+  });
   it('plazos mixtos por artículo: solo la línea 1 recarga', () => {
     const r = calcularOpcion(cotiz, lineas, op({}));
     expect(r.lineas[0].pct).toBe(0);

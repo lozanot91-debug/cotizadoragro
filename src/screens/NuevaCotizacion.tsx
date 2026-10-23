@@ -3,7 +3,7 @@ import { elegirConvenio, elegirConvenioVigente } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
-import { calcularLinea, limitesPrecio, margenDesdePrecio, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, resolverMargen, ivaDeLinea } from '@/lib/calculations';
+import { calcularLinea, limitesPrecio, margenDesdePrecio, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, esContado, resolverMargen, ivaDeLinea } from '@/lib/calculations';
 import { PARAMS_CANJE_BASE, netoPorTn, normalizarParams, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatDate, formatInputNumber, parseNumberInput } from '@/lib/format';
@@ -507,7 +507,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     return calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: l.recargoPct })), tcNum);
   }, [lineasFin, tcNum, conIva]);
   const plazoMax = lineas.reduce((m, l) => Math.max(m, l.plazo), 0);
-  const hayFinanciado = plazoMax > 0;
+  const hayFinanciado = !esContado(plazoMax);
   // Canje: se paga el total CON IVA (lo que se factura) con el neto por tn de la liquidación
   const canjeParamsEf = canjeParams ?? config?.canje_parametros ?? PARAMS_CANJE_BASE;
   const canjeMonto = useMemo(() => calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: l.iva, recargoPct: l.recargoPct })), tcNum).total, [lineasFin, tcNum]);

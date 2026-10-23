@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generarWhatsApp, totalesDeCotizacion, condicionTxt, financiacionLinea } from './export';
+import { generarWhatsApp, totalesDeCotizacion, condicionTxt, financiacionLinea, textoFormaPago } from './export';
 import { calcularTotalesIva, recargoPorcentaje, toneladasCanje } from './calculations';
 import { parseNumberInput } from './format';
 import type { Cotizacion, CotizacionLinea, Configuracion } from '@/types';
@@ -172,8 +172,46 @@ describe('financiación y canje', () => {
 describe('condicionTxt', () => {
   it('vencimiento desde la fecha de la cotización', () => {
     expect(condicionTxt(0, '2026-10-07')).toBe('Contado');
+    expect(condicionTxt(10, '2026-10-07')).toBe('Contado');
     expect(condicionTxt(30, '2026-10-07')).toBe('vence 06/11/2026 (30 días)');
     expect(condicionTxt(90, '2026-12-01')).toBe('vence 01/03/2027 (90 días)');
+  });
+});
+
+describe('plazo hasta 10 días = contado', () => {
+  const c = { ...cotiz, tasa_mensual: 1.5, plazo_dias: 0 } as Cotizacion;
+  it('financiacionLinea con 10 días = precio contado', () => {
+    const f = financiacionLinea(linea({ plazo_dias: 10, precio_usd: 100, total_usd: 100 }), c);
+    expect(f.pct).toBe(0);
+    expect(f.total).toBe(100);
+    expect(f.precioUnit).toBe(100);
+  });
+  it('totalesDeCotizacion: 10 días sin recargo, 40 días dos meses', () => {
+    expect(totalesDeCotizacion(c, [linea({ plazo_dias: 10 })]).recargo).toBe(0);
+    expect(totalesDeCotizacion(c, [linea({ plazo_dias: 40 })]).recargo).toBeCloseTo(3, 6);
+  });
+});
+
+describe('textoFormaPago', () => {
+  const c = { ...cotiz, tasa_mensual: 2, plazo_dias: 0 } as Cotizacion;
+  it('todo contado', () => {
+    expect(textoFormaPago(c, [linea({ plazo_dias: 0 }), linea({ plazo_dias: null })])).toBe('Contado');
+  });
+  it('plazo 10 = Contado, 11 = con vencimiento', () => {
+    expect(textoFormaPago(c, [linea({ plazo_dias: 10 })])).toBe('Contado');
+    expect(textoFormaPago(c, [linea({ plazo_dias: 11 })])).toBe('11 días (vence 18/10/2026)');
+  });
+  it('mismo plazo en todas: fecha = cotización + días', () => {
+    expect(textoFormaPago(c, [linea({ plazo_dias: 60 }), linea({ plazo_dias: 60 })])).toBe('60 días (vence 06/12/2026)');
+  });
+  it('mixto', () => {
+    expect(textoFormaPago(c, [linea({ plazo_dias: 0 }), linea({ plazo_dias: 60 })])).toBe('Según artículo (ver columna Pago)');
+    expect(textoFormaPago({ ...c, tasa_mensual: 0 } as Cotizacion, [linea({ plazo_dias: 0 }), linea({ plazo_dias: 60 })])).toBe('Contado y a plazo según artículo');
+  });
+  it('no menciona tasa ni %', () => {
+    for (const ls of [[linea({ plazo_dias: 0 })], [linea({ plazo_dias: 60 })], [linea({ plazo_dias: 0 }), linea({ plazo_dias: 60 })]]) {
+      expect(textoFormaPago(c, ls)).not.toMatch(/tasa|%|financ/i);
+    }
   });
 });
 
@@ -187,7 +225,8 @@ describe('WhatsApp con opciones de pago', () => {
     const sin = generarWhatsApp(cotiz, ls, config);
     const con = generarWhatsApp({ ...cotiz, opciones_pago: ops } as Cotizacion, ls, config);
     expect(sin).not.toContain('Opciones de pago');
-    expect(con.startsWith(sin)).toBe(true);
+    // sin opciones, el encabezado lleva "Forma de pago"; con opciones va en la matriz
+    expect(con.startsWith(sin.replace(/Forma de pago: .*\n/, ''))).toBe(true);
     expect(con).toContain('*Opciones de pago*');
     expect(con).toContain('*Cosecha*');
     expect(con).toContain('vence 06/03/2027 (150 días)');
