@@ -103,7 +103,6 @@ export default function Pipeline({ onEdit }: Props) {
   const indicadores = useMemo(() => {
     const abiertas = filtradas.filter((c) => c.estado === 'Borrador' || c.estado === 'Enviada' || c.estado === 'En negociación');
     const totalAbierto = abiertas.reduce((s, c) => s + c.subtotal_usd, 0);
-    const valorPonderado = abiertas.reduce((s, c) => s + c.subtotal_usd * (probabilidad(c) / 100), 0);
     const mesActual = mesActualAR();
     const ganadasMes = filtradas.filter((c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual);
     const perdidasMes = filtradas.filter((c) => c.estado === 'Perdida' && c.fecha.substring(0, 7) === mesActual);
@@ -111,7 +110,7 @@ export default function Pipeline({ onEdit }: Props) {
     const perdidoMes = perdidasMes.reduce((s, c) => s + c.subtotal_usd, 0);
     const tasa = ganadasMes.length + perdidasMes.length > 0
       ? (ganadasMes.length / (ganadasMes.length + perdidasMes.length)) * 100 : 0;
-    return { totalAbierto, valorPonderado, ganadoMes, perdidoMes, tasa, countAbierto: abiertas.length };
+    return { totalAbierto, ganadoMes, perdidoMes, tasa, countAbierto: abiertas.length };
   }, [filtradas, config]);
 
   const pronostico = useMemo(() => {
@@ -177,15 +176,11 @@ export default function Pipeline({ onEdit }: Props) {
       </div>
 
       {/* Indicadores */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <p className="text-xs text-gray-500">Total abierto</p>
           <p className="text-lg font-bold text-gray-800">{formatUSD(indicadores.totalAbierto, 0)}</p>
           <p className="text-xs text-gray-400">{indicadores.countAbierto} cotiz.</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-3">
-          <p className="text-xs text-gray-500">Valor ponderado</p>
-          <p className="text-lg font-bold text-blue-700">{formatUSD(indicadores.valorPonderado, 0)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <p className="text-xs text-gray-500">Ganado del mes</p>
