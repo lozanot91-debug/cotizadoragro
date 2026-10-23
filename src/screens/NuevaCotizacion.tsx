@@ -3,6 +3,7 @@ import { elegirConvenio, elegirConvenioVigente } from '@/lib/convenios';
 import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
+import { hidratarLineaGuardada } from '@/lib/hidratarCotizacion';
 import { calcularLinea, limitesPrecio, margenDesdePrecio, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, esContado, resolverMargen, ivaDeLinea } from '@/lib/calculations';
 import { PARAMS_CANJE_BASE, netoPorTn, normalizarParams, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
 import LiquidacionCanje from '@/components/LiquidacionCanje';
@@ -261,20 +262,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         const lineasEdit: LineaEditable[] = lins.map((l) => {
           const prod = productosCotiz.find((p) => p.id === l.producto_id) ||
                        productosCotiz.find((p) => p.cod === l.cod) || null;
-
-          let productoLinea: ProductoConCosto;
-          if (prod) {
-            productoLinea = prod;
-          } else {
-            const costoKg = l.es_fertilizante ? (l.costo_usd / 1000) : l.costo_usd;
-            productoLinea = {
-              id: l.producto_id || '', cod: l.cod, proveedor: l.proveedor, familia: l.familia,
-              producto: l.producto, unid: l.unid, costo: costoKg, moneda: 'USD',
-              margen_default: null, margen_producto: null, es_fertilizante: l.es_fertilizante,
-            };
-          }
-
-          const costoOverride = l.costo_editado ? l.costo_usd : null;
+          // Una cotización guardada se abre con lo guardado: la lista de hoy no la toca
+          const { producto: productoLinea, costoOverrideUSD: costoOverride } = hidratarLineaGuardada(l, prod, {
+            tc: cotiz.tc, tcFlete: cotiz.tc_flete || cotiz.tc, km: cotiz.km, tarifaFlete: tars,
+            tramos: tramosOrigen(cotiz.km),
+          });
           return {
             key: l.id || Math.random().toString(),
             producto: productoLinea,
@@ -283,7 +275,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             cantidadStr: formatInputNumber(l.cantidad, 2),
             margenStr: formatInputNumber(l.margen, 1),
             costoOverrideUSD: costoOverride,
-            costoStr: formatInputNumber(costoOverride ?? (l.es_fertilizante ? productoLinea.costo * 1000 : productoLinea.costo), 2),
+            costoStr: formatInputNumber(costoOverride, 2),
             iva: ivaDeLinea(l, cotiz, cfg),
             ivaStr: formatInputNumber(ivaDeLinea(l, cotiz, cfg), 2),
             plazo: l.plazo_dias ?? cotiz.plazo_dias ?? 0,
