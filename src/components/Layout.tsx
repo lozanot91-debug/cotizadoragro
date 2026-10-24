@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat, CreditCard, Scale, Swords, CalendarDays, Map as MapIcon } from 'lucide-react';
+import { ArrowLeft, FilePlus, FileText, Users, ListChecks, BarChart3, Settings, Menu, X, History, UserCircle, LogOut, Home, KanbanSquare, CheckSquare, MapPin, RefreshCw, TrendingUp, CalendarClock, Wallet, LineChart, ClipboardList, SearchCheck, Receipt, BookOpen, ChevronDown, Briefcase, Contact, Tags, PieChart, ShieldCheck, Wheat, CreditCard, Scale, Swords, CalendarDays, Map as MapIcon } from 'lucide-react';
 import LogoCotizador from '@/components/LogoCotizador';
 import { useAuth } from '@/context/AuthContext';
 import InstalarApp from '@/components/InstalarApp';
@@ -41,9 +41,11 @@ interface Props {
   cobroBadge?: number;
   pedidoBadge?: number;
   facturaBadge?: number;
+  /** Si hay una pantalla anterior, vuelve a ella (botón "Atrás"). */
+  onVolver?: () => void;
 }
 
-export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge, pedidoBadge, facturaBadge }: Props) {
+export default function Layout({ current, onNavigate, children, taskBadge, vencBadge, cobroBadge, pedidoBadge, facturaBadge, onVolver }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { usuario, signOut } = useAuth();
   const [perfilAbierto, setPerfilAbierto] = useState(false);
@@ -150,6 +152,11 @@ export default function Layout({ current, onNavigate, children, taskBadge, vencB
 
         <main className="flex-1 overflow-x-hidden">
           <div className="p-4 lg:p-6 max-w-7xl mx-auto w-full">
+            {onVolver && (
+              <button onClick={onVolver} className="mb-3 -ml-2 inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+                <ArrowLeft className="w-4 h-4" /> Atrás
+              </button>
+            )}
             {children}
           </div>
         </main>

@@ -5,7 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { ToastProvider } from '@/components/Toast';
 import Layout, { type Screen } from '@/components/Layout';
 import Inicio from '@/screens/Inicio';
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { apilar, mismaVista, type Vista } from '@/lib/navegacion';
 import { lazyConRecarga } from '@/lib/lazy';
 import { supabase } from '@/lib/supabase';
 import { hoyAR } from '@/lib/fechas';
@@ -46,6 +47,49 @@ function AppContent() {
   // Cliente con el que se abre la calculadora de canje (desde la ficha del cliente)
   const [canjeClienteId, setCanjeClienteId] = useState<string | undefined>(undefined);
   const [canjeEditar, setCanjeEditar] = useState<CanjeGuardado | undefined>(undefined);
+  // Historial de pantallas para el botón "Atrás" (también responde al botón atrás del celular y del navegador)
+  const pila = useRef<Vista[]>([]);
+  const [hayAtras, setHayAtras] = useState(false);
+  const vistaRef = useRef<Vista>({ screen: 'inicio' });
+  vistaRef.current = { screen, editCotizId, duplicateFromId, canjeClienteId, canjeEditar };
+
+  const aplicarVista = useCallback((v: Vista) => {
+    setScreen(v.screen); setEditCotizId(v.editCotizId); setDuplicateFromId(v.duplicateFromId);
+    setCanjeClienteId(v.canjeClienteId); setCanjeEditar(v.canjeEditar);
+  }, []);
+
+  /** Ir a otra vista dejando la actual en el historial. */
+  const irA = useCallback((destino: Vista) => {
+    const actual = vistaRef.current;
+    if (mismaVista(actual, destino)) return;
+    pila.current = apilar(pila.current, actual, destino);
+    window.history.pushState({ cotizador: pila.current.length }, '');
+    aplicarVista(destino);
+    setHayAtras(true);
+  }, [aplicarVista]);
+
+  /** Cambiar la vista actual sin sumar un paso al historial (ej. al borrar la cotización que se estaba mirando). */
+  const reemplazarA = useCallback((destino: Vista) => {
+    if (!mismaVista(vistaRef.current, destino)) aplicarVista(destino);
+  }, [aplicarVista]);
+
+  const volver = useCallback(() => { if (pila.current.length > 0) window.history.back(); }, []);
+
+  useEffect(() => {
+    window.history.replaceState({ cotizador: 0 }, '');
+    const alRetroceder = (e: PopStateEvent) => {
+      const i = typeof e.state?.cotizador === 'number' ? e.state.cotizador : 0;
+      if (i < pila.current.length) {
+        const v = pila.current[i];
+        pila.current = pila.current.slice(0, i);
+        aplicarVista(v);
+        setHayAtras(pila.current.length > 0);
+      }
+    };
+    window.addEventListener('popstate', alRetroceder);
+    return () => window.removeEventListener('popstate', alRetroceder);
+  }, [aplicarVista]);
+
   const [taskBadge, setTaskBadge] = useState(0);
   const [vencBadge, setVencBadge] = useState(0);
   const [cobroBadge, setCobroBadge] = useState(0);
@@ -98,35 +142,33 @@ function AppContent() {
     if (!('serviceWorker' in navigator)) return;
     const alMensaje = (e: MessageEvent) => {
       const d = e.data as { tipo?: string; cotizacionId?: string; pantalla?: string } | null;
-      if (d?.tipo === 'abrir-pantalla' && d.pantalla === 'resumen') { setScreen('resumen'); return; }
+      if (d?.tipo === 'abrir-pantalla' && d.pantalla === 'resumen') { irA({ screen: 'resumen' }); return; }
       if (d?.tipo === 'abrir-cotizacion' && d.cotizacionId) {
-        setEditCotizId(d.cotizacionId); setDuplicateFromId(undefined); setScreen('nueva');
+        irA({ screen: 'nueva', editCotizId: d.cotizacionId });
         void loadBadges();
       }
     };
     navigator.serviceWorker.addEventListener('message', alMensaje);
     return () => navigator.serviceWorker.removeEventListener('message', alMensaje);
-  }, [loadBadges]);
+  }, [loadBadges, irA]);
 
   function handleNavigate(s: Screen) {
-    setScreen(s);
-    if (s === 'canje') { setCanjeClienteId(undefined); setCanjeEditar(undefined); }
-    if (s === 'nueva') { setEditCotizId(undefined); setDuplicateFromId(undefined); }
+    irA({ screen: s });
   }
 
   function handleEditCotiz(id: string) {
-    setEditCotizId(id); setDuplicateFromId(undefined); setScreen('nueva');
+    irA({ screen: 'nueva', editCotizId: id });
   }
 
   function handleDuplicateCotiz(id: string) {
-    setDuplicateFromId(id); setEditCotizId(undefined); setScreen('nueva');
+    irA({ screen: 'nueva', duplicateFromId: id });
   }
 
   return (
-    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge} facturaBadge={facturaBadge}>
+    <Layout current={screen} onNavigate={handleNavigate} taskBadge={taskBadge} vencBadge={vencBadge} cobroBadge={cobroBadge} pedidoBadge={pedidoBadge} facturaBadge={facturaBadge} onVolver={hayAtras ? volver : undefined}>
       {screen === 'inicio' && <Inicio onNavigate={handleNavigate} onEditCotiz={handleEditCotiz} onDuplicateCotiz={handleDuplicateCotiz} pedidoBadge={pedidoBadge} />}
       <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>}>
-        {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => handleNavigate('cotizaciones')} onAbrirGuardada={handleEditCotiz} />}
+        {screen === 'nueva' && <NuevaCotizacion editId={editCotizId} duplicateFromId={duplicateFromId} onDeleted={() => reemplazarA({ screen: 'cotizaciones' })} onAbrirGuardada={(id) => reemplazarA({ screen: 'nueva', editCotizId: id })} />}
         {screen === 'pipeline' && <Pipeline onEdit={handleEditCotiz} />}
         {screen === 'cotizaciones' && <Cotizaciones onEdit={handleEditCotiz} onDuplicate={handleDuplicateCotiz} />}
         {screen === 'recotizar' && <Recotizar onEdit={handleEditCotiz} />}
@@ -146,7 +188,7 @@ function AppContent() {
         {screen === 'tareas' && <Tareas />}
         {screen === 'visitas' && <Visitas />}
         {screen === 'mapa' && <Mapa />}
-        {screen === 'clientes' && <Clientes onCalcularCanje={(id, c) => { setCanjeClienteId(id); setCanjeEditar(c); setScreen('canje'); }} onEditCotiz={handleEditCotiz} />}
+        {screen === 'clientes' && <Clientes onCalcularCanje={(id, c) => irA({ screen: 'canje', canjeClienteId: id, canjeEditar: c })} onEditCotiz={handleEditCotiz} />}
         {screen === 'listas' && <Listas />}
         {screen === 'estadisticas' && <Estadisticas />}
         {screen === 'config' && usuario.rol === 'admin' && <ConfigScreen />}
