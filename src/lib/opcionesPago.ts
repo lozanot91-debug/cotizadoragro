@@ -50,7 +50,7 @@ export function calcularOpcion(
     totales: totalesDeCotizacion(c, ls),
     lineas: ls.map((l) => {
       const f = financiacionLinea(l, c);
-      return { plazo: f.plazo, pct: f.pct, precioUnit: f.precioUnit, total: f.total };
+      return { plazo: f.plazo, pct: f.pct, precioUnit: f.precioUnitIva, total: f.totalIva };
     }),
   };
 }
