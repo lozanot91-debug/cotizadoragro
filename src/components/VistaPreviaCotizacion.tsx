@@ -101,7 +101,8 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                 <th className="text-left py-2 font-medium">Insumo</th>
                 {!soloPrecios && <th className="text-right py-2 font-medium">Cantidad</th>}
                 <th className="text-right py-2 pl-3 font-medium">Precio</th>
-                {!soloPrecios && <th className="text-right py-2 pl-3 font-medium">Total</th>}
+                {!soloPrecios && <th className="text-right py-2 pl-3 font-medium">{c.con_iva ? 'Total s/IVA' : 'Total'}</th>}
+                {!soloPrecios && c.con_iva && <th className="text-right py-2 pl-3 font-medium">Total c/IVA</th>}
               </tr></thead>
               <tbody>
                 {filas.map(({ l, fin, iva }) => (
@@ -111,13 +112,14 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                       <p className="text-[11px] text-gray-400">IVA {fmt(iva, 1)} %{hayPlazos ? ` · ${!esContado(fin.plazo) ? `vence ${formatearFecha(sumarDias(c.fecha, fin.plazo))} (${fin.plazo} días)` : 'contado'}` : ''}{l.flete_usd ? ' · con flete' : ''}</p>
                     </td>
                     {!soloPrecios && <td className="py-2 text-right tabular-nums whitespace-nowrap">{sinCantidad(l) ? '—' : `${fmt(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} ${l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}`}</td>}
-                    <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnitIva)}<span className="text-[11px] text-gray-400"> /{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></td>
-                    {!soloPrecios && <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap font-medium">{sinCantidad(l) ? '—' : fmt(fin.totalIva)}</td>}
+                    <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(fin.precioUnit)}<span className="text-[11px] text-gray-400"> /{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></td>
+                    {!soloPrecios && <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap font-medium">{sinCantidad(l) ? '—' : fmt(fin.total)}</td>}
+                    {!soloPrecios && c.con_iva && <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap font-medium">{sinCantidad(l) ? '—' : fmt(fin.totalIva)}</td>}
                   </tr>
                 ))}
               </tbody>
             </table>
-          <p className="text-[11px] text-gray-400 mt-2">{c.con_iva ? 'Precios en USD con IVA de cada artículo incluido' : 'Precios en USD sin IVA'}, con flete y financiación incluidos.</p>
+          <p className="text-[11px] text-gray-400 mt-2">Precios en USD sin IVA, con flete y financiación incluidos.{c.con_iva ? ' El total c/IVA suma el IVA de cada artículo.' : ''}</p>
             </>
           )}
         </div>

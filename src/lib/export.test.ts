@@ -78,7 +78,7 @@ describe('texto de WhatsApp', () => {
     expect(msg).not.toMatch(/105%/);
     // flete incluido en el precio, sin separar
     expect(msg).not.toMatch(/flete/i);
-    expect(msg).toContain('776,23 USD/tn') // 702,47 + 10,5% de IVA;
+    expect(msg).toContain('702,47 USD/tn');
   });
 });
 
@@ -92,8 +92,8 @@ describe('WhatsApp: unidad en el precio unitario', () => {
       ],
       config
     );
-    expect(msg).toContain('10 tn × 786,50 USD/tn = 7.865,00 USD');
-    expect(msg).toContain('20 lts × 6,05 USD/lts = 121,00 USD');
+    expect(msg).toContain('10 tn × 650,00 USD/tn = 6.500,00 USD (7.865,00 c/IVA)');
+    expect(msg).toContain('20 lts × 5,00 USD/lts = 100,00 USD (121,00 c/IVA)');
     expect(msg).not.toMatch(/flete/i);
   });
 });

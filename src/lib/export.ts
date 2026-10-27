@@ -208,15 +208,17 @@ export async function construirPDF(
     const cols = [
       { label: 'Producto', x: margin + 2.5, align: 'left' as const },
       { label: todasSinCantidad(lineas) ? '' : 'Cant.', x: conFin ? 84 : 97, align: 'right' as const },
-      { label: cotiz.con_iva ? 'Precio c/IVA' : 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
+      { label: 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
       { label: 'Pago', x: 132, align: 'right' as const },
       { label: 'IVA %', x: 150, align: 'right' as const },
-      { label: todasSinCantidad(lineas) ? '' : cotiz.con_iva ? 'Total c/IVA' : 'Total USD (sin IVA)', x: derecha - 2.5, align: 'right' as const },
-    ].filter((c) => (cotiz.con_iva || c.label !== 'IVA %') && (conFin || c.label !== 'Pago'));
+      { label: todasSinCantidad(lineas) ? '' : cotiz.con_iva ? 'Total s/IVA' : 'Total USD (sin IVA)', x: cotiz.con_iva && !todasSinCantidad(lineas) ? 168 : derecha - 2.5, align: 'right' as const },
+      { label: 'Total c/IVA', x: derecha - 2.5, align: 'right' as const },
+    ].filter((c) => (cotiz.con_iva || (c.label !== 'IVA %' && c.label !== 'Total c/IVA')) && !(todasSinCantidad(lineas) && c.label === 'Total c/IVA') && (conFin || c.label !== 'Pago'));
     const iCant = 1, iPrecio = 2;
     const iPago = cols.findIndex((c) => c.label === 'Pago');
     const iIva = cols.findIndex((c) => c.label === 'IVA %');
-    const iTotal = cols.length - 1;
+    const iTotalIva = cols.findIndex((c) => c.label === 'Total c/IVA');
+    const iTotal = iTotalIva >= 0 ? iTotalIva - 1 : cols.length - 1;
     const anchoProducto = cols[iCant].x - cols[0].x - 18;
 
     const encabezadoTabla = () => {
@@ -250,7 +252,7 @@ export async function construirPDF(
       if (!sinCantidad(linea)) doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
       // El flete y la financiación van incluidos en el precio: al cliente no se le muestran por separado
       const fin = financiacionLinea(linea, cotiz);
-      doc.text(formatUSD(fin.precioUnitIva, 2), cols[iPrecio].x, y, { align: 'right' });
+      doc.text(formatUSD(fin.precioUnit, 2), cols[iPrecio].x, y, { align: 'right' });
       if (iPago >= 0) {
         // La columna es angosta: en el PDF va solo la fecha de vencimiento
         doc.setFontSize(8);
@@ -259,7 +261,8 @@ export async function construirPDF(
       }
       if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
       doc.setFont('helvetica', 'bold');
-      if (!sinCantidad(linea)) doc.text(formatUSD(fin.totalIva, 2), cols[iTotal].x, y, { align: 'right' });
+      if (!sinCantidad(linea)) doc.text(formatUSD(fin.total, 2), cols[iTotal].x, y, { align: 'right' });
+      if (iTotalIva >= 0 && !sinCantidad(linea)) doc.text(formatUSD(fin.totalIva, 2), cols[iTotalIva].x, y, { align: 'right' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
       const unidad = linea.es_fertilizante ? 'tn' : (linea.unid || '').toLowerCase();
       doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), cols[0].x, y + 4 + extra);
@@ -448,7 +451,7 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     'Precio USD': l.precio_usd,
     'Flete USD': l.flete_usd,
     ...(soloPrecios ? {} : { 'Total USD': sinCantidad(l) ? '' : l.total_usd }),
-    ...(cotiz.con_iva ? { 'Precio c/IVA USD': financiacionLinea(l, cotiz).precioUnitIva, ...(soloPrecios ? {} : { 'Total c/IVA USD': sinCantidad(l) ? '' : financiacionLinea(l, cotiz).totalIva }) } : {}),
+    ...(cotiz.con_iva ? (soloPrecios ? {} : { 'Total c/IVA USD': sinCantidad(l) ? '' : financiacionLinea(l, cotiz).totalIva }) : {}),
   }));
 
   // Con opciones de pago (el cliente todavía no eligió) una sola hoja: la matriz comparativa, como en el PDF
@@ -535,12 +538,12 @@ export function generarWhatsApp(
     const pago = conFin ? ` · ${condicionTxt(fin.plazo, cotiz.fecha)}` : '';
     if (sinCantidad(l)) {
       const u = unidadLinea(l) || 'un';
-      msg += `• ${l.producto}${pago}\n  ${formatUSD(fin.precioUnitIva)} USD/${u}\n`;
+      msg += `• ${l.producto}${pago}\n  ${formatUSD(fin.precioUnit)} USD/${u}\n`;
     } else if (l.es_fertilizante) {
-      msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${formatUSD(fin.precioUnitIva)} USD/tn = ${formatUSD(fin.totalIva)} USD\n`;
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${formatUSD(fin.precioUnit)} USD/tn = ${formatUSD(fin.total)} USD${cotiz.con_iva ? ` (${formatUSD(fin.totalIva)} c/IVA)` : ''}\n`;
     } else {
       const u = (l.unid || '').toLowerCase() || 'un';
-      msg += `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${formatUSD(fin.precioUnitIva)} USD/${u} = ${formatUSD(fin.totalIva)} USD\n`;
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${formatUSD(fin.precioUnit)} USD/${u} = ${formatUSD(fin.total)} USD${cotiz.con_iva ? ` (${formatUSD(fin.totalIva)} c/IVA)` : ''}\n`;
     }
   });
 

@@ -33,11 +33,11 @@ describe('filasMatriz y totales', () => {
     const f = filasMatriz(c, lineas);
     expect(f[0].celdas.map((x) => x.plazo)).toEqual([0, 0]);
     expect(f[1].celdas.map((x) => x.plazo)).toEqual([0, 150]);
-    expect(f[1].celdas[0].precioUnit).toBe(financiacionLinea(lineas[1], c).precioUnitIva);
-    expect(f[1].celdas[1].precioUnit).toBeGreaterThan(242);
+    expect(f[1].celdas[0].precioUnit).toBe(financiacionLinea(lineas[1], c).precioUnit);
+    expect(f[1].celdas[1].precioUnit).toBeGreaterThan(200);
     expect(f[1].celdas[0].vence).toBe('');
     expect(f[1].celdas[1].vence).toBe('2027-03-06');
-    expect(f[0].celdas[1].precioUnit).toBeCloseTo(121, 6);
+    expect(f[0].celdas[1].precioUnit).toBe(100);
   });
   it('totales = calcularOpcion', () => {
     const t = totalesOpciones(c, lineas);

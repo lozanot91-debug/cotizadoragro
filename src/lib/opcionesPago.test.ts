@@ -37,8 +37,8 @@ describe('calcularOpcion', () => {
     const r = calcularOpcion(cotiz, lineas, op({}));
     expect(r.lineas[0].pct).toBe(0);
     expect(r.lineas[1].pct).toBeCloseTo(3.5, 6);
-    expect(r.lineas[1].precioUnit).toBeCloseTo(200 * 1.035 * 1.21, 6); // con IVA 21% sumado
-    expect(r.lineas[1].total).toBeCloseTo(207 * 1.21, 6);
+    expect(r.lineas[1].precioUnit).toBeCloseTo(200 * 1.035, 6);
+    expect(r.lineas[1].total).toBeCloseTo(207, 6);
     expect(r.totales.recargo).toBeCloseTo(7, 6);
   });
   it('mes entero redondeado hacia arriba: 76 días x 1,5% = 4,5%', () => {
