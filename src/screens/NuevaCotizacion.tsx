@@ -928,7 +928,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     const cab = buildCotizData();
     // El correlativo vale solo si el cliente no cambió (si cambió, la base le da otro al guardar)
     const mismoCliente = !!editData && (editData.cliente_id || null) === (cab.cliente_id || null) && (editData.cliente_id || (editData.cliente_nombre || '').trim().toLowerCase() === (cab.cliente_nombre || '').trim().toLowerCase());
-    return { id: editData?.id || '', numero: editData?.numero || 0, numero_cliente: mismoCliente ? editData?.numero_cliente ?? null : null, ...cab, motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
+    return { id: editData?.id || '', numero: editData?.numero || 0, numero_cliente: mismoCliente ? editData?.numero_cliente ?? null : null, ...cab, opcion_elegida: editData?.opcion_elegida ?? null, motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
   }
   function avisarExport(type: 'success' | 'error', text: string, ms = 3000) {
     setSaveMsg({ type, text });
