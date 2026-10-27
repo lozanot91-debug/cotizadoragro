@@ -925,9 +925,9 @@ function crearApi() {
     const { cotizPatch, lineasPatch } = aplicarOpcion(cotiz, lineas, op, opcionId);
     // Todo junto en la base (una sola transacción): o se aplican las líneas y la cabecera, o nada
     const cambiosLineas = lineasPatch
-      .map(({ index, plazo_dias }) => ({ l: lineas[index], plazo_dias }))
-      .filter(({ l, plazo_dias }) => l && l.plazo_dias !== plazo_dias)
-      .map(({ l, plazo_dias }) => ({ id: l.id, plazo_dias }));
+      .map(({ index, plazo_dias, tasa_mensual }) => ({ l: lineas[index], plazo_dias, tasa_mensual }))
+      .filter(({ l, plazo_dias, tasa_mensual }) => l && (l.plazo_dias !== plazo_dias || (l.tasa_mensual ?? null) !== tasa_mensual))
+      .map(({ l, plazo_dias, tasa_mensual }) => ({ id: l.id, plazo_dias, tasa_mensual }));
     const data = await ok(
       supabase.rpc('aplicar_opcion_pago', {
         p_id: cotizId,

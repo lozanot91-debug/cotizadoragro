@@ -33,6 +33,9 @@ export default function OpcionesPagoEditor({
   const tasaOf = (o: OpcionEditable) => parseNumberInput(o.tasa);
   const aOpcionPago = (o: OpcionEditable): OpcionPago => ({
     id: o.id, nombre: o.nombre.trim() || '(sin nombre)', tasa_mensual: tasaOf(o), plazos: lineas.map((l) => o.plazoPorKey[l.key] ?? 0),
+    ...(lineas.some((l) => (o.tasaPorKey?.[l.key] ?? '').trim() !== '')
+      ? { tasas: lineas.map((l) => { const t = (o.tasaPorKey?.[l.key] ?? '').trim(); return t === '' ? null : parseNumberInput(t); }) }
+      : {}),
   });
   const todas: OpcionPago[] = [principal, ...opciones.map(aOpcionPago)];
   const elegida = elegidaId ? todas.find((o) => o.id === elegidaId) : null;
@@ -44,10 +47,12 @@ export default function OpcionesPagoEditor({
     nombre: nombreOpcionPorDefecto([principal.nombre, ...opciones.map((o) => o.nombre)]),
     tasa: tasaPorDefecto,
     plazoPorKey: Object.fromEntries(lineas.map((l) => [l.key, 0])),
+    tasaPorKey: {},
   }]);
   const copiarDelPrincipal = (o: OpcionEditable) => cambiar(o.id, {
     tasa: formatInputNumber(principal.tasa_mensual, 2),
     plazoPorKey: Object.fromEntries(lineas.map((l, i) => [l.key, principal.plazos[i] ?? 0])),
+    tasaPorKey: Object.fromEntries(lineas.map((l, i) => [l.key, typeof principal.tasas?.[i] === 'number' ? formatInputNumber(principal.tasas[i] as number, 2) : ''])),
   });
   const quitar = (o: OpcionEditable) => {
     if (!window.confirm(`¿Quitar "${o.nombre || 'esta opción'}"?`)) return;
@@ -120,6 +125,7 @@ export default function OpcionesPagoEditor({
                       <th className="text-left px-3 py-2 font-medium text-gray-600">Producto</th>
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Cant.</th>
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Vencimiento</th>
+                      <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Tasa %/mes</th>
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total USD</th>
                     </tr></thead>
@@ -136,6 +142,12 @@ export default function OpcionesPagoEditor({
                                 onChange={(e) => cambiar(o.id, { plazoPorKey: { ...o.plazoPorKey, [l.key]: diasDesdeVencimiento(fecha, e.target.value) } })}
                                 className={`w-36 px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${dias > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} />
                               <span className="block text-xs text-gray-400">{dias === 0 ? 'contado' : `(${dias} días${op.tasa_mensual > 0 || esContado(dias) ? ` · ${textoMesesTasa(dias)}` : ''})`}</span>
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              <input type="text" inputMode="decimal" value={o.tasaPorKey?.[l.key] ?? ''} disabled={readOnly} placeholder={formatInputNumber(op.tasa_mensual, 2) || '0'}
+                                aria-label={`Tasa mensual de ${l.producto} en ${o.nombre}`}
+                                onChange={(e) => cambiar(o.id, { tasaPorKey: { ...o.tasaPorKey, [l.key]: e.target.value } })}
+                                className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-gray-50" />
                             </td>
                             <td className="px-2 py-2 text-right whitespace-nowrap">{r ? formatUSD(r.precioUnit) : '-'}<span className="text-xs text-gray-400"> /{l.unidad}</span></td>
                             <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{r ? formatUSD(r.total) : '-'}</td>

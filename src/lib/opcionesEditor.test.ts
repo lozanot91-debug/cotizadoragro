@@ -94,7 +94,7 @@ describe('aplicarOpcion con elegida null (volver a las opciones)', () => {
     expect(cotizPatch.opcion_elegida).toBeNull();
     expect(cotizPatch.plazo_dias).toBe(0);
     expect(cotizPatch.recargo_usd).toBe(0);
-    expect(lineasPatch).toEqual([{ index: 0, plazo_dias: 0 }]);
+    expect(lineasPatch).toEqual([{ index: 0, plazo_dias: 0, tasa_mensual: null }]);
   });
   it('por defecto deja el id de la opción', () => {
     expect(aplicarOpcion(cotiz, [lin(0)], guardada[1]).cotizPatch.opcion_elegida).toBe('op-a');

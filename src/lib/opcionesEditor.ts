@@ -8,6 +8,8 @@ export interface OpcionEditable {
   nombre: string;
   tasa: string;
   plazoPorKey: Record<string, number>;
+  /** Tasa propia por artículo (texto); vacío o ausente = usa la tasa de la opción. */
+  tasaPorKey?: Record<string, string>;
 }
 
 /** "Opción 2", "Opción 3"... el primer número libre. */
@@ -32,17 +34,22 @@ export function opcionesAEditor(opciones: OpcionPago[] | null | undefined, keys:
       nombre: o.nombre ?? '',
       tasa: formatInputNumber(Number(o.tasa_mensual) || 0, 2),
       plazoPorKey: Object.fromEntries(keys.map((k, i) => [k, Math.max(0, Math.trunc(Number(o.plazos[i])) || 0)])),
+      tasaPorKey: Object.fromEntries(keys.map((k, i) => [k, typeof o.tasas?.[i] === 'number' ? formatInputNumber(o.tasas[i] as number, 2) : ''])),
     }));
 }
 
 /** Guardar: claves -> posiciones según el orden ACTUAL de las líneas (las claves que ya no están se descartan). */
 export function editorAOpciones(ed: OpcionEditable[], keys: string[]): OpcionPago[] {
-  return ed.map((o) => ({
-    id: o.id,
-    nombre: o.nombre.trim(),
-    tasa_mensual: parseNumberInput(o.tasa),
-    plazos: keys.map((k) => o.plazoPorKey[k] ?? 0),
-  }));
+  return ed.map((o) => {
+    const tasas = keys.map((k) => { const t = (o.tasaPorKey?.[k] ?? '').trim(); return t === '' ? null : parseNumberInput(t); });
+    return {
+      id: o.id,
+      nombre: o.nombre.trim(),
+      tasa_mensual: parseNumberInput(o.tasa),
+      plazos: keys.map((k) => o.plazoPorKey[k] ?? 0),
+      ...(tasas.some((t) => t !== null) ? { tasas } : {}),
+    };
+  });
 }
 
 /** Arreglo a guardar: [] sin extras; si hay, [principal, ...extras] normalizado + errores de validación. */
@@ -57,6 +64,6 @@ export function firmaExtras(opciones: OpcionPago[] | null | undefined, nLineas: 
   return JSON.stringify(
     normalizarOpciones(opciones, nLineas)
       .filter((o) => o.id !== ID_PRINCIPAL)
-      .map((o) => [o.id, o.nombre.trim(), o.tasa_mensual, o.plazos])
+      .map((o) => [o.id, o.nombre.trim(), o.tasa_mensual, o.plazos, o.tasas ?? null])
   );
 }

@@ -63,7 +63,7 @@ describe('aplicarOpcion', () => {
       plazo_dias: 150, tasa_mensual: 0.7, recargo_usd: t.recargo, iva_usd: t.iva,
       total_usd: t.total, total_ars: t.total * cotiz.tc, opcion_elegida: 'op-a',
     });
-    expect(lineasPatch).toEqual([{ index: 0, plazo_dias: 0 }, { index: 1, plazo_dias: 150 }]);
+    expect(lineasPatch).toEqual([{ index: 0, plazo_dias: 0, tasa_mensual: null }, { index: 1, plazo_dias: 150, tasa_mensual: null }]);
   });
   it("elegir 'principal' restaura", () => {
     const o = op({});
@@ -118,5 +118,34 @@ describe('validarOpciones', () => {
     expect(validarOpciones(muchas, 2).join()).toMatch(/Máximo/);
     expect(validarOpciones([principal, op({ tasa_mensual: -1 })], 2).join()).toMatch(/negativa/);
     expect(validarOpciones([principal, op({ plazos: [0, 0], tasa_mensual: 0 })], 2).join()).toMatch(/igual a la principal/);
+  });
+});
+
+describe('tasa propia por artículo', () => {
+  const cotiz = { tasa_mensual: 2, plazo_dias: 0, con_iva: false, tc: 1000, fecha: '2026-01-01', iva: 0 } as unknown as Cotizacion;
+  const mk = (total: number) => ({ total_usd: total, precio_usd: total, flete_usd: 0, plazo_dias: 0, iva: 0 }) as unknown as CotizacionLinea;
+  const lineas = [mk(1000), mk(1000)];
+
+  it('usa la tasa de la opción cuando no hay tasa por artículo', () => {
+    const r = calcularOpcion(cotiz, lineas, { id: 'a', nombre: 'A', tasa_mensual: 2, plazos: [60, 60] });
+    expect(r.lineas[0].pct).toBe(r.lineas[1].pct);
+  });
+  it('un artículo puede tener su propia tasa y otro heredar la de la opción', () => {
+    const base = calcularOpcion(cotiz, lineas, { id: 'a', nombre: 'A', tasa_mensual: 2, plazos: [60, 60] });
+    const r = calcularOpcion(cotiz, lineas, { id: 'a', nombre: 'A', tasa_mensual: 2, plazos: [60, 60], tasas: [null, 4] });
+    expect(r.lineas[0].pct).toBe(base.lineas[0].pct);
+    expect(r.lineas[1].pct).toBeCloseTo(base.lineas[1].pct * 2, 4);
+  });
+  it('aplicarOpcion lleva la tasa de cada artículo a las líneas', () => {
+    const { lineasPatch } = aplicarOpcion(cotiz, lineas, { id: 'a', nombre: 'A', tasa_mensual: 2, plazos: [60, 30], tasas: [null, 3] });
+    expect(lineasPatch).toEqual([{ index: 0, plazo_dias: 60, tasa_mensual: null }, { index: 1, plazo_dias: 30, tasa_mensual: 3 }]);
+  });
+  it('normalizarOpciones descarta tasas inválidas y ajusta el largo', () => {
+    const [p, o] = normalizarOpciones([
+      { id: 'principal', nombre: 'P', tasa_mensual: 0, plazos: [0, 0, 0] },
+      { id: 'x', nombre: 'X', tasa_mensual: 1, plazos: [10, 10, 10], tasas: [2, -1] as (number | null)[] },
+    ], 3);
+    expect(p.tasas).toBeUndefined();
+    expect(o.tasas).toEqual([2, null, null]);
   });
 });

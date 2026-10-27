@@ -65,7 +65,7 @@ export function recotizar(input: {
         producto_id: l.producto_id, cod: l.cod, producto: l.producto, familia: l.familia, proveedor: l.proveedor,
         unid: l.unid, es_fertilizante: l.es_fertilizante, cantidad: l.cantidad, costo_usd: l.costo_usd,
         costo_lista_usd: l.costo_lista_usd, costo_editado: l.costo_editado, margen: l.margen, precio_usd: l.precio_usd,
-        flete_usd: l.flete_usd, total_usd: l.total_usd, con_flete: l.con_flete, iva, plazo_dias: plazo, orden: i,
+        flete_usd: l.flete_usd, total_usd: l.total_usd, con_flete: l.con_flete, iva, plazo_dias: plazo, tasa_mensual: l.tasa_mensual ?? null, orden: i,
       });
       return;
     }
@@ -87,7 +87,7 @@ export function recotizar(input: {
       proveedor: prod.proveedor || l.proveedor, unid: prod.unid || l.unid, es_fertilizante: prod.es_fertilizante,
       cantidad: l.cantidad, costo_usd: calc.costoUSD, costo_lista_usd: calc.costoListaUSD, costo_editado: calc.costoEditado,
       margen: l.margen, precio_usd: calc.precioUSD, flete_usd: calc.fleteUSD, total_usd: calc.totalUSD,
-      con_flete: l.con_flete, iva, plazo_dias: plazo, orden: i,
+      con_flete: l.con_flete, iva, plazo_dias: plazo, tasa_mensual: l.tasa_mensual ?? null, orden: i,
     });
   });
 
@@ -95,7 +95,7 @@ export function recotizar(input: {
     nuevas.map((l) => ({
       totalUSD: l.total_usd || 0,
       ivaPercent: cotiz.con_iva ? l.iva || 0 : 0,
-      recargoPct: recargoPorcentaje(l.plazo_dias || 0, cotiz.tasa_mensual || 0),
+      recargoPct: recargoPorcentaje(l.plazo_dias || 0, l.tasa_mensual ?? cotiz.tasa_mensual ?? 0),
     })),
     cotiz.tc
   );

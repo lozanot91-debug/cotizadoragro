@@ -51,6 +51,8 @@ interface LineaEditable {
   /** Plazo de pago de esta línea en días (0 = contado). */
   plazo: number;
   plazoStr: string;
+  /** Tasa mensual propia de esta línea (viene de una opción de pago elegida). null = la de la cotización. */
+  tasaMensual?: number | null;
   /** Precio tipeado a mano (sin flete). undefined = se muestra el derivado de costo y margen. */
   precioStr?: string;
   precioAviso?: 'sin-costo' | 'piso' | 'tope';
@@ -287,6 +289,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             ivaStr: formatInputNumber(ivaDeLinea(l, cotiz, cfg), 2),
             plazo: l.plazo_dias ?? cotiz.plazo_dias ?? 0,
             plazoStr: String(l.plazo_dias ?? cotiz.plazo_dias ?? 0),
+            tasaMensual: l.tasa_mensual ?? null,
           };
         });
         setLineas(lineasEdit);
@@ -509,7 +512,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const tasaNum = parseNumberInput(tasaMensual);
   /** Líneas con su financiación: cada una con su propio plazo (0 = contado). */
   const lineasFin = useMemo(() => lineasCalc.map((l) => {
-    const recargoPct = recargoPorcentaje(l.plazo, tasaNum);
+    const recargoPct = recargoPorcentaje(l.plazo, l.tasaMensual ?? tasaNum);
     return { ...l, recargoPct, totalFinanciado: l.totalUSD * (1 + recargoPct / 100) };
   }), [lineasCalc, tasaNum]);
 
@@ -675,7 +678,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
       costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
       margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
-      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo,
+      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, tasa_mensual: l.tasaMensual ?? null,
     }));
   }
 
@@ -917,7 +920,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
       costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
       margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
-      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, orden: i,
+      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, tasa_mensual: l.tasaMensual ?? null, orden: i,
     }));
   }
 

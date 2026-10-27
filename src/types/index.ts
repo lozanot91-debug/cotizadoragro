@@ -184,6 +184,8 @@ export interface OpcionPago {
   nombre: string;
   tasa_mensual: number;
   plazos: number[];
+  /** Tasa mensual propia de cada línea (por posición). null/ausente = usa tasa_mensual de la opción. */
+  tasas?: (number | null)[];
 }
 
 export interface Cotizacion {
@@ -343,6 +345,8 @@ export interface CotizacionLinea {
   con_flete: boolean;
   /** Plazo de pago de esta línea en días (0 = contado). null en cotizaciones viejas: se usa el de la cabecera. */
   plazo_dias: number | null;
+  /** Tasa mensual propia de esta línea (%). null/ausente = la de la cotización. */
+  tasa_mensual?: number | null;
   /** Alícuota de IVA de esta línea (%). null en cotizaciones viejas: se usa la de la cabecera. */
   iva: number | null;
   orden: number;

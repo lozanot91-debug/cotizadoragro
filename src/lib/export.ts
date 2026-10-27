@@ -26,10 +26,15 @@ export function plazoLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
   return l.plazo_dias ?? cotiz.plazo_dias ?? 0;
 }
 
+/** Tasa mensual de la línea: la propia si la tiene, si no la de la cotización. */
+export function tasaLinea(l: CotizacionLinea, cotiz: Cotizacion): number {
+  return l.tasa_mensual ?? cotiz.tasa_mensual ?? 0;
+}
+
 /** Datos de financiación de una línea: su plazo, el recargo % y el total ya financiado. */
 export function financiacionLinea(l: CotizacionLinea, cotiz: Cotizacion) {
   const plazo = plazoLinea(l, cotiz);
-  const pct = recargoPorcentaje(plazo, cotiz.tasa_mensual || 0);
+  const pct = recargoPorcentaje(plazo, tasaLinea(l, cotiz));
   const factor = 1 + pct / 100;
   return { plazo, pct, factor, precioUnit: (l.precio_usd + l.flete_usd) * factor, total: l.total_usd * factor };
 }

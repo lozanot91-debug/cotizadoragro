@@ -172,24 +172,26 @@ export function nuevaCondicion(tipo: TipoCondicion, datos: Partial<CondicionPago
  * Devuelve las condiciones y la condición de cada línea (en el mismo orden).
  */
 export function condicionesIniciales(
-  lineas: { plazo_dias: number | null }[],
+  lineas: { plazo_dias: number | null; tasa_mensual?: number | null }[],
   cotiz: { plazo_dias: number; tasa_mensual: number; canje_cultivo: string | null; canje_precio_usd: number; canje_params?: ParamsCanje | null },
 ): { condiciones: CondicionPago[]; asignacion: string[] } {
   if ((cotiz.canje_precio_usd || 0) > 0) {
     const c = nuevaCondicion('canje', { cultivo: cotiz.canje_cultivo || 'Soja', precio_cultivo: cotiz.canje_precio_usd, canje_params: cotiz.canje_params ?? null });
     return { condiciones: [c], asignacion: lineas.map(() => c.id) };
   }
-  const porPlazo = new Map<number, CondicionPago>();
+  const porPlazo = new Map<string, { plazo: number; c: CondicionPago }>();
   const asignacion = lineas.map((l) => {
     const plazo = l.plazo_dias ?? cotiz.plazo_dias ?? 0;
-    if (!porPlazo.has(plazo)) {
-      porPlazo.set(plazo, plazo > 0
-        ? nuevaCondicion('financiado', { plazo_dias: plazo, tasa_mensual: cotiz.tasa_mensual || 0 })
-        : nuevaCondicion('contado'));
+    const tasa = l.tasa_mensual ?? cotiz.tasa_mensual ?? 0;
+    const clave = plazo > 0 ? `${plazo}|${tasa}` : '0';
+    if (!porPlazo.has(clave)) {
+      porPlazo.set(clave, { plazo, c: plazo > 0
+        ? nuevaCondicion('financiado', { plazo_dias: plazo, tasa_mensual: tasa })
+        : nuevaCondicion('contado') });
     }
-    return porPlazo.get(plazo)!.id;
+    return porPlazo.get(clave)!.c.id;
   });
-  const condiciones = [...porPlazo.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c);
+  const condiciones = [...porPlazo.values()].sort((a, b) => a.plazo - b.plazo).map((x) => x.c);
   return { condiciones: condiciones.length ? condiciones : [nuevaCondicion('contado')], asignacion };
 }
 
