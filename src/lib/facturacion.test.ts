@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  calcularTotalesFacturacion, condicionDeLinea, condicionesIniciales, pctFinanciacionLinea, precioFinanciado, subtotalConFinanciacion, totalLineaFinanciado, lineasDesdeCotizacion, describirCondicion, nuevaCondicion, sinUsar,
+  calcularTotalesFacturacion, financiacionUnitaria, condicionDeLinea, condicionesIniciales, pctFinanciacionLinea, precioFinanciado, subtotalConFinanciacion, totalLineaFinanciado, lineasDesdeCotizacion, describirCondicion, nuevaCondicion, sinUsar,
   textoWhatsAppFacturacion, urlFacturacion, validarPedidoFacturacion, vencimientosDeCondiciones, type CondicionPago, type LineaFacturacion,
 } from './facturacion';
 import { PARAMS_CANJE_BASE, netoPorTn } from './canje';
@@ -221,5 +221,17 @@ describe('lineasDesdeCotizacion con opciones de pago', () => {
     const l = { cotizacion_id: 'c', producto_id: 'p', familia: null, proveedor: null, costo_lista_usd: 1, costo_editado: false, total_usd: 0, orden: 0, id: 'a', cod: 'X', producto: 'X', unid: 'LT', es_fertilizante: false, cantidad: 1, costo_usd: 1, precio_usd: 2, flete_usd: 0, con_flete: false, margen: 50, iva: 21, plazo_dias: 150 };
     const r = lineasDesdeCotizacion([l] as never[], null, () => 21);
     expect(r[0].plazo_dias).toBe(150);
+  });
+});
+
+describe('financiacionUnitaria', () => {
+  it('es la diferencia entre el precio financiado y el precio con flete', () => {
+    const conds = [nuevaCondicion('financiado', { plazo_dias: 96, tasa_mensual: 0.9 })];
+    const l = { precio_usd: 658, flete_usd: 57.4, condicion_id: conds[0].id };
+    expect(financiacionUnitaria(l, conds)).toBeCloseTo(715.4 * 0.036, 6);
+    expect(precioFinanciado(l, conds)).toBeCloseTo(715.4 + financiacionUnitaria(l, conds), 6);
+  });
+  it('contado: 0', () => {
+    expect(financiacionUnitaria({ precio_usd: 100, flete_usd: 0, condicion_id: 'x' }, [])).toBe(0);
   });
 });

@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { traducirError } from '@/lib/errores';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { hoyAR } from '@/lib/fechas';
-import { describirCondicion, precioFinanciado, totalLineaFinanciado, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
+import { describirCondicion, financiacionUnitaria, pctFinanciacionLinea, precioFinanciado, totalLineaFinanciado, type CondicionPago, type LineaFacturacion, type TotalesFacturacion } from '@/lib/facturacion';
 import { facturacionExcel, facturacionPDF, type DocFacturacion } from '@/lib/facturacionExport';
 import type { ClienteFacturacion, ExtraFacturacion } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
@@ -147,14 +147,15 @@ export default function PublicoFacturacion({ token }: { token: string }) {
             <p className="cifra text-xl text-emerald-900">USD {fmt(t.total)}</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[680px]">
+            <table className="w-full text-sm min-w-[760px]">
               <thead><tr className="text-gray-500 text-xs">
                 <th className="text-left px-4 py-2 font-medium">Producto</th>
                 <th className="text-right px-2 py-2 font-medium">Cantidad</th>
                 <th className="text-right px-2 py-2 font-medium">Costo</th>
-                <th className="text-right px-2 py-2 font-medium">Precio</th>
                 <th className="text-right px-2 py-2 font-medium">Flete</th>
+                <th className="text-right px-2 py-2 font-medium">Financiación</th>
                 <th className="text-right px-2 py-2 font-medium">Margen</th>
+                <th className="text-right px-2 py-2 font-medium">Precio</th>
                 <th className="text-right px-2 py-2 font-medium">IVA</th>
                 <th className="text-right px-4 py-2 font-medium">Subtotal</th>
               </tr></thead>
@@ -164,9 +165,10 @@ export default function PublicoFacturacion({ token }: { token: string }) {
                     <td className="px-4 py-2"><p className="font-medium text-gray-800">{l.producto}</p><p className="text-xs text-gray-400">{l.cod}</p></td>
                     <td className="px-2 py-2 text-right whitespace-nowrap">{formatNumber(l.cantidad, l.cantidad % 1 === 0 ? 0 : 2)} {l.es_fertilizante ? 'tn' : l.unidad || 'un'}</td>
                     <td className="px-2 py-2 text-right text-gray-600">{fmt(l.costo_usd)}</td>
-                    <td className="px-2 py-2 text-right">{fmt(precioFinanciado(l, doc.condiciones))}</td>
                     <td className="px-2 py-2 text-right text-gray-500">{l.flete_usd ? fmt(l.flete_usd) : '-'}</td>
+                    <td className="px-2 py-2 text-right text-gray-500">{pctFinanciacionLinea(l, doc.condiciones) > 0 ? <>{fmt(financiacionUnitaria(l, doc.condiciones))}<span className="block text-[11px] text-gray-400">{fmt(pctFinanciacionLinea(l, doc.condiciones))} %</span></> : '-'}</td>
                     <td className="px-2 py-2 text-right text-gray-600">{fmt(l.margen, 1)} %</td>
+                    <td className="px-2 py-2 text-right font-medium text-gray-800">{fmt(precioFinanciado(l, doc.condiciones))}</td>
                     <td className="px-2 py-2 text-right text-gray-600">{fmt(l.iva, 1)} %</td>
                     <td className="px-4 py-2 text-right font-medium">{fmt(totalLineaFinanciado(l, doc.condiciones))}</td>
                   </tr>

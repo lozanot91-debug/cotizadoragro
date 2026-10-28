@@ -106,6 +106,10 @@ export function pctFinanciacionLinea(l: Pick<LineaFacturacion, 'condicion_id'>, 
 export const precioFinanciado = (l: Pick<LineaFacturacion, 'precio_usd' | 'flete_usd' | 'condicion_id'>, condiciones: CondicionPago[]) =>
   precioFinal(l) * (1 + pctFinanciacionLinea(l, condiciones) / 100);
 
+/** Financiación por unidad (USD) que suma su condición sobre el precio con flete. 0 si es contado. */
+export const financiacionUnitaria = (l: Pick<LineaFacturacion, 'precio_usd' | 'flete_usd' | 'condicion_id'>, condiciones: CondicionPago[]) =>
+  precioFinal(l) * (pctFinanciacionLinea(l, condiciones) / 100);
+
 /** Total de la línea con la financiación de su condición (sin IVA, sin redondear). */
 export const totalLineaFinanciado = (l: Pick<LineaFacturacion, 'precio_usd' | 'flete_usd' | 'cantidad' | 'condicion_id'>, condiciones: CondicionPago[]) =>
   totalLinea(l) * (1 + pctFinanciacionLinea(l, condiciones) / 100);

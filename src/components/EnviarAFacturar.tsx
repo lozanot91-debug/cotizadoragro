@@ -11,7 +11,7 @@ import LiquidacionCanje from '@/components/LiquidacionCanje';
 import { formatUSD, formatNumber, formatDate } from '@/lib/format';
 import { formatearFechaHora, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import {
-  TIPOS_CONDICION, calcularTotalesFacturacion, condicionesIniciales, describirCondicion, estadoFacturacionInfo,
+  TIPOS_CONDICION, calcularTotalesFacturacion, condicionesIniciales, financiacionUnitaria, describirCondicion, estadoFacturacionInfo,
   lineasDesdeCotizacion, nuevaCondicion, numCampo, pctFinanciacionLinea, precioFinal, precioFinanciado, sinUsar, subtotalConFinanciacion, textoWhatsAppFacturacion, vencimientosDeCondiciones, totalLineaFinanciado,
   urlFacturacion, validarPedidoFacturacion, type CondicionPago, type LineaFacturacion, type TipoCondicion,
 } from '@/lib/facturacion';
@@ -317,13 +317,16 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
             <section>
               <h4 className="font-semibold text-gray-700 mb-2">Productos ({lineas.length})</h4>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="w-full text-sm min-w-[760px]">
+                <table className="w-full text-sm min-w-[960px]">
                   <thead><tr className="bg-gray-50 text-gray-600 text-xs">
                     <th className="text-left px-3 py-2 font-medium">Producto</th>
                     <th className="text-right px-2 py-2 font-medium w-24">Cantidad</th>
                     <th className="text-right px-2 py-2 font-medium">Costo</th>
-                    <th className="text-right px-2 py-2 font-medium">Precio final</th>
+                    <th className="text-right px-2 py-2 font-medium">Flete</th>
+                    <th className="text-right px-2 py-2 font-medium">Financiación</th>
                     <th className="text-right px-2 py-2 font-medium">Margen</th>
+                    <th className="text-right px-2 py-2 font-medium">Precio final</th>
+                    <th className="text-right px-2 py-2 font-medium">IVA</th>
                     <th className="text-right px-2 py-2 font-medium">Subtotal</th>
                     <th className="text-left px-2 py-2 font-medium w-44">Condición</th>
                     <th className="w-8" />
@@ -331,11 +334,14 @@ function ModalFacturar({ cotizacion, previo, vendedor, onCerrar, onEnviado }: {
                   <tbody>
                     {lineas.map((l, i) => (
                       <tr key={`${l.cod}-${i}`} className="border-t border-gray-100">
-                        <td className="px-3 py-2"><p className="font-medium text-gray-800">{l.producto}</p><p className="text-xs text-gray-400">{l.cod} · IVA {fmt(l.iva, 1)} %{l.flete_usd ? ` · flete USD ${fmt(l.flete_usd)}` : ''}</p></td>
+                        <td className="px-3 py-2"><p className="font-medium text-gray-800">{l.producto}</p><p className="text-xs text-gray-400">{l.cod}</p></td>
                         <td className="px-2 py-2"><div className="flex items-center gap-1"><input aria-label={`Cantidad de ${l.producto}`} inputMode="decimal" value={l.cantidadStr} onChange={(e) => setLineas((ls) => ls.map((x, j) => (j === i ? { ...x, cantidadStr: e.target.value } : x)))} className={inputCls + ' text-right'} /><span className="text-xs text-gray-400">{l.es_fertilizante ? 'tn' : l.unidad || 'un'}</span></div></td>
                         <td className="px-2 py-2 text-right text-gray-600">{fmt(l.costo_usd)}</td>
-                        <td className="px-2 py-2 text-right">{fmt(precioFinanciado(l, condiciones))}{pctFinanciacionLinea(l, condiciones) > 0 && <span className="block text-xs font-normal text-gray-400">contado {fmt(precioFinal(l))}</span>}</td>
+                        <td className="px-2 py-2 text-right text-gray-500">{l.flete_usd ? fmt(l.flete_usd) : '-'}</td>
+                        <td className="px-2 py-2 text-right text-gray-500">{pctFinanciacionLinea(l, condiciones) > 0 ? <>{fmt(financiacionUnitaria(l, condiciones))}<span className="block text-xs text-gray-400">{fmt(pctFinanciacionLinea(l, condiciones))} %</span></> : '-'}</td>
                         <td className="px-2 py-2 text-right text-gray-600">{fmt(l.margen, 1)} %</td>
+                        <td className="px-2 py-2 text-right font-medium text-gray-800">{fmt(precioFinanciado(l, condiciones))}{pctFinanciacionLinea(l, condiciones) > 0 && <span className="block text-xs font-normal text-gray-400">contado {fmt(precioFinal(l))}</span>}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{fmt(l.iva, 1)} %</td>
                         <td className="px-2 py-2 text-right font-medium">{fmt(totalLineaFinanciado({ ...l, cantidad: numCampo(l.cantidadStr) ?? 0 }, condiciones))}</td>
                         <td className="px-2 py-2">
                           <select aria-label={`Condición de ${l.producto}`} value={l.condicion_id} onChange={(e) => setLineas((ls) => ls.map((x, j) => (j === i ? { ...x, condicion_id: e.target.value } : x)))} className={inputCls}>
