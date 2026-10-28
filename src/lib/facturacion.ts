@@ -148,7 +148,7 @@ export function describirCondicion(c: CondicionPago, fmt: (n: number, d?: number
   const p = [TIPOS_CONDICION.find((t) => t.valor === c.tipo)?.nombre ?? c.tipo];
   if (c.tipo === 'tarjeta' && c.tarjeta) p[0] = `Tarjeta ${c.tarjeta}`;
   if (c.tipo === 'financiado' || c.tipo === 'tarjeta') {
-    if (c.plazo_dias) p.push(c.vencimiento ? `${c.plazo_dias} días (vence ${formatearFecha(c.vencimiento)})` : `${c.plazo_dias} días`);
+    if (c.plazo_dias) p.push(c.vencimiento ? `vence ${formatearFecha(c.vencimiento)}` : `${c.plazo_dias} días`);
     p.push(c.tasa_mensual ? `${fmt(c.tasa_mensual, 2)} % mensual` : 'sin interés');
   }
   if (c.tipo === 'tarjeta' && c.nd_pct) p.push(`ND ${fmt(c.nd_pct, 2)} %`);
