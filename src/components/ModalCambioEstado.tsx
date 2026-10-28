@@ -6,7 +6,8 @@ import { calcularOpcion } from '@/lib/opcionesPago';
 import { opcionesParaMostrar, pctFinanciacion } from '@/lib/opcionesSalida';
 import { vencimientoDesdeDias } from '@/lib/fechas';
 import { esContado } from '@/lib/calculations';
-import { subtotalGanado, validarGanada, type Reales } from '@/lib/ganadaParcial';
+import { subtotalGanado, validarGanada, lineasGanadas, type Reales } from '@/lib/ganadaParcial';
+import { financiacionLinea, totalesDeCotizacion } from '@/lib/export';
 import { MOTIVOS_PERDIDA, esReapertura, motivoFinal } from '@/lib/estados';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { MOTIVOS_CON_COMPETENCIA, precioNuestro } from '@/lib/competencia';
@@ -87,6 +88,16 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
   // Ganada con varias formas de pago sin elegir: hay que decir cuál eligió el cliente
   const opcionesElegir = hacia === 'Ganada' ? opcionesParaMostrar(cotiz) : [];
   const reabre = esReapertura(cotiz.estado, hacia);
+
+  // Con la forma de pago que corresponde (la elegida en este modal, o la que ya tiene la cotización) se muestran
+  // precios con flete y financiación, y el total final. El precio real que se carga sigue siendo el de lista (sin flete).
+  const opSel = opcionesElegir.find((o) => o.id === opcionId) ?? null;
+  const cotizPago: Cotizacion = opSel ? { ...cotiz, tasa_mensual: opSel.tasa_mensual } : cotiz;
+  const lineasPago: CotizacionLinea[] = opSel
+    ? lineas.map((l, i) => ({ ...l, plazo_dias: opSel.plazos[i] ?? 0, tasa_mensual: opSel.tasas?.[i] ?? null }))
+    : lineas;
+  const conFinanciacion = lineasPago.some((l) => financiacionLinea(l, cotizPago).pct > 0);
+  const totalFinal = esGanada ? totalesDeCotizacion(cotizPago, lineasGanadas(lineasPago, realesNum)) : null;
   const falta =
     (hacia === 'Perdida' && !motivoFinal(motivo, otroMotivo)) ||
     (reabre && !comentario.trim()) ||
@@ -186,7 +197,11 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="flex-1 min-w-[10rem]">
                         <p className={`text-sm font-medium ${nada ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{l.producto}</p>
-                        <p className="text-xs text-gray-400">Cotizado {formatUSD(l.cantidad, 2)} {unidad} · USD {formatUSD(l.precio_usd, 2)}</p>
+                        <p className="text-xs text-gray-400">Cotizado {formatUSD(l.cantidad, 2)} {unidad} · USD {formatUSD(l.precio_usd, 2)} (lista, sin flete)</p>
+                        {conFinanciacion && (() => {
+                          const fl = financiacionLinea(lineasPago[lineas.indexOf(l)], cotizPago);
+                          return <p className="text-xs text-emerald-700">Con flete y financiación: USD {formatUSD(fl.precioUnit, 2)}/{unidad}{!esContado(fl.plazo) ? ` · a ${fl.plazo} días` : ' · contado'}</p>;
+                        })()}
                       </div>
                       <input type="text" inputMode="decimal" value={f.cantidad} aria-label={`Cantidad ganada de ${l.producto}`}
                         onChange={(e) => cambiarFila(l.id, { cantidad: e.target.value })}
@@ -223,8 +238,14 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
             </div>
             <div className={`mt-3 rounded-lg px-3 py-2 text-sm flex flex-wrap justify-between gap-2 ${parcial ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`}>
               <span className="font-semibold">{parcial ? `Ganada parcial · ${formatUSD(pctGanado, 0)} %` : 'Ganada completa'}</span>
-              <span>USD {formatUSD(totalGanado, 2)} de {formatUSD(totalCotizado, 2)} <span className="text-xs opacity-70">(sin IVA)</span></span>
+              <span>USD {formatUSD(totalGanado, 2)} de {formatUSD(totalCotizado, 2)} <span className="text-xs opacity-70">(sin IVA ni financiación)</span></span>
             </div>
+            {totalFinal && (conFinanciacion || cotiz.con_iva) && (
+              <div className="mt-1 rounded-lg px-3 py-2 text-sm flex flex-wrap justify-between gap-2 bg-gray-50 text-gray-800">
+                <span className="font-semibold">A cobrar{opSel ? ` · ${opSel.nombre}` : ''}</span>
+                <span>USD {formatUSD(totalFinal.total, 2)} <span className="text-xs opacity-70">{conFinanciacion ? 'con financiación' : ''}{conFinanciacion && cotiz.con_iva ? ' e IVA' : cotiz.con_iva ? 'con IVA' : ''}</span></span>
+              </div>
+            )}
             {errorGanada && <p role="alert" className="text-xs text-red-600 mt-2">{errorGanada}</p>}
           </div>
         )}
