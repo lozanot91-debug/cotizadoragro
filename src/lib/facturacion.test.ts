@@ -121,7 +121,7 @@ describe('textos', () => {
   });
   it('describe el vencimiento si está en la foto', () => {
     expect(describirCondicion({ id: 'x', tipo: 'financiado', plazo_dias: 90, tasa_mensual: 1.5, vencimiento: '2027-01-15' }, fmt)).toBe('Financiado · vence 15/01/2027 · 1,50 % mensual');
-    expect(describirCondicion({ id: 'x', tipo: 'tarjeta', tarjeta: 'Visa', plazo_dias: 30, tasa_mensual: 0, vencimiento: '2026-11-15' }, fmt)).toBe('Tarjeta Visa · 30 días (vence 15/11/2026) · sin interés');
+    expect(describirCondicion({ id: 'x', tipo: 'tarjeta', tarjeta: 'Visa', plazo_dias: 30, tasa_mensual: 0, vencimiento: '2026-11-15' }, fmt)).toBe('Tarjeta Visa · vence 15/11/2026 · sin interés');
     expect(describirCondicion({ id: 'x', tipo: 'contado', vencimiento: '2026-11-15' }, fmt)).toBe('Contado');
   });
   it('arma link y texto de WhatsApp', () => {
