@@ -276,7 +276,7 @@ export function lineasDesdeCotizacion(
   lineas: CotizacionLinea[],
   reales: Reales | null | undefined,
   ivaDe: (l: CotizacionLinea) => number,
-): (LineaFacturacion & { plazo_dias: number | null })[] {
+): (LineaFacturacion & { plazo_dias: number | null; tasa_mensual: number | null })[] {
   return lineasGanadas([...lineas].sort((a, b) => a.orden - b.orden), reales).map((l) => {
     const precio = l.precio_usd || 0;
     const costo = l.costo_usd || 0;
@@ -284,7 +284,7 @@ export function lineasDesdeCotizacion(
       cod: l.cod, producto: l.producto, unidad: l.unid || null, es_fertilizante: !!l.es_fertilizante,
       cantidad: l.cantidad, costo_usd: costo, precio_usd: precio, flete_usd: l.con_flete ? l.flete_usd || 0 : 0,
       margen: precio > 0 ? Math.round(((precio - costo) / precio) * 10000) / 100 : 0,
-      iva: ivaDe(l), condicion_id: '', plazo_dias: l.plazo_dias ?? null,
+      iva: ivaDe(l), condicion_id: '', plazo_dias: l.plazo_dias ?? null, tasa_mensual: l.tasa_mensual ?? null,
     };
   });
 }

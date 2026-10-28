@@ -63,6 +63,15 @@ describe('calcularTotalesFacturacion', () => {
 });
 
 describe('condicionesIniciales', () => {
+  it('mismo plazo con tasas distintas por artículo: una condición por tasa', () => {
+    const r = condicionesIniciales(
+      [{ plazo_dias: 96, tasa_mensual: 0.9 }, { plazo_dias: 96, tasa_mensual: null }, { plazo_dias: 96, tasa_mensual: null }],
+      { plazo_dias: 96, tasa_mensual: 0.7, canje_cultivo: null, canje_precio_usd: 0 },
+    );
+    expect(r.condiciones.map((c) => c.tasa_mensual).sort()).toEqual([0.7, 0.9]);
+    expect(r.asignacion[1]).toBe(r.asignacion[2]);
+    expect(r.asignacion[0]).not.toBe(r.asignacion[1]);
+  });
   it('canje en la cotización: una sola condición de canje', () => {
     const r = condicionesIniciales([{ plazo_dias: 0 }, { plazo_dias: 90 }], { plazo_dias: 90, tasa_mensual: 2, canje_cultivo: 'Maíz', canje_precio_usd: 180 });
     expect(r.condiciones).toHaveLength(1);
