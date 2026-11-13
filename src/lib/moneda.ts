@@ -99,3 +99,37 @@ export function vistaEnMoneda<
     })),
   };
 }
+
+/** Lo que suman, en un grupo de cotizaciones, las que están en pesos (balanceado). */
+export interface ResumenPesos {
+  /** Cantidad de cotizaciones en pesos del grupo. */
+  n: number;
+  /** Total en pesos reales (sin IVA, salvo que `usdDe` diga otra cosa). */
+  ars: number;
+  /** Su equivalente en dólares al TC de cada cotización: es lo que ya suma el total general en USD. */
+  usd: number;
+}
+
+/**
+ * Suma solo las cotizaciones en pesos de un grupo. `usdDe` da el monto en dólares de cada una según lo
+ * que esté contando la pantalla (por defecto el subtotal sin IVA; puede ser ponderado por probabilidad,
+ * el monto ganado, etc.). Los pesos salen de ese mismo monto × el TC de la cotización, así que siempre
+ * son coherentes con el total en dólares que muestra la pantalla.
+ */
+export function sumarEnPesos<T extends { moneda?: string | null; tc?: number | null; subtotal_usd?: number | null }>(
+  cotizs: T[],
+  usdDe: (c: T) => number = (c) => c.subtotal_usd ?? 0
+): ResumenPesos {
+  let n = 0;
+  let ars = 0;
+  let usd = 0;
+  for (const c of cotizs) {
+    if (monedaDeCotizacion(c) !== 'ARS') continue;
+    const u = usdDe(c);
+    if (!Number.isFinite(u)) continue;
+    n += 1;
+    usd += u;
+    ars += u * (c.tc ?? 0);
+  }
+  return { n, ars, usd };
+}

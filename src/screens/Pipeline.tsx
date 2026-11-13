@@ -12,6 +12,8 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { avisoFormasDePago } from '@/lib/opcionesSalida';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { sumarEnPesos, monedaDeCotizacion, formatMoneda } from '@/lib/moneda';
+import { LineaBalanceado } from '@/components/LineaBalanceado';
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida'];
 
@@ -112,7 +114,12 @@ export default function Pipeline({ onEdit }: Props) {
     const perdidoMes = perdidasMes.reduce((s, c) => s + c.subtotal_usd, 0);
     const tasa = ganadasMes.length + perdidasMes.length > 0
       ? (ganadasMes.length / (ganadasMes.length + perdidasMes.length)) * 100 : 0;
-    return { totalAbierto, ganadoMes, perdidoMes, tasa, countAbierto: abiertas.length };
+    return {
+      totalAbierto, ganadoMes, perdidoMes, tasa, countAbierto: abiertas.length,
+      pesosAbierto: sumarEnPesos(abiertas, (c) => c.subtotal_usd),
+      pesosGanado: sumarEnPesos(ganadasMes, montoGanado),
+      pesosPerdido: sumarEnPesos(perdidasMes, (c) => c.subtotal_usd),
+    };
   }, [filtradas, config]);
 
   const pronostico = useMemo(() => {
@@ -128,7 +135,7 @@ export default function Pipeline({ onEdit }: Props) {
         sinFecha += ponderado;
       }
     }
-    return { porMes, sinFecha };
+    return { porMes, sinFecha, pesos: sumarEnPesos(abiertas, (c) => c.subtotal_usd * (probabilidad(c) / 100)) };
   }, [filtradas, config]);
 
   function tareasPendientesCount(cotizId: string): number {
@@ -183,14 +190,17 @@ export default function Pipeline({ onEdit }: Props) {
           <p className="text-xs text-gray-500">Total abierto</p>
           <p className="text-lg font-bold text-gray-800">{formatUSD(indicadores.totalAbierto, 0)}</p>
           <p className="text-xs text-gray-400">{indicadores.countAbierto} cotiz.</p>
+          <LineaBalanceado r={indicadores.pesosAbierto} className="text-gray-500 mt-1" />
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <p className="text-xs text-gray-500">Ganado del mes</p>
           <p className="text-lg font-bold text-emerald-700">{formatUSD(indicadores.ganadoMes, 0)}</p>
+          <LineaBalanceado r={indicadores.pesosGanado} className="text-gray-500 mt-1" />
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <p className="text-xs text-gray-500">Perdido del mes</p>
           <p className="text-lg font-bold text-red-700">{formatUSD(indicadores.perdidoMes, 0)}</p>
+          <LineaBalanceado r={indicadores.pesosPerdido} className="text-gray-500 mt-1" />
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <p className="text-xs text-gray-500">Tasa conversión</p>
@@ -220,6 +230,7 @@ export default function Pipeline({ onEdit }: Props) {
             {ESTADOS.map((estado) => {
               const cols = filtradas.filter((c) => c.estado === estado);
               const sum = cols.reduce((s, c) => s + c.subtotal_usd, 0);
+              const pesosCol = sumarEnPesos(cols, (c) => c.subtotal_usd);
               return (
                 <div
                   key={estado}
@@ -233,6 +244,7 @@ export default function Pipeline({ onEdit }: Props) {
                       <span className="text-xs text-gray-500">{cols.length}</span>
                     </div>
                     <p className="text-sm font-bold text-gray-700 mt-1">{formatUSD(sum, 0)} USD</p>
+                    <LineaBalanceado r={pesosCol} className="text-gray-500 mt-0.5" />
                   </div>
                   <div className="p-2 space-y-2 max-h-[60vh] overflow-y-auto">
                     {cols.map((c) => {
@@ -240,6 +252,8 @@ export default function Pipeline({ onEdit }: Props) {
                       const sr = esSinRespuesta(c);
                       const vr = vigenciaRestante(c);
                       const prob = probabilidad(c);
+                      const enPesos = monedaDeCotizacion(c) === 'ARS';
+                      const fm = formatMoneda('ARS');
                       const diasEnv = c.fecha_envio ? diasDesde(c.fecha_envio) : null;
                       return (
                         <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)}
@@ -251,9 +265,9 @@ export default function Pipeline({ onEdit }: Props) {
                             </div>
                             <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0" />
                           </div>
-                          <p className="text-sm font-semibold text-gray-800 mt-1">{formatUSD(c.subtotal_usd, 0)} USD</p>
+                          <p className="text-sm font-semibold text-gray-800 mt-1">{enPesos ? fm(c.subtotal_ars ?? 0) : `${formatUSD(c.subtotal_usd, 0)} USD`}</p>
                           <div className="flex items-center gap-1 flex-wrap mt-1">
-                            <span className="text-xs text-gray-400">Pond: {formatUSD(c.subtotal_usd * prob / 100, 0)}</span>
+                            <span className="text-xs text-gray-400">Pond: {enPesos ? fm((c.subtotal_ars ?? 0) * prob / 100) : formatUSD(c.subtotal_usd * prob / 100, 0)}</span>
                             {tp > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">{tp} tarea{tp !== 1 ? 's' : ''}</span>}
                             {avisoFormasDePago(c) && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">{avisoFormasDePago(c)}</span>}
                             {sr && <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> sin respuesta</span>}
@@ -302,9 +316,9 @@ export default function Pipeline({ onEdit }: Props) {
                   <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => onEdit(c.id)}>
                     <td className="px-3 py-2 font-medium text-gray-800">{nombreCotizacion(c)}</td>
                     <td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estadoColors[c.estado]}`}>{c.estado}</span></td>
-                    <td className="px-3 py-2 text-right font-semibold">{formatUSD(c.subtotal_usd, 0)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{monedaDeCotizacion(c) === 'ARS' ? formatMoneda('ARS')(c.subtotal_ars ?? 0) : formatUSD(c.subtotal_usd, 0)}</td>
                     <td className="px-3 py-2 text-right text-gray-500">{prob}%</td>
-                    <td className="px-3 py-2 text-right text-blue-700 font-medium">{formatUSD(c.subtotal_usd * prob / 100, 0)}</td>
+                    <td className="px-3 py-2 text-right text-blue-700 font-medium">{monedaDeCotizacion(c) === 'ARS' ? formatMoneda('ARS')((c.subtotal_ars ?? 0) * prob / 100) : formatUSD(c.subtotal_usd * prob / 100, 0)}</td>
                     <td className="px-3 py-2 text-xs"><span className={vr <= 3 ? 'text-red-600 font-medium' : 'text-gray-400'}>{vr > 0 ? `${vr}d` : vr === 0 ? 'Hoy' : 'Vencida'}</span></td>
                     <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <select onChange={(e) => { if (e.target.value) solicitarCambioEstado(c, e.target.value as EstadoCotizacion); e.target.value = ''; }} value="" className="text-xs px-2 py-1 border border-gray-200 rounded text-gray-500 bg-white">
@@ -323,6 +337,7 @@ export default function Pipeline({ onEdit }: Props) {
       {/* Pronóstico por mes */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-500" /> Pronóstico por mes</h3>
+        <LineaBalanceado r={pronostico.pesos} className="text-gray-500 mb-2" />
         <div className="space-y-1">
           {Object.entries(pronostico.porMes).sort().map(([mes, val]) => (
             <div key={mes} className="flex justify-between py-1 border-b border-gray-100 text-sm">

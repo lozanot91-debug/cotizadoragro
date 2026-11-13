@@ -6,6 +6,8 @@
  * Una cantidad real de 0 significa "no se ganó esa línea" (antes se tomaba como "igual a lo cotizado").
  */
 import type { Cotizacion, CotizacionLinea } from '@/types';
+import { parseNumberInput } from '@/lib/format';
+import { arsAUsd } from '@/lib/moneda';
 
 export type Reales = NonNullable<Cotizacion['cantidades_reales']>;
 type LineaBase = Pick<CotizacionLinea, 'id' | 'cod' | 'producto' | 'cantidad' | 'precio_usd' | 'flete_usd' | 'total_usd'>;
@@ -148,4 +150,14 @@ export function motivosDePerdida(
   }
   for (const f of m.values()) f.usd = f.usdPerdidas + f.usdParciales;
   return [...m.values()].sort((a, b) => b.usd - a.usd || b.perdidas + b.productos - (a.perdidas + a.productos));
+}
+
+/**
+ * Un importe tipeado en pesos (cotización en pesos) pasado a texto en dólares al TC de la cotización.
+ * Vacío o igual al valor inicial (sin tocar) devuelve '' = "queda como estaba".
+ */
+export function pesosATextoUsd(texto: string, tc: number, inicial = ''): string {
+  const t = texto.trim();
+  if (t === '' || t === inicial) return '';
+  return arsAUsd(parseNumberInput(t), tc).toFixed(6).replace('.', ',');
 }

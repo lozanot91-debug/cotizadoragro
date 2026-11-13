@@ -7,6 +7,8 @@ import type { Cotizacion } from '@/types';
 import { BarChart3, TrendingUp, TrendingDown, DollarSign, Trophy, Loader2 } from 'lucide-react';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
+import { LineaBalanceado } from '@/components/LineaBalanceado';
+import { sumarEnPesos } from '@/lib/moneda';
 
 export default function Estadisticas() {
   const data = useData();
@@ -31,6 +33,8 @@ export default function Estadisticas() {
     const montoCotizado = cotizaciones.reduce((sum, c) => sum + (c.subtotal_usd || 0), 0);
     // Ganado = lo realmente ganado (en las ganadas parciales, solo la parte ganada)
     const montoGanadoTotal = ganadas.reduce((sum, c) => sum + montoGanado(c), 0);
+    const balCotizado = sumarEnPesos(cotizaciones, (c) => c.subtotal_usd || 0);
+    const balGanado = sumarEnPesos(ganadas, montoGanado);
     const parciales = ganadas.filter((c) => (c.no_ganado || []).length > 0).length;
 
     // Motivos de pérdida: cotizaciones perdidas + lo no ganado de las ganadas parciales
@@ -63,9 +67,13 @@ export default function Estadisticas() {
       tasaConversion,
       montoCotizado,
       montoGanado: montoGanadoTotal,
+      balCotizado,
+      balGanado,
       parciales,
       motivos,
       porCliente: Object.entries(porCliente).sort((a, b) => b[1].cotizado - a[1].cotizado).slice(0, 10),
+      balPorMes: (mes: string) => sumarEnPesos(cotizaciones.filter((c) => (c.fecha?.substring(0, 7) || 'Sin fecha') === mes), (c) => c.subtotal_usd || 0),
+      balPorCliente: (nombre: string) => sumarEnPesos(cotizaciones.filter((c) => (c.cliente_nombre || 'Sin cliente') === nombre), (c) => c.subtotal_usd || 0),
       porMes: Object.entries(porMes).sort((a, b) => a[0].localeCompare(b[0])),
     };
   }, [cotizaciones]);
@@ -119,6 +127,7 @@ export default function Estadisticas() {
           </div>
           <p className="text-2xl font-bold text-gray-800">{formatUSD(stats.montoCotizado, 0)}</p>
           <p className="text-xs text-gray-400">USD total</p>
+          <LineaBalanceado r={stats.balCotizado} className="text-gray-500 mt-1" />
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -130,6 +139,7 @@ export default function Estadisticas() {
           </div>
           <p className="text-2xl font-bold text-gray-800">{formatUSD(stats.montoGanado, 0)}</p>
           <p className="text-xs text-gray-400">USD total{stats.parciales > 0 && ` · ${stats.parciales} ${stats.parciales === 1 ? 'parcial' : 'parciales'}`}</p>
+          <LineaBalanceado r={stats.balGanado} className="text-gray-500 mt-1" />
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -157,6 +167,7 @@ export default function Estadisticas() {
                   <span>{mes}</span>
                   <span>{formatUSD(v.cotizado, 0)} → {formatUSD(v.ganado, 0)} USD</span>
                 </div>
+                <LineaBalanceado r={stats.balPorMes(mes)} className="text-gray-400" />
                 <div className="flex gap-1 h-6">
                   <div
                     className="bg-blue-200 rounded-l flex items-center justify-end px-2"
@@ -183,6 +194,7 @@ export default function Estadisticas() {
                 <span className="text-gray-600 truncate">{nombre}</span>
                 <span className="text-gray-400">{formatUSD(v.cotizado, 0)} USD · {v.count} cotiz.</span>
               </div>
+              <LineaBalanceado r={stats.balPorCliente(nombre)} className="text-gray-400" />
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"

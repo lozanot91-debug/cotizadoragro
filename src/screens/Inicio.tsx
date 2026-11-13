@@ -17,6 +17,8 @@ import ErrorCarga from '@/components/ErrorCarga';
 import { resumenCobranzas } from '@/lib/cobranzas';
 import type { Cobranza } from '@/types';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { sumarEnPesos, type ResumenPesos } from '@/lib/moneda';
+import { LineaBalanceado } from '@/components/LineaBalanceado';
 
 interface Props {
   onNavigate: (s: Screen) => void;
@@ -138,6 +140,9 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
         ganadoMes: 0,
         countAbierto: 0,
         countGanado: 0,
+        pesosAbierto: null as ResumenPesos | null,
+        pesosPonderado: null as ResumenPesos | null,
+        pesosGanado: null as ResumenPesos | null,
       };
     // Las cotizaciones sin cantidades (solo precios) no cuentan en los indicadores del pipeline
     const abiertas = cotizaciones.filter(
@@ -148,7 +153,7 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
           c.estado === 'En negociación')
     );
     const totalAbierto = abiertas.reduce((s, c) => s + c.subtotal_usd, 0);
-    const valorPonderado = abiertas.reduce((s, c) => {
+    const ponderadoDe = (c: Cotizacion) => {
       const prob =
         c.probabilidad !== null
           ? c.probabilidad
@@ -157,8 +162,9 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
           : c.estado === 'Enviada'
           ? config.prob_enviada
           : config.prob_negociacion;
-      return s + c.subtotal_usd * (prob / 100);
-    }, 0);
+      return c.subtotal_usd * (prob / 100);
+    };
+    const valorPonderado = abiertas.reduce((s, c) => s + ponderadoDe(c), 0);
     const ganadasMes = cotizaciones.filter(
       (c) => c.estado === 'Ganada' && c.fecha.substring(0, 7) === mesActual
     );
@@ -169,6 +175,9 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
       ganadoMes,
       countAbierto: abiertas.length,
       countGanado: ganadasMes.length,
+      pesosAbierto: sumarEnPesos(abiertas, (c) => c.subtotal_usd),
+      pesosPonderado: sumarEnPesos(abiertas, ponderadoDe),
+      pesosGanado: sumarEnPesos(ganadasMes, montoGanado),
     };
   }, [cotizaciones, config, mesActual]);
 
@@ -219,15 +228,18 @@ export default function Inicio({ onNavigate, onEditCotiz, onDuplicateCotiz, pedi
             {formatUSD(pipeline.totalAbierto, 0)}
             <span className="text-2xl sm:text-3xl font-semibold text-amber-300 ml-2">USD</span>
           </p>
+          <LineaBalanceado r={pipeline.pesosAbierto} className="text-emerald-200 mt-1" />
         </button>
         <div className="grid grid-cols-3 border-t border-emerald-700/70 bg-emerald-950/40">
           <button onClick={() => onNavigate('pipeline')} className="text-left px-3 sm:px-5 py-3 hover:bg-emerald-950/40 transition-colors">
             <p className="text-emerald-300 text-xs">Ponderado por probabilidad</p>
             <p className="cifra text-xl sm:text-2xl mt-1">{formatUSD(pipeline.valorPonderado, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+            <LineaBalanceado r={pipeline.pesosPonderado} className="text-emerald-300 mt-1" />
           </button>
           <button onClick={() => onNavigate('cotizaciones')} className="text-left px-3 sm:px-5 py-3 border-l border-emerald-700/70 hover:bg-emerald-950/40 transition-colors">
             <p className="text-emerald-300 text-xs">Ganado este mes ({pipeline.countGanado})</p>
             <p className="cifra text-xl sm:text-2xl mt-1">{formatUSD(pipeline.ganadoMes, 0)} <span className="text-sm font-semibold text-emerald-300">USD</span></p>
+            <LineaBalanceado r={pipeline.pesosGanado} className="text-emerald-300 mt-1" />
           </button>
           <button onClick={() => onNavigate('cobranzas')} className="text-left px-3 sm:px-5 py-3 border-l border-emerald-700/70 hover:bg-emerald-950/40 transition-colors">
             <p className="text-emerald-300 text-xs">Por cobrar{resumenCobros.vencido > 0 ? `, ${formatUSD(resumenCobros.vencido, 0)} vencido` : ''}</p>

@@ -6,10 +6,11 @@ import { calcularOpcion } from '@/lib/opcionesPago';
 import { opcionesParaMostrar, pctFinanciacion } from '@/lib/opcionesSalida';
 import { vencimientoDesdeDias } from '@/lib/fechas';
 import { esContado } from '@/lib/calculations';
-import { subtotalGanado, validarGanada, lineasGanadas, type Reales } from '@/lib/ganadaParcial';
+import { subtotalGanado, validarGanada, lineasGanadas, pesosATextoUsd, type Reales } from '@/lib/ganadaParcial';
 import { financiacionLinea, totalesDeCotizacion } from '@/lib/export';
 import { MOTIVOS_PERDIDA, esReapertura, motivoFinal } from '@/lib/estados';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { vistaEnMoneda, formatMoneda } from '@/lib/moneda';
 import { MOTIVOS_CON_COMPETENCIA, precioNuestro } from '@/lib/competencia';
 
 export interface DatosConfirmacion {
@@ -53,7 +54,13 @@ interface Props {
 }
 
 /** Modal único de confirmación de cambio de estado. Lo usan Cotizaciones y Pipeline. */
-export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar, onConfirmar, competidores = [] }: Props) {
+export function ModalCambioEstado({ cotiz: cotizReal, hacia, lineas: lineasReal, guardando, onCancelar, onConfirmar, competidores = [] }: Props) {
+  // En una cotización en pesos todo se ve y se carga en pesos (la vista pone los pesos en los campos *_usd, tc = 1);
+  // al confirmar, los precios tipeados se pasan a dólares al TC de la cotización.
+  const { moneda, cotiz, lineas } = vistaEnMoneda(cotizReal, lineasReal);
+  const enPesos = moneda === 'ARS';
+  const mon = (n: number, d = 2) => (enPesos ? `$ ${formatMoneda('ARS')(n)}` : `USD ${formatUSD(n, d)}`);
+  const aUsd = (texto: string, inicial = '') => (enPesos ? pesosATextoUsd(texto, cotizReal.tc, inicial) : texto);
   const [motivo, setMotivo] = useState('');
   const [otroMotivo, setOtroMotivo] = useState('');
   const [comentario, setComentario] = useState('');
@@ -119,7 +126,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
           <div>
             <h3 className="font-bold text-gray-800">{reabre ? 'Reabrir cotización' : `Cambiar a ${hacia}`}</h3>
             <p className="text-sm text-gray-500">
-              {nombreCotizacion(cotiz)} · {formatUSD(cotiz.subtotal_usd)} USD
+              {nombreCotizacion(cotiz)} · {enPesos ? mon(cotiz.subtotal_usd) : `${formatUSD(cotiz.subtotal_usd)} USD`}
             </p>
           </div>
         </div>
@@ -167,7 +174,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
                   <label key={op.id} className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer ${opcionId === op.id ? 'border-emerald-500 bg-emerald-50/60' : 'border-gray-200'}`}>
                     <input type="radio" name="opcion-pago" value={op.id} checked={opcionId === op.id} onChange={() => setOpcionId(op.id)} className="mt-1 accent-emerald-600" />
                     <span className="flex-1 text-sm text-gray-800">
-                      <span className="font-medium">{op.nombre}</span> · USD {formatUSD(totales.total, 2)}
+                      <span className="font-medium">{op.nombre}</span> · {mon(totales.total)}
                       {!esContado(maxPlazo) && (
                         <span className="block text-xs text-gray-400">
                           Incluye {formatUSD(pctFinanciacion(totales), 1)} % de financiación · vence el {formatDate(vencimientoDesdeDias(cotiz.fecha, maxPlazo))}
@@ -197,10 +204,10 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="flex-1 min-w-[10rem]">
                         <p className={`text-sm font-medium ${nada ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{l.producto}</p>
-                        <p className="text-xs text-gray-400">Cotizado {formatUSD(l.cantidad, 2)} {unidad} · USD {formatUSD(l.precio_usd, 2)} (lista, sin flete)</p>
+                        <p className="text-xs text-gray-400">Cotizado {formatUSD(l.cantidad, 2)} {unidad} · {mon(l.precio_usd)} (lista, sin flete)</p>
                         {conFinanciacion && (() => {
                           const fl = financiacionLinea(lineasPago[lineas.indexOf(l)], cotizPago);
-                          return <p className="text-xs text-emerald-700">Con flete y financiación: USD {formatUSD(fl.precioUnit, 2)}/{unidad}{!esContado(fl.plazo) ? ` · a ${fl.plazo} días` : ' · contado'}</p>;
+                          return <p className="text-xs text-emerald-700">Con flete y financiación: {mon(fl.precioUnit)}/{unidad}{!esContado(fl.plazo) ? ` · a ${fl.plazo} días` : ' · contado'}</p>;
                         })()}
                       </div>
                       <input type="text" inputMode="decimal" value={f.cantidad} aria-label={`Cantidad ganada de ${l.producto}`}
@@ -238,12 +245,12 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
             </div>
             <div className={`mt-3 rounded-lg px-3 py-2 text-sm flex flex-wrap justify-between gap-2 ${parcial ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'}`}>
               <span className="font-semibold">{parcial ? `Ganada parcial · ${formatUSD(pctGanado, 0)} %` : 'Ganada completa'}</span>
-              <span>USD {formatUSD(totalGanado, 2)} de {formatUSD(totalCotizado, 2)} <span className="text-xs opacity-70">(sin IVA ni financiación)</span></span>
+              <span>{mon(totalGanado)} de {enPesos ? mon(totalCotizado) : formatUSD(totalCotizado, 2)} <span className="text-xs opacity-70">(sin IVA ni financiación)</span></span>
             </div>
             {totalFinal && (conFinanciacion || cotiz.con_iva) && (
               <div className="mt-1 rounded-lg px-3 py-2 text-sm flex flex-wrap justify-between gap-2 bg-gray-50 text-gray-800">
                 <span className="font-semibold">A cobrar{opSel ? ` · ${opSel.nombre}` : ''}</span>
-                <span>USD {formatUSD(totalFinal.total, 2)} <span className="text-xs opacity-70">{conFinanciacion ? 'con financiación' : ''}{conFinanciacion && cotiz.con_iva ? ' e IVA' : cotiz.con_iva ? 'con IVA' : ''}</span></span>
+                <span>{mon(totalFinal.total)} <span className="text-xs opacity-70">{conFinanciacion ? 'con financiación' : ''}{conFinanciacion && cotiz.con_iva ? ' e IVA' : cotiz.con_iva ? 'con IVA' : ''}</span></span>
               </div>
             )}
             {errorGanada && <p role="alert" className="text-xs text-red-600 mt-2">{errorGanada}</p>}
@@ -260,7 +267,7 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
             <div className="space-y-1.5">
               {lineasComp.map((l) => (
                 <div key={l.id} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 min-w-0 truncate text-gray-700">{l.producto}<span className="text-xs text-gray-400 ml-1">nuestro USD {formatUSD(precioNuestro(l), 2)}/{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></span>
+                  <span className="flex-1 min-w-0 truncate text-gray-700">{l.producto}<span className="text-xs text-gray-400 ml-1">nuestro {mon(precioNuestro(l))}/{l.es_fertilizante ? 'tn' : (l.unid || 'un').toLowerCase()}</span></span>
                   <input type="text" inputMode="decimal" value={preciosComp[l.id] || ''} onChange={(e) => setPreciosComp((p) => ({ ...p, [l.id]: e.target.value }))}
                     placeholder="Precio comp." aria-label={`Precio de la competencia para ${l.producto}`}
                     className="w-28 px-2 py-1 border border-gray-300 rounded text-right text-sm" />
@@ -277,8 +284,8 @@ export function ModalCambioEstado({ cotiz, hacia, lineas, guardando, onCancelar,
             onClick={() => onConfirmar({
               motivo: motivoFinal(motivo, otroMotivo),
               comentario: comentario.trim(),
-              cantidadesReales: Object.fromEntries(Object.entries(reales).map(([id, f]) => [id, { cantidad: f.cantidad, precio: f.precio, motivo: motivoFinal(f.motivo, f.otro) }])),
-              competencia: { competidor, precios: Object.fromEntries(lineasComp.map((l) => [l.id, preciosComp[l.id] || ''])) },
+              cantidadesReales: Object.fromEntries(Object.entries(reales).map(([id, f]) => [id, { cantidad: f.cantidad, precio: aUsd(f.precio, formatInputNumber(lineas.find((l) => l.id === id)?.precio_usd ?? 0, 2)), motivo: motivoFinal(f.motivo, f.otro) }])),
+              competencia: { competidor, precios: Object.fromEntries(lineasComp.map((l) => [l.id, aUsd(preciosComp[l.id] || '')])) },
               opcionElegida: opcionesElegir.length > 0 ? opcionId : undefined,
             })}
             disabled={falta || guardando}

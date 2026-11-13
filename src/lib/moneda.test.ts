@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  arsAUsd, esFamiliaEnPesos, monedaDeCotizacion, monedaDeProducto, motivoNoSePuedeAgregar, tcMotor, vistaEnMoneda,
+  arsAUsd, esFamiliaEnPesos, monedaDeCotizacion, monedaDeProducto, motivoNoSePuedeAgregar, sumarEnPesos, tcMotor, vistaEnMoneda,
 } from './moneda';
 
 describe('moneda de producto', () => {
@@ -71,5 +71,24 @@ describe('vistaEnMoneda', () => {
     expect(v.lineas[0].total_usd).toBe(14500);
     expect(v.lineas[0].costo_usd).toBe(13050);
     expect(v.lineas[0].flete_usd).toBe(0);
+  });
+});
+
+describe('sumarEnPesos', () => {
+  const cs = [
+    { moneda: 'USD', tc: 1500, subtotal_usd: 1000 },
+    { moneda: 'ARS', tc: 1500, subtotal_usd: 100 }, // 150.000 pesos
+    { moneda: 'ARS', tc: 1000, subtotal_usd: 50 }, // 50.000 pesos
+    { tc: 1500, subtotal_usd: 7 }, // vieja, sin moneda: es USD
+  ];
+  it('suma solo las cotizaciones en pesos, con pesos reales y su equivalente en USD', () => {
+    expect(sumarEnPesos(cs)).toEqual({ n: 2, ars: 200000, usd: 150 });
+  });
+  it('sin cotizaciones en pesos devuelve ceros', () => {
+    expect(sumarEnPesos([cs[0], cs[3]])).toEqual({ n: 0, ars: 0, usd: 0 });
+    expect(sumarEnPesos([])).toEqual({ n: 0, ars: 0, usd: 0 });
+  });
+  it('usa el monto que le pida la pantalla (ponderado, ganado) y mantiene los pesos coherentes', () => {
+    expect(sumarEnPesos(cs, (c) => c.subtotal_usd * 0.5)).toEqual({ n: 2, ars: 100000, usd: 75 });
   });
 });

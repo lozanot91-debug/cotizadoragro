@@ -5,6 +5,8 @@ import { useToast } from '@/components/Toast';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { armarResumen, nombreCot } from '../../supabase/functions/resumen-semanal/resumen';
+import { LineaBalanceado } from '@/components/LineaBalanceado';
+import { balanceadoSemana } from '@/lib/resumenSemanal';
 import { alertasRecompra } from '@/lib/recompras';
 import { diferenciaPct } from '@/lib/competencia';
 import { hoyAR, sumarDias } from '@/lib/fechas';
@@ -54,6 +56,7 @@ export default function ResumenSemanal({ onEditCotiz, onNavigate }: { onEditCoti
   useEffect(() => { void load(); }, [load]);
 
   const r = useMemo(() => armarResumen(ref, cotizaciones.map((c) => ({ ...c })), cambios, cobros.map((c) => ({ vencimiento: c.vencimiento, monto_usd: c.monto_usd, estado: c.estado }))), [ref, cotizaciones, cambios, cobros]);
+  const bal = useMemo(() => balanceadoSemana(r, cotizaciones), [r, cotizaciones]);
   const porId = useMemo(() => new Map(cotizaciones.map((c) => [c.id, c])), [cotizaciones]);
   const perdidas = useMemo(() => r.perdidas.ids.map((id) => porId.get(id)).filter((c): c is Cotizacion => !!c), [r, porId]);
   const recompras = useMemo(() => alertasRecompra(cotizaciones, ref, pospuestas), [cotizaciones, ref, pospuestas]);
@@ -92,11 +95,11 @@ export default function ResumenSemanal({ onEditCotiz, onNavigate }: { onEditCoti
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tarjeta icono={<FileText className="w-4 h-4" />} titulo="Cotizado" valor={`USD ${fmt(r.cotizadas.usd)}`} detalle={`${r.cotizadas.n} ${r.cotizadas.n === 1 ? 'cotización' : 'cotizaciones'}`} />
+        <Tarjeta icono={<FileText className="w-4 h-4" />} titulo="Cotizado" valor={`USD ${fmt(r.cotizadas.usd)}`} detalle={<>{r.cotizadas.n} {r.cotizadas.n === 1 ? 'cotización' : 'cotizaciones'}<LineaBalanceado r={bal.cotizadas} className="mt-1 text-gray-500" /></>} />
         <Tarjeta icono={<Trophy className="w-4 h-4" />} titulo="Ganado" tono="verde" valor={`USD ${fmt(r.ganadas.usd)}`}
-          detalle={<>{r.ganadas.n} {r.ganadas.n === 1 ? 'cotización' : 'cotizaciones'}{r.tasaCierre !== null ? ` · cierre ${fmt(r.tasaCierre)} %` : ''}</>} />
+          detalle={<>{r.ganadas.n} {r.ganadas.n === 1 ? 'cotización' : 'cotizaciones'}{r.tasaCierre !== null ? ` · cierre ${fmt(r.tasaCierre)} %` : ''}<LineaBalanceado r={bal.ganadas} className="mt-1 text-gray-500" /></>} />
         <Tarjeta icono={<XCircle className="w-4 h-4" />} titulo="Perdido" tono={r.perdidas.n ? 'rojo' : 'gris'} valor={`USD ${fmt(r.perdidas.usd)}`}
-          detalle={r.perdidas.n ? r.perdidas.motivos.map((m) => `${m.motivo} (${m.n})`).join(' · ') : 'Ninguna'} />
+          detalle={<>{r.perdidas.n ? r.perdidas.motivos.map((m) => `${m.motivo} (${m.n})`).join(' · ') : 'Ninguna'}<LineaBalanceado r={bal.perdidas} className="mt-1 text-gray-500" /></>} />
         <Tarjeta icono={<Wallet className="w-4 h-4" />} titulo="Cobros vencidos" tono={r.cobros.vencidos.n ? 'ambar' : 'gris'} valor={`USD ${fmt(r.cobros.vencidos.usd)}`}
           detalle={`${r.cobros.vencidos.n} ${r.cobros.vencidos.n === 1 ? 'cobro vencido' : 'cobros vencidos'} · USD ${fmt(r.cobros.proximos7.usd)} en los próximos 7 días`} />
       </div>

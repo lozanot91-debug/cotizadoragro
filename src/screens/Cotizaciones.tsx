@@ -13,6 +13,10 @@ import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { avisoFormasDePago } from '@/lib/opcionesSalida';
 import { nombreCotizacion } from '@/lib/nombreCotizacion';
+import { formatMoneda, monedaDeCotizacion } from '@/lib/moneda';
+
+/** Subtotal sin IVA en la moneda de la cotización: pesos reales si es en pesos, USD si no. */
+const textoSubtotal = (c: Cotizacion) => monedaDeCotizacion(c) === 'ARS' ? `$ ${formatMoneda('ARS')(c.subtotal_ars ?? 0)}` : `${formatUSD(c.subtotal_usd)} USD`;
 
 const ESTADOS: EstadoCotizacion[] = ['Borrador', 'Enviada', 'En negociación', 'Ganada', 'Perdida', 'Vencida'];
 
@@ -100,7 +104,7 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
     setModalEliminar(null);
     try {
       await data.deleteCotizacion(c.id);
-      await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(c)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(c), valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${formatUSD(c.subtotal_usd)} USD)` });
+      await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(c)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(c), valor_nuevo: null, detalle: `Cotización eliminada (${c.cliente_nombre || 'Sin cliente'} · ${textoSubtotal(c)})` });
     } catch (e) {
       setCotizaciones(anterior);
       toast.error(e);
@@ -201,8 +205,10 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-gray-800">{formatUSD(c.subtotal_usd)} USD</p>
-                    <p className="text-xs text-gray-400">$ {formatUSD(c.subtotal_usd * c.tc, 0)}</p>
+                    <p className="font-bold text-gray-800">{textoSubtotal(c)}</p>
+                    {monedaDeCotizacion(c) === 'ARS'
+                      ? <p className="text-xs text-gray-400">≈ USD {formatUSD(c.subtotal_usd)}</p>
+                      : <p className="text-xs text-gray-400">$ {formatUSD(c.subtotal_usd * c.tc, 0)}</p>}
                   </div>
                 </div>
 
@@ -255,7 +261,7 @@ export default function Cotizaciones({ onEdit, onDuplicate }: Props) {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">Eliminar cotización</h3>
-                <p className="text-sm text-gray-500">{nombreCotizacion(modalEliminar)} · {formatUSD(modalEliminar.subtotal_usd)} USD</p>
+                <p className="text-sm text-gray-500">{nombreCotizacion(modalEliminar)} · {textoSubtotal(modalEliminar)}</p>
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">

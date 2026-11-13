@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detalleGanada, lineasGanadas, montoGanado, motivosDePerdida, noGanados, subtotalGanado, validarGanada, type Reales } from './ganadaParcial';
+import { detalleGanada, lineasGanadas, montoGanado, motivosDePerdida, noGanados, pesosATextoUsd, subtotalGanado, validarGanada, type Reales } from './ganadaParcial';
 import { calcularOpcion } from './opcionesPago';
 
 const L = (id: string, producto: string, cantidad: number, precio: number, flete = 0) => ({
@@ -96,5 +96,16 @@ describe('ganada con opciones de pago', () => {
     const conOps = { ...c, opciones_pago: ops, opcion_elegida: null };
     expect(motivosDePerdida([conOps])).toEqual(motivosDePerdida([c]));
     expect(montoGanado({ estado: 'Ganada', subtotal_usd: 1000, ganado_usd: 700, ...{ opciones_pago: ops } } as never)).toBe(700);
+  });
+});
+
+describe('pesosATextoUsd', () => {
+  it('convierte pesos tipeados a dólares al TC', () => {
+    expect(parseFloat(pesosATextoUsd('1.500', 1500).replace(',', '.'))).toBeCloseTo(1, 5);
+    expect(pesosATextoUsd('0', 1000)).toBe('0,000000');
+  });
+  it('vacío o sin tocar queda como estaba', () => {
+    expect(pesosATextoUsd('', 1000)).toBe('');
+    expect(pesosATextoUsd('500', 1000, '500')).toBe('');
   });
 });
