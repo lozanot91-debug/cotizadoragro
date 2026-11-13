@@ -5,6 +5,7 @@ import { useData } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formClienteVacio, validarCliente } from '@/lib/clientes';
 import { hidratarLineaGuardada } from '@/lib/hidratarCotizacion';
+import { monedaDeProducto, monedaDeCotizacion, tcMotor, arsAUsd, motivoNoSePuedeAgregar, formatMoneda, type Moneda } from '@/lib/moneda';
 import { firmaDeFlete, conFleteGuardado } from '@/lib/fleteCongelado';
 import { calcularLinea, limitesPrecio, margenDesdePrecio, calcularTotalesIva, recargoPorcentaje, textoMesesTasa, esContado, resolverMargen, ivaDeLinea } from '@/lib/calculations';
 import { PARAMS_CANJE_BASE, netoPorTn, normalizarParams, toneladasPorMonto, type ParamsCanje } from '@/lib/canje';
@@ -33,6 +34,9 @@ import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import OpcionesPagoEditor from '@/components/OpcionesPagoEditor';
 import { alinearOpcionesTrasQuitar, calcularOpcion, normalizarOpciones, opcionPrincipalDesdeLineas, ID_PRINCIPAL } from '@/lib/opcionesPago';
 import { opcionesAEditor, opcionesParaGuardar, editorAOpciones, firmaExtras, type OpcionEditable } from '@/lib/opcionesEditor';
+
+/** En cotizaciones en pesos el motor trabaja con el producto en ARS (la moneda de la base no es confiable para AB). */
+const paraMotorARS = (p: ProductoConCosto): ProductoConCosto => ({ ...p, moneda: 'ARS' });
 
 interface LineaEditable {
   key: string;
@@ -273,8 +277,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                        productosCotiz.find((p) => p.cod === l.cod) || null;
           // Una cotización guardada se abre con lo guardado: la lista de hoy no la toca
           const { producto: productoLinea, costoOverrideUSD: costoOverride } = hidratarLineaGuardada(l, prod, {
-            tc: cotiz.tc, tcFlete: cotiz.tc_flete || cotiz.tc, km: cotiz.km, tarifaFlete: tars,
-            tramos: tramosOrigen(cotiz.km),
+            tc: tcMotor(monedaDeCotizacion(cotiz), cotiz.tc), tcFlete: cotiz.tc_flete || cotiz.tc, km: cotiz.km, tarifaFlete: tars,
+            tramos: tramosOrigen(cotiz.km), moneda: monedaDeCotizacion(cotiz),
           });
           return {
             key: l.id || Math.random().toString(),
@@ -328,30 +332,34 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         const margenesCli = cotiz.cliente_id ? await data.fetchMargenesCliente(cotiz.cliente_id) : [];
         const margenCliArr = margenesCli.map((m) => ({ producto_id: m.producto_id, familia: m.familia, margen: m.margen }));
         for (const [pos, l] of origLineas.entries()) {
-          const prod = productosLista.find((p) => p.cod === l.cod);
+          const prodLista = productosLista.find((p) => p.cod === l.cod);
+          const prod = prodLista && monedaDeCotizacion(cotiz) === 'ARS' ? paraMotorARS(prodLista) : prodLista;
           if (!prod) {
             posQuitadas.push(pos);
             faltantes.push(`${l.producto} (${l.cod})`);
-            totalAnt += l.total_usd;
+            totalAnt += monedaDeCotizacion(cotiz) === 'ARS' ? l.total_ars ?? 0 : l.total_usd;
             continue;
           }
           const margen = resolverMargen(prod, cfg.margen_general, margenCliArr);
+          const tcDup = tcMotor(monedaDeCotizacion(cotiz), parseFloat(cotiz.tc.toString()));
           const costoDisplay = prod.es_fertilizante
-            ? (prod.moneda === 'ARS' ? prod.costo / parseFloat(cotiz.tc.toString()) : prod.costo) * 1000
-            : (prod.moneda === 'ARS' ? prod.costo / parseFloat(cotiz.tc.toString()) : prod.costo);
+            ? (prod.moneda === 'ARS' ? prod.costo / tcDup : prod.costo) * 1000
+            : (prod.moneda === 'ARS' ? prod.costo / tcDup : prod.costo);
 
           const calc = calcularLinea({
             producto: prod, cantidad: l.cantidad, margen, conFlete: l.con_flete,
-            tc: parseFloat(cotiz.tc.toString()), km: cotiz.km, tarifaFlete: tars, tramos: tramosOrigen(cotiz.km), tcFlete: cotiz.tc_flete,
+            tc: tcDup, km: cotiz.km, tarifaFlete: tars, tramos: tramosOrigen(cotiz.km), tcFlete: cotiz.tc_flete,
           });
 
+          const esDupARS = monedaDeCotizacion(cotiz) === 'ARS';
+          const precioAntDup = esDupARS ? l.precio_ars ?? 0 : l.precio_usd;
           compLineas.push({
             cod: l.cod, producto: l.producto,
-            precioAnt: l.precio_usd, precioNuevo: calc.precioUSD,
-            diff: calc.precioUSD - l.precio_usd,
-            pct: l.precio_usd > 0 ? ((calc.precioUSD - l.precio_usd) / l.precio_usd) * 100 : 0,
+            precioAnt: precioAntDup, precioNuevo: calc.precioUSD,
+            diff: calc.precioUSD - precioAntDup,
+            pct: precioAntDup > 0 ? ((calc.precioUSD - precioAntDup) / precioAntDup) * 100 : 0,
           });
-          totalAnt += l.total_usd;
+          totalAnt += esDupARS ? l.total_ars ?? 0 : l.total_usd;
 
           nuevasLineas.push({
             key: Math.random().toString(36), producto: prod, cantidad: l.cantidad,
@@ -375,7 +383,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         const totalNuevo = nuevasLineas.reduce((sum, l) => {
           const calc = calcularLinea({
             producto: l.producto, cantidad: l.cantidad, margen: l.margen,
-            conFlete: l.conFlete, tc: parseFloat(tc || '0'), km: parseInt(km || '0') || cotiz.km,
+            conFlete: l.conFlete, tc: tcMotor(monedaDeCotizacion(cotiz), parseFloat(tc || '0')), km: parseInt(km || '0') || cotiz.km,
             tarifaFlete: tars, tramos: tramosOrigen(parseInt(km || '0') || cotiz.km), tcFlete: cotiz.tc_flete,
           });
           return sum + calc.totalUSD;
@@ -471,6 +479,11 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   }, [clienteId]);
 
   const tcNum = parseNumberInput(tc);
+  const moneda: Moneda = lineas.length ? monedaDeProducto(lineas[0].producto) : 'USD';
+  const tcM = tcMotor(moneda, tcNum);
+  useEffect(() => { if (moneda === 'ARS' && conCanje) setConCanje(false); }, [moneda, conCanje]);
+  const fm = formatMoneda(moneda);
+  const sm = moneda === 'ARS' ? '$' : 'USD';
   const tcFleteNum = parseNumberInput(tcFlete) || tcNum;
   const firmaFlete = useMemo(
     () => firmaDeFlete({ modalidad, km: kmNum, kmCorto: kmCortoNum, tcFlete: tcFleteNum, aforoTn: aforoNum, aforoCortoTn: aforoCortoNum, tnCargadas, convenioId, convenioCortoId }),
@@ -486,19 +499,20 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   const lineasCalc = useMemo(() => {
     return lineas.map((l) => {
-      const costoListaTn = l.producto.es_fertilizante
-        ? (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo) * 1000
-        : (l.producto.moneda === 'ARS' ? l.producto.costo / tcNum : l.producto.costo);
+      const prodMotor = moneda === 'ARS' ? paraMotorARS(l.producto) : l.producto;
+      const costoListaTn = prodMotor.es_fertilizante
+        ? (prodMotor.moneda === 'ARS' ? prodMotor.costo / tcM : prodMotor.costo) * 1000
+        : (prodMotor.moneda === 'ARS' ? prodMotor.costo / tcM : prodMotor.costo);
       const calcVivo = calcularLinea({
-        producto: l.producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
-        tc: tcNum, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD,
+        producto: prodMotor, cantidad: l.cantidad, margen: l.margen, conFlete: l.conFlete,
+        tc: tcM, km: kmNum, tarifaFlete: tarifas, tramos, tcFlete: tcFleteNum, costoOverrideUSD: l.costoOverrideUSD,
       });
       const calc = fleteCongelado
         ? conFleteGuardado(calcVivo, fletesGuardados?.[l.key], { cantidad: l.cantidad, conFlete: l.conFlete, esFertilizante: !!l.producto.es_fertilizante })
         : calcVivo;
       return { ...l, ...calc, costoListaDisplay: costoListaTn };
     });
-  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum, fleteCongelado, fletesGuardados]);
+  }, [lineas, tcNum, kmNum, tarifas, tramos, tcFleteNum, fleteCongelado, fletesGuardados, moneda, tcM]);
 
   useEffect(() => {
     let vivo = true;
@@ -520,18 +534,18 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const canjeNombre = canjeCultivo === 'Otro' ? canjeOtro.trim() : canjeCultivo;
 
   const totales = useMemo(() => {
-    return calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: l.recargoPct })), tcNum);
-  }, [lineasFin, tcNum, conIva]);
+    return calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: l.recargoPct })), tcM);
+  }, [lineasFin, tcM, conIva]);
   const plazoMax = lineas.reduce((m, l) => Math.max(m, l.plazo), 0);
   const hayFinanciado = !esContado(plazoMax);
   // Canje: se paga el total CON IVA (lo que se factura) con el neto por tn de la liquidación
   const canjeParamsEf = canjeParams ?? config?.canje_parametros ?? PARAMS_CANJE_BASE;
-  const canjeMonto = useMemo(() => calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: l.iva, recargoPct: l.recargoPct })), tcNum).total, [lineasFin, tcNum]);
+  const canjeMonto = useMemo(() => calcularTotalesIva(lineasFin.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: l.iva, recargoPct: l.recargoPct })), tcM).total, [lineasFin, tcM]);
   const canjeNeto = conCanje ? netoPorTn(canjePrecioNum, canjeParamsEf) : 0;
   const canjeTn = conCanje ? toneladasPorMonto(canjeMonto, canjeNeto) : 0;
 
   // Comparador de formas de pago: neto e IVA de contado (sin financiación)
-  const baseContado = useMemo(() => calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: 0 })), tcNum), [lineasCalc, tcNum, conIva]);
+  const baseContado = useMemo(() => calcularTotalesIva(lineasCalc.map((l) => ({ totalUSD: l.totalUSD, ivaPercent: conIva ? l.iva : 0, recargoPct: 0 })), tcM), [lineasCalc, tcM, conIva]);
 
   const tarifaFaltante = lineasCalc.some((l) => l.tarifaFaltante);
   // Flete tildado pero sin km: antes el flete quedaba en 0 sin avisar
@@ -543,10 +557,15 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   function agregarProducto(producto: ProductoConCosto) {
     if (esReadOnly) return;
+    const motivo = motivoNoSePuedeAgregar(moneda, lineas.length > 0, producto);
+    if (motivo) { toast.aviso(motivo); return; }
+    const esARS = monedaDeProducto(producto) === 'ARS';
+    if (esARS) producto = paraMotorARS(producto);
+    const tcP = tcMotor(esARS ? 'ARS' : 'USD', tcNum);
     const margen = resolverMargen(producto, config?.margen_general || 8, margenesClienteState);
     const costoDisplay = producto.es_fertilizante
-      ? (producto.moneda === 'ARS' ? producto.costo / tcNum : producto.costo) * 1000
-      : (producto.moneda === 'ARS' ? producto.costo / tcNum : producto.costo);
+      ? (producto.moneda === 'ARS' ? producto.costo / tcP : producto.costo) * 1000
+      : (producto.moneda === 'ARS' ? producto.costo / tcP : producto.costo);
     setLineas([...lineas, {
       key: Math.random().toString(36), producto, cantidad: 1, margen, margenOriginal: margen,
       conFlete: producto.es_fertilizante, cantidadStr: '1',
@@ -565,6 +584,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
 
   function agregarInsumoManual() {
     if (esReadOnly) return;
+    const motivoManual = motivoNoSePuedeAgregar(moneda, lineas.length > 0, { familia: insumoForm.familia.trim() || 'Otros' });
+    if (motivoManual) { toast.aviso(motivoManual); return; }
     const nombre = insumoForm.nombre.trim();
     const costo = parseNumberInput(insumoForm.costoUSD);
     if (!nombre) { setSaveMsg({ type: 'error', text: 'Ingresá el nombre del insumo' }); setTimeout(() => setSaveMsg(null), 3000); return; }
@@ -643,9 +664,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   function restablecerCosto(key: string) {
     const linea = lineas.find((l) => l.key === key);
     if (!linea) return;
-    const costoLista = linea.producto.es_fertilizante
-      ? (linea.producto.moneda === 'ARS' ? linea.producto.costo / tcNum : linea.producto.costo) * 1000
-      : (linea.producto.moneda === 'ARS' ? linea.producto.costo / tcNum : linea.producto.costo);
+    const prodMotor = moneda === 'ARS' ? paraMotorARS(linea.producto) : linea.producto;
+    const costoLista = prodMotor.es_fertilizante
+      ? (prodMotor.moneda === 'ARS' ? prodMotor.costo / tcM : prodMotor.costo) * 1000
+      : (prodMotor.moneda === 'ARS' ? prodMotor.costo / tcM : prodMotor.costo);
     actualizarLinea(key, { costoOverrideUSD: null, costoStr: formatInputNumber(costoLista, 2), precioStr: undefined, precioAviso: undefined });
   }
 
@@ -670,15 +692,30 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     }
   }
 
+  /** Importes de una línea: en pesos van a *_ars y el equivalente en USD al TC; en USD las *_ars quedan null. */
+  function camposMonedaLinea(l: { costoUSD: number; costoListaUSD: number; precioUSD: number; fleteUSD: number; totalUSD: number }) {
+    if (moneda === 'ARS') {
+      return {
+        costo_ars: l.costoUSD, costo_lista_ars: l.costoListaUSD, precio_ars: l.precioUSD, total_ars: l.totalUSD,
+        costo_usd: arsAUsd(l.costoUSD, tcNum), costo_lista_usd: arsAUsd(l.costoListaUSD, tcNum),
+        precio_usd: arsAUsd(l.precioUSD, tcNum), flete_usd: 0, total_usd: arsAUsd(l.totalUSD, tcNum),
+      };
+    }
+    return {
+      costo_ars: null, costo_lista_ars: null, precio_ars: null, total_ars: null,
+      costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, precio_usd: l.precioUSD, flete_usd: l.fleteUSD, total_usd: l.totalUSD,
+    };
+  }
+
   function buildLineasData() {
     return lineasCalc.map((l) => ({
       producto_id: l.producto.id || null, cod: l.producto.cod,
       producto: l.producto.producto || '', familia: l.producto.familia || '',
       proveedor: l.producto.proveedor || '', unid: l.producto.unid || '',
       es_fertilizante: l.producto.es_fertilizante, cantidad: l.cantidad,
-      costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
-      margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
-      total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, tasa_mensual: l.tasaMensual ?? null,
+      ...camposMonedaLinea(l),
+      costo_editado: l.costoEditado,
+      margen: l.margen, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, tasa_mensual: l.tasaMensual ?? null,
     }));
   }
 
@@ -686,7 +723,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
   const eleccion = editData?.opcion_elegida ?? null;
   /** Cabecera mínima para calcular opciones: lo demás sale de las líneas. */
   function cotizParaOpciones(): Cotizacion {
-    return { ...(editData ?? {}), con_iva: conIva, tc: tcNum, fecha, tasa_mensual: hayFinanciado ? tasaNum : 0, plazo_dias: plazoMax } as Cotizacion;
+    return { ...(editData ?? {}), con_iva: conIva, tc: tcM, moneda, fecha, tasa_mensual: hayFinanciado ? tasaNum : 0, plazo_dias: plazoMax } as Cotizacion;
   }
   /** Con elección hecha no se regeneran: se mandan tal cual están guardadas. */
   function opcionesParaPayload(): { opciones: OpcionPago[]; errores: string[] } {
@@ -694,7 +731,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     return opcionesParaGuardar(opcionPrincipalDesdeLineas(cotizParaOpciones(), lineasParaExport()), opcionesEd, lineas.map((l) => l.key));
   }
   const hayCambiosSinGuardar = !!editData && (
-    Math.abs(totales.total - editData.total_usd) > 0.01 || Math.abs(totales.subtotal - editData.subtotal_usd) > 0.01 ||
+    (moneda === 'ARS'
+      ? Math.abs(totales.total - (editData.total_ars ?? 0)) > 0.01 || Math.abs(totales.subtotal - (editData.subtotal_ars ?? 0)) > 0.01
+      : Math.abs(totales.total - editData.total_usd) > 0.01 || Math.abs(totales.subtotal - editData.subtotal_usd) > 0.01) ||
     plazoMax !== editData.plazo_dias ||
     firmaExtras(editData.opciones_pago, lineas.length) !== firmaExtras(editorAOpciones(opcionesEd, lineas.map((l) => l.key)), lineas.length)
   );
@@ -712,6 +751,20 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     }
   }
 
+  function camposMonedaCotiz() {
+    if (moneda === 'ARS') {
+      return {
+        subtotal_ars: totales.subtotal, recargo_ars: totales.recargo, iva_ars: totales.iva, total_ars: totales.total,
+        subtotal_usd: arsAUsd(totales.subtotal, tcNum), recargo_usd: arsAUsd(totales.recargo, tcNum),
+        iva_usd: arsAUsd(totales.iva, tcNum), total_usd: arsAUsd(totales.total, tcNum),
+      };
+    }
+    return {
+      subtotal_ars: null, recargo_ars: null, iva_ars: null, total_ars: totales.totalARS,
+      subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva, total_usd: totales.total,
+    };
+  }
+
   function buildCotizData(): Partial<Cotizacion> {
     return {
       cliente_id: clienteId, cliente_nombre: clienteBusqueda, fecha, tc: tcNum,
@@ -720,10 +773,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       convenio_corto_id: modalidad === 'largo_corto' ? convenioCorto?.id ?? null : null, campo_id: campoId,
       con_iva: conIva, iva: conIva ? totales.ivaEfectivo : 0, vigencia_dias: parseInt(vigencia) || 15,
       estado: editData?.estado || 'Borrador', vendedor: null,
-      lista_id: listaIdRef.current, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva,
+      lista_id: listaIdRef.current, moneda, ...camposMonedaCotiz(),
       plazo_dias: plazoMax, tasa_mensual: hayFinanciado ? tasaNum : 0,
       canje_cultivo: conCanje ? canjeNombre : null, canje_precio_usd: conCanje ? canjePrecioNum : 0, canje_params: conCanje ? canjeParamsEf : null,
-      total_usd: totales.total, total_ars: totales.totalARS, notas,
+      notas,
       opciones_pago: opcionesParaPayload().opciones,
       ...(origenId && !editId ? { cotizacion_origen_id: origenId } : {}),
     };
@@ -757,7 +810,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       // Lines removed
       for (const [cod, pl] of prevByCod) {
         if (!newCods.has(cod)) {
-          cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${cod}`, campo: 'línea', valor_anterior: `${pl.cantidad} × ${formatUSD(pl.precio_usd)}`, valor_nuevo: null, detalle: 'Línea quitada' });
+          cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${cod}`, campo: 'línea', valor_anterior: `${pl.cantidad} × ${fm(moneda === 'ARS' ? pl.precio_ars ?? 0 : pl.precio_usd)}`, valor_nuevo: null, detalle: 'Línea quitada' });
         }
       }
 
@@ -765,7 +818,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       for (const l of lineasCalc) {
         const prev = prevByCod.get(l.producto.cod);
         if (!prev) {
-          cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'línea', valor_anterior: null, valor_nuevo: `${l.cantidad} × ${formatUSD(l.precioUSD)}`, detalle: 'Línea agregada' });
+          cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'línea', valor_anterior: null, valor_nuevo: `${l.cantidad} × ${fm(l.precioUSD)}`, detalle: 'Línea agregada' });
         } else {
           if (prev.cantidad !== l.cantidad) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'cantidad', valor_anterior: String(prev.cantidad), valor_nuevo: String(l.cantidad) });
           if (prev.margen !== l.margen) cambiosHist.push({ tipo: 'margen', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'margen', valor_anterior: fmtMargen(prev.margen), valor_nuevo: fmtMargen(l.margen) });
@@ -775,7 +828,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           if (plazoPrev !== l.plazo) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'plazo de pago', valor_anterior: plazoPrev ? `${plazoPrev} días` : 'Contado', valor_nuevo: l.plazo ? `${l.plazo} días` : 'Contado' });
           const ivaPrev = ivaDeLinea(prev, editData, config!);
           if (conIva && editData.con_iva && ivaPrev !== l.iva) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'IVA', valor_anterior: `${ivaPrev}%`, valor_nuevo: `${l.iva}%` });
-          if (Math.abs(prev.precio_usd - l.precioUSD) > 0.01) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'precio', valor_anterior: `USD ${formatUSD(prev.precio_usd)}`, valor_nuevo: `USD ${formatUSD(l.precioUSD)}` });
+          const precioPrev = moneda === 'ARS' ? prev.precio_ars ?? 0 : prev.precio_usd;
+          if (Math.abs(precioPrev - l.precioUSD) > 0.01) cambiosHist.push({ tipo: 'linea', cotizacion_id: editId, entidad: `Producto ${l.producto.cod}`, campo: 'precio', valor_anterior: `${sm} ${formatUSD(precioPrev)}`, valor_nuevo: `${sm} ${formatUSD(l.precioUSD)}` });
         }
       }
 
@@ -921,6 +975,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       costo_usd: l.costoUSD, costo_lista_usd: l.costoListaUSD, costo_editado: l.costoEditado,
       margen: l.margen, precio_usd: l.precioUSD, flete_usd: l.fleteUSD,
       total_usd: l.totalUSD, con_flete: l.conFlete, iva: l.iva, plazo_dias: l.plazo, tasa_mensual: l.tasaMensual ?? null, orden: i,
+      ...(moneda === 'ARS' ? { costo_ars: l.costoUSD, costo_lista_ars: l.costoListaUSD, precio_ars: l.precioUSD, total_ars: l.totalUSD } : {}),
     }));
   }
 
@@ -928,7 +983,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     const cab = buildCotizData();
     // El correlativo vale solo si el cliente no cambió (si cambió, la base le da otro al guardar)
     const mismoCliente = !!editData && (editData.cliente_id || null) === (cab.cliente_id || null) && (editData.cliente_id || (editData.cliente_nombre || '').trim().toLowerCase() === (cab.cliente_nombre || '').trim().toLowerCase());
-    return { id: editData?.id || '', numero: editData?.numero || 0, numero_cliente: mismoCliente ? editData?.numero_cliente ?? null : null, ...cab, opcion_elegida: editData?.opcion_elegida ?? null, motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
+    // En pesos los *_usd llevan los importes del motor (pesos) y TC 1; los pesos reales también van en *_ars
+    const enPesos = moneda === 'ARS' ? { tc: 1, subtotal_usd: totales.subtotal, recargo_usd: totales.recargo, iva_usd: totales.iva, total_usd: totales.total } : {};
+    return { id: editData?.id || '', numero: editData?.numero || 0, numero_cliente: mismoCliente ? editData?.numero_cliente ?? null : null, ...cab, ...enPesos, opcion_elegida: editData?.opcion_elegida ?? null, motivo_perdida: null, cantidades_reales: null, created_at: '', updated_at: '' } as Cotizacion;
   }
   function avisarExport(type: 'success' | 'error', text: string, ms = 3000) {
     setSaveMsg({ type, text });
@@ -1026,10 +1083,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                 {comparacion.lineas.map((c) => (
                   <tr key={c.cod} className={`border-b border-gray-100 ${c.diff > 0 ? 'bg-red-50/40' : c.diff < 0 ? 'bg-emerald-50/40' : ''}`}>
                     <td className="py-2 px-2 text-gray-700">{c.producto}</td>
-                    <td className="py-2 px-2 text-right text-gray-500">{formatUSD(c.precioAnt)}</td>
-                    <td className="py-2 px-2 text-right text-gray-700 font-medium">{formatUSD(c.precioNuevo)}</td>
+                    <td className="py-2 px-2 text-right text-gray-500">{fm(c.precioAnt)}</td>
+                    <td className="py-2 px-2 text-right text-gray-700 font-medium">{fm(c.precioNuevo)}</td>
                     <td className={`py-2 px-2 text-right font-medium ${c.diff > 0 ? 'text-red-600' : c.diff < 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
-                      {c.diff > 0 ? '+' : ''}{formatUSD(c.diff)}
+                      {c.diff > 0 ? '+' : ''}{fm(c.diff)}
                     </td>
                     <td className={`py-2 px-2 text-right font-medium ${c.pct > 0 ? 'text-red-600' : c.pct < 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
                       {c.pct > 0 ? '+' : ''}{c.pct.toFixed(1)}%
@@ -1040,10 +1097,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <tfoot>
                 <tr className="border-t-2 border-gray-200">
                   <td className="py-2 px-2 font-medium text-gray-700">Total</td>
-                  <td className="py-2 px-2 text-right text-gray-500">{formatUSD(comparacion.totalAnt)}</td>
-                  <td className="py-2 px-2 text-right font-bold text-gray-800">{formatUSD(comparacion.totalNuevo)}</td>
+                  <td className="py-2 px-2 text-right text-gray-500">{fm(comparacion.totalAnt)}</td>
+                  <td className="py-2 px-2 text-right font-bold text-gray-800">{fm(comparacion.totalNuevo)}</td>
                   <td colSpan={2} className={`py-2 px-2 text-right font-medium ${comparacion.totalNuevo > comparacion.totalAnt ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {comparacion.totalNuevo > comparacion.totalAnt ? '+' : ''}{formatUSD(comparacion.totalNuevo - comparacion.totalAnt)} ({((comparacion.totalNuevo - comparacion.totalAnt) / (comparacion.totalAnt || 1) * 100).toFixed(1)}%)
+                    {comparacion.totalNuevo > comparacion.totalAnt ? '+' : ''}{fm(comparacion.totalNuevo - comparacion.totalAnt)} ({((comparacion.totalNuevo - comparacion.totalAnt) / (comparacion.totalAnt || 1) * 100).toFixed(1)}%)
                   </td>
                 </tr>
               </tfoot>
@@ -1139,9 +1196,10 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
           </div>
           <div>
             <label className={`flex items-center gap-2 text-sm font-medium text-gray-700 mb-1 ${esReadOnly ? 'opacity-60' : 'cursor-pointer'}`}>
-              <input type="checkbox" checked={conCanje} disabled={esReadOnly} onChange={(e) => setConCanje(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+              <input type="checkbox" checked={conCanje} disabled={esReadOnly || moneda === 'ARS'} onChange={(e) => setConCanje(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
               Pago en granos (canje)
             </label>
+            {moneda === 'ARS' && <p className="text-xs text-gray-500 mt-1">El canje no está disponible en cotizaciones en pesos.</p>}
             {conCanje && (
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <select value={canjeCultivo} disabled={esReadOnly} onChange={(e) => setCanjeCultivo(e.target.value)} aria-label="Cultivo"
@@ -1264,13 +1322,13 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <thead><tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-3 py-2 font-medium text-gray-600">Producto</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Cant.</th>
-                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Costo {lineas.some(l => l.producto.es_fertilizante) ? 'USD/tn' : 'USD'}</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Costo {lineas.some(l => l.producto.es_fertilizante) ? `${sm}/tn` : sm}</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Margen %</th>
-                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio {sm}</th>
                 <th className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Flete</th>
                 <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Vencimiento</th>
                 {conIva && <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">IVA %</th>}
-                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total USD</th>
+                <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total {sm}</th>
                 <th className="px-2 py-2"></th>
               </tr></thead>
               <tbody>
@@ -1278,34 +1336,34 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
                   <tr key={l.key} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-2"><div className="flex items-center gap-2"><p className="font-medium text-gray-800">{l.producto.producto}</p>{l.producto.id && <BotonFicha cod={l.producto.cod} producto={l.producto.producto} />}{!l.producto.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Manual</span>}</div><p className="text-xs text-gray-400">{l.producto.cod} · {l.producto.familia}</p>{(() => {
                       const u = ultimaCotizacion(historialCliente, l.producto.cod, editId);
-                      if (!u) return null;
+                      if (!u || moneda === 'ARS') return null;
                       const dif = u.precio > 0 ? ((l.precioUSD - u.precio) / u.precio) * 100 : 0;
                       return (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Última vez: USD {formatUSD(u.precio)} ({u.nombre || `N° ${u.numero}`}, {formatDate(u.fecha)}, {u.estado.toLowerCase()})
+                          Última vez: USD {fm(u.precio)} ({u.nombre || `N° ${u.numero}`}, {formatDate(u.fecha)}, {u.estado.toLowerCase()})
                           {Math.abs(dif) >= 0.5 && <span className={dif > 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif > 0 ? 'Ahora +' : 'Ahora '}{formatUSD(dif, 1)}%</span>}
                         </p>
                       );
                     })()}{(() => {
-                      const comp = compPorCod.get(l.producto.cod);
+                      const comp = moneda === 'ARS' ? undefined : compPorCod.get(l.producto.cod);
                       if (!comp) return null;
                       const nuestro = l.precioConFlete || l.precioUSD;
                       const dif = nuestro > 0 ? ((comp.precio_usd - nuestro) / nuestro) * 100 : 0;
                       return (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Competencia: USD {formatUSD(comp.precio_usd)} ({comp.competidor}, {formatDate(comp.fecha)})
+                          Competencia: USD {fm(comp.precio_usd)} ({comp.competidor}, {formatDate(comp.fecha)})
                           {Math.abs(dif) >= 0.5 && <span className={dif < 0 ? 'text-red-700 font-medium' : 'text-emerald-700 font-medium'}> {dif < 0 ? `${formatUSD(-dif, 1)}% más barato` : `${formatUSD(dif, 1)}% más caro`}</span>}
                         </p>
                       );
                     })()}{l.producto.es_fertilizante && <span className="text-xs text-amber-600">Por tonelada</span>}{l.costoUSD <= 0 && <span className="block text-xs font-semibold text-red-600">Costo pendiente</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.cantidadStr} disabled={esReadOnly} onChange={(e) => handleCantidadChange(l.key, e.target.value)} className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs text-gray-400 ml-1">{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span></td>
-                    <td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {formatUSD(l.costoListaDisplay)}</p>}</td>
+                    <td className="px-2 py-2 text-right"><div className="flex items-center gap-1 justify-end"><input type="text" value={l.costoStr} disabled={esReadOnly} onChange={(e) => handleCostoChange(l.key, e.target.value)} className={`w-20 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.costoEditado ? 'border-amber-400 bg-amber-50' : 'border-gray-300 text-gray-500'}`} />{l.costoEditado && !esReadOnly && (<><Pencil className="w-3 h-3 text-amber-500 flex-shrink-0" /><button onClick={() => restablecerCosto(l.key)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Restablecer"><RotateCcw className="w-3 h-3" /></button></>)}</div>{l.costoEditado && <p className="text-xs text-gray-400 mt-0.5">lista: {fm(l.costoListaDisplay)}</p>}</td>
                     <td className="px-2 py-2 text-right"><input type="text" value={l.margenStr} disabled={esReadOnly} onChange={(e) => handleMargenChange(l.key, e.target.value)} className={`w-16 px-2 py-1 border rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.margen !== l.margenOriginal ? 'border-amber-400 bg-amber-50' : 'border-gray-300'}`} /></td>
-                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap"><input type="text" inputMode="decimal" value={l.precioStr ?? formatUSD(l.precioUSD)} disabled={esReadOnly} aria-label={`Precio USD de ${l.producto.producto}`} onChange={(e) => handlePrecioChange(l.key, e.target.value)} onBlur={() => handlePrecioBlur(l.key)} className="w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs font-normal text-gray-400"> /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>{l.precioAviso === 'sin-costo' && <span className="block text-xs font-normal text-gray-400">Cargá el costo primero</span>}{l.precioAviso === 'piso' && <span className="block text-xs font-normal text-gray-400">El precio no puede ser menor al costo</span>}{l.precioAviso === 'tope' && <span className="block text-xs font-normal text-gray-400">Tope: margen 95 %</span>}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">producto {formatUSD(l.precioUSD)} + flete {formatUSD(l.fleteUSD)} = {formatUSD(l.precioConFlete)}</span>}{l.recargoPct > 0 && l.totalUSD > 0 && <span className="block text-xs font-medium text-emerald-700">con tasa {formatUSD((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalFinanciado / l.totalUSD))} /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>}</td>
-                    <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{formatUSD(l.fleteUSD)}</span>}{l.conFlete && kmFaltante && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-2 py-2 text-right font-medium text-gray-700 whitespace-nowrap"><input type="text" inputMode="decimal" value={l.precioStr ?? fm(l.precioUSD)} disabled={esReadOnly} aria-label={`Precio ${sm} de ${l.producto.producto}`} onChange={(e) => handlePrecioChange(l.key, e.target.value)} onBlur={() => handlePrecioBlur(l.key)} className="w-24 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /><span className="text-xs font-normal text-gray-400"> /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>{l.precioAviso === 'sin-costo' && <span className="block text-xs font-normal text-gray-400">Cargá el costo primero</span>}{l.precioAviso === 'piso' && <span className="block text-xs font-normal text-gray-400">El precio no puede ser menor al costo</span>}{l.precioAviso === 'tope' && <span className="block text-xs font-normal text-gray-400">Tope: margen 95 %</span>}{l.conFlete && l.fleteUSD > 0 && <span className="block text-xs font-normal text-gray-400">producto {fm(l.precioUSD)} + flete {fm(l.fleteUSD)} = {fm(l.precioConFlete)}</span>}{l.recargoPct > 0 && l.totalUSD > 0 && <span className="block text-xs font-medium text-emerald-700">con tasa {fm((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalFinanciado / l.totalUSD))} /{l.producto.es_fertilizante ? 'tn' : l.producto.unid}</span>}</td>
+                    <td className="px-2 py-2 text-center">{l.producto.es_fertilizante ? (<div className="flex flex-col items-center"><input type="checkbox" checked={l.conFlete} disabled={esReadOnly} onChange={(e) => actualizarLinea(l.key, { conFlete: e.target.checked })} className="w-4 h-4 accent-emerald-600" />{l.conFlete && l.fleteUSD > 0 && <span className="text-xs text-gray-400 whitespace-nowrap">{fm(l.fleteUSD)}</span>}{l.conFlete && kmFaltante && <span className="text-xs text-amber-600 whitespace-nowrap">Falta km</span>}{l.tarifaFaltante && <span className="text-xs text-red-500">Sin tarifa</span>}</div>) : <span className="text-gray-300">—</span>}</td>
                     <td className="px-2 py-2 text-right"><input type="date" min={fecha} value={vencimientoDesdeDias(fecha, l.plazo)} disabled={esReadOnly} aria-label={`Vencimiento de ${l.producto.producto}`} onChange={(e) => handlePlazoChange(l.key, e.target.value)} className={`w-36 px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50 ${l.plazo > 0 ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300'}`} /><span className="block text-xs text-gray-400">{l.plazo === 0 ? 'contado' : `(${l.plazo} días${tasaNum > 0 ? ` · ${textoMesesTasa(l.plazo)}` : ''})`}</span></td>
                     {conIva && (<td className="px-2 py-2 text-right"><input type="text" inputMode="decimal" value={l.ivaStr} disabled={esReadOnly} aria-label={`IVA % de ${l.producto.producto}`} onChange={(e) => handleIvaChange(l.key, e.target.value)} className="w-14 px-2 py-1 border border-gray-300 rounded text-right text-sm focus:ring-1 focus:ring-emerald-500 outline-none disabled:bg-gray-50" /></td>)}
-                    <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{formatUSD(l.totalFinanciado)}{l.cantidad > 0 && <span className="block text-xs font-normal text-gray-400">{l.cantidadStr || l.cantidad} {l.producto.es_fertilizante ? 'tn' : l.producto.unid} × {formatUSD((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalUSD > 0 ? l.totalFinanciado / l.totalUSD : 1))} c/u</span>}{l.recargoPct > 0 && <span className="block text-xs font-normal text-gray-400">contado {formatUSD(l.totalUSD)} · +{formatInputNumber(l.recargoPct, 2)}%</span>}</td>
+                    <td className="px-2 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{fm(l.totalFinanciado)}{l.cantidad > 0 && <span className="block text-xs font-normal text-gray-400">{l.cantidadStr || l.cantidad} {l.producto.es_fertilizante ? 'tn' : l.producto.unid} × {fm((l.conFlete && l.fleteUSD > 0 ? l.precioConFlete : l.precioUSD) * (l.totalUSD > 0 ? l.totalFinanciado / l.totalUSD : 1))} c/u</span>}{l.recargoPct > 0 && <span className="block text-xs font-normal text-gray-400">contado {fm(l.totalUSD)} · +{formatInputNumber(l.recargoPct, 2)}%</span>}</td>
                     <td className="px-2 py-2">{!esReadOnly && <button onClick={() => eliminarLinea(l.key)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}</td>
                   </tr>
                 ))}
@@ -1315,7 +1373,9 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         </div>
       )}
 
+      {moneda === 'USD' && (
       <OpcionesPagoEditor
+        moneda={moneda}
         lineas={lineasCalc.map((l) => ({ key: l.key, producto: l.producto.producto || l.producto.cod, cantidad: l.cantidad, unidad: l.producto.es_fertilizante ? 'tn' : l.producto.unid || '' }))}
         fecha={fecha} conIva={conIva}
         principal={(eleccion && normalizarOpciones(editData?.opciones_pago, lineas.length).find((o) => o.id === ID_PRINCIPAL)) || opcionPrincipalDesdeLineas(cotizParaOpciones(), lineasParaExport())}
@@ -1325,6 +1385,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         onVolver={editId && eleccion && !esReadOnly ? () => void cambiarOpcionElegida(null) : undefined}
         onElegir={editId && !eleccion && !esReadOnly && opcionesEd.length > 0 ? (op) => void cambiarOpcionElegida(op) : undefined}
       />
+      )}
 
       {/* Resumen y acciones */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1335,8 +1396,8 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
         <div className="bg-emerald-900 rounded-xl p-5 text-white">
           <p className="text-emerald-200 text-sm">{conIva ? 'Total con IVA' : 'Total sin IVA'}</p>
           <p className="cifra text-6xl mt-1">
-            {formatUSD(totales.total)}
-            <span className="text-2xl font-semibold text-amber-300 ml-2">USD</span>
+            {moneda === 'ARS' && <span className="text-2xl font-semibold text-amber-300 mr-2">$</span>}{fm(totales.total)}
+            {moneda === 'USD' && <span className="text-2xl font-semibold text-amber-300 ml-2">USD</span>}
           </p>
           {conCanje && canjePrecioNum > 0 && (
             <div className="mt-3 bg-amber-400 text-emerald-950 rounded-lg px-3 py-2">
@@ -1348,15 +1409,17 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
             </div>
           )}
           <div className="mt-4 pt-3 border-t border-emerald-700 space-y-1.5 text-sm text-emerald-100">
-            <div className="flex justify-between"><span>{totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span>{formatUSD(totales.subtotal)}</span></div>
-            {totales.recargo > 0 && <div className="flex justify-between"><span>Financiación, según el plazo de cada fila</span><span>{formatUSD(totales.recargo)}</span></div>}
+            <div className="flex justify-between"><span>{totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span>{fm(totales.subtotal)}</span></div>
+            {totales.recargo > 0 && <div className="flex justify-between"><span>Financiación, según el plazo de cada fila</span><span>{fm(totales.recargo)}</span></div>}
             {conIva && totales.desglose.map((d) => (
-              <div key={d.tasa} className="flex justify-between"><span>IVA {formatInputNumber(d.tasa, 2) || '0'}% sobre {formatUSD(d.base)}</span><span>{formatUSD(d.iva)}</span></div>
+              <div key={d.tasa} className="flex justify-between"><span>IVA {formatInputNumber(d.tasa, 2) || '0'}% sobre {fm(d.base)}</span><span>{fm(d.iva)}</span></div>
             ))}
           </div>
-          <button onClick={() => setVerFormasPago(true)} disabled={lineas.length === 0} className="mt-4 w-full px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50">
-            <CreditCard className="w-4 h-4" /> Comparar formas de pago
-          </button>
+          {moneda === 'USD' && (
+            <button onClick={() => setVerFormasPago(true)} disabled={lineas.length === 0} className="mt-4 w-full px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50">
+              <CreditCard className="w-4 h-4" /> Comparar formas de pago
+            </button>
+          )}
         </div>
       </div>
 
@@ -1426,7 +1489,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
       )}
 
       {/* Modal comparador de formas de pago */}
-      {verFormasPago && (
+      {moneda === 'USD' && verFormasPago && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setVerFormasPago(false)}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
@@ -1434,6 +1497,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <button onClick={() => setVerFormasPago(false)} aria-label="Cerrar" className="p-1 text-gray-400 hover:text-gray-700"><X className="w-5 h-5" /></button>
             </div>
             <ComparadorFormasPago
+              moneda={moneda}
               netoUSD={baseContado.subtotal}
               ivaUSD={baseContado.iva}
               plazoInicial={plazoMax > 0 ? { dias: plazoMax, tasa_mensual_pct: tasaNum } : null}
@@ -1454,7 +1518,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">Eliminar cotización</h3>
-                <p className="text-sm text-gray-500">{nombreCotizacion(editData)} · {formatUSD(editData.total_usd)} USD</p>
+                <p className="text-sm text-gray-500">{nombreCotizacion(editData)} · {moneda === 'ARS' ? fm(editData.total_ars ?? 0) : `${formatUSD(editData.total_usd)} USD`}</p>
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">
@@ -1465,7 +1529,7 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
               <button onClick={() => setModalEliminar(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">Cancelar</button>
               <button onClick={async () => {
                 await data.deleteCotizacion(editId);
-                await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(editData)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(editData), valor_nuevo: null, detalle: `Cotización eliminada (${editData.cliente_nombre || 'Sin cliente'} · ${formatUSD(editData.total_usd)} USD)` });
+                await registrarCambio({ tipo: 'cotizacion', cotizacion_id: null, entidad: `Cotización ${nombreCotizacion(editData)}`, campo: 'eliminación', valor_anterior: nombreCotizacion(editData), valor_nuevo: null, detalle: `Cotización eliminada (${editData.cliente_nombre || 'Sin cliente'} · ${moneda === 'ARS' ? fm(editData.total_ars ?? 0) : `${formatUSD(editData.total_usd)} USD`})` });
                 setModalEliminar(false);
                 if (onDeleted) onDeleted();
               }} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">Eliminar</button>

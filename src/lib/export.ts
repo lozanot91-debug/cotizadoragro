@@ -3,6 +3,7 @@ import type { jsPDF } from 'jspdf';
 import { nombreModalidad, textoFlete } from '@/lib/fleteTramos';
 import type { Cotizacion, CotizacionLinea, Cliente, Configuracion } from '@/types';
 import { formatUSD, formatDate } from '@/lib/format';
+import { vistaEnMoneda, formatMoneda, monedaDeCotizacion } from '@/lib/moneda';
 import { calcularTotalesIva, recargoPorcentaje, esContado, type TotalesIva } from '@/lib/calculations';
 import { netoGuardado, resumenLiquidacion, toneladasPorMonto } from '@/lib/canje';
 import { formatearFecha, sumarDias } from '@/lib/fechas';
@@ -65,7 +66,8 @@ export function textoFormaPago(cotiz: Cotizacion, lineas: CotizacionLinea[]): st
 }
 
 /** Totales calculados desde las líneas (cada una con su IVA y su financiación), para que PDF, WhatsApp y Excel coincidan. */
-export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): TotalesIva {
+export function totalesDeCotizacion(cotizIn: Cotizacion, lineasIn: CotizacionLinea[]): TotalesIva {
+  const { cotiz, lineas } = vistaEnMoneda(cotizIn, lineasIn); // en pesos devuelve pesos (tc = 1)
   return calcularTotalesIva(
     lineas.map((l) => ({
       totalUSD: l.total_usd,
@@ -80,7 +82,8 @@ export function totalesDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]
  * Monto que se paga con grano: el total CON IVA (lo que se factura), aunque la cotización se muestre sin IVA.
  * Cotizaciones viejas (sin parámetros de liquidación) siguen usando el total mostrado, como antes.
  */
-export function montoCanjeDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLinea[]): number {
+export function montoCanjeDeCotizacion(cotizIn: Cotizacion, lineasIn: CotizacionLinea[]): number {
+  const { cotiz, lineas } = vistaEnMoneda(cotizIn, lineasIn);
   if (!cotiz.canje_params) return totalesDeCotizacion(cotiz, lineas).total;
   return calcularTotalesIva(
     lineas.map((l) => ({ totalUSD: l.total_usd, ivaPercent: ivaLinea(l, cotiz), recargoPct: financiacionLinea(l, cotiz).pct })),
@@ -90,6 +93,7 @@ export function montoCanjeDeCotizacion(cotiz: Cotizacion, lineas: CotizacionLine
 
 /** Equivalente en granos si la cotización es de canje; null si no. */
 function datosCanje(cotiz: Cotizacion, lineas: CotizacionLinea[]): { cultivo: string; precio: number; neto: number; monto: number; tn: number; detalle: string; conIva: boolean } | null {
+  if (monedaDeCotizacion(cotiz) === 'ARS') return null; // el canje no existe en cotizaciones en pesos
   if (todasSinCantidad(lineas)) return null; // lista de precios: no hay monto que canjear
   if (!(cotiz.canje_precio_usd > 0)) return null;
   const neto = netoGuardado(cotiz.canje_precio_usd, cotiz.canje_params);
@@ -132,12 +136,16 @@ function recortar(doc: jsPDF, texto: string, anchoMm: number): string {
 
 /** Arma el PDF de la cotización (sin descargarlo). `logo` es la imagen en data URL; sin logo se escribe el nombre. */
 export async function construirPDF(
-  cotiz: Cotizacion,
-  lineas: CotizacionLinea[],
+  cotizIn: Cotizacion,
+  lineasIn: CotizacionLinea[],
   cliente: Cliente | null,
   config: Configuracion,
   logo?: string
 ): Promise<jsPDF> {
+  const { moneda, cotiz, lineas } = vistaEnMoneda(cotizIn, lineasIn);
+  const fm = formatMoneda(moneda);
+  const ars = moneda === 'ARS';
+  const mon = ars ? '$' : 'USD';
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageWidth = 210;
@@ -208,10 +216,10 @@ export async function construirPDF(
     const cols = [
       { label: 'Producto', x: margin + 2.5, align: 'left' as const },
       { label: todasSinCantidad(lineas) ? '' : 'Cant.', x: conFin ? 84 : 97, align: 'right' as const },
-      { label: 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
+      { label: ars ? 'Precio $' : 'Precio USD', x: conFin ? 112 : 130, align: 'right' as const },
       { label: 'Pago', x: 132, align: 'right' as const },
       { label: 'IVA %', x: 150, align: 'right' as const },
-      { label: todasSinCantidad(lineas) ? '' : cotiz.con_iva ? 'Total s/IVA' : 'Total USD (sin IVA)', x: cotiz.con_iva && !todasSinCantidad(lineas) ? 168 : derecha - 2.5, align: 'right' as const },
+      { label: todasSinCantidad(lineas) ? '' : cotiz.con_iva ? 'Total s/IVA' : ars ? 'Total $ (sin IVA)' : 'Total USD (sin IVA)', x: cotiz.con_iva && !todasSinCantidad(lineas) ? 168 : derecha - 2.5, align: 'right' as const },
       { label: 'Total c/IVA', x: derecha - 2.5, align: 'right' as const },
     ].filter((c) => (cotiz.con_iva || (c.label !== 'IVA %' && c.label !== 'Total c/IVA')) && !(todasSinCantidad(lineas) && c.label === 'Total c/IVA') && (conFin || c.label !== 'Pago'));
     const iCant = 1, iPrecio = 2;
@@ -252,7 +260,7 @@ export async function construirPDF(
       if (!sinCantidad(linea)) doc.text(formatUSD(linea.cantidad, 2), cols[iCant].x, y, { align: 'right' });
       // El flete y la financiación van incluidos en el precio: al cliente no se le muestran por separado
       const fin = financiacionLinea(linea, cotiz);
-      doc.text(formatUSD(fin.precioUnit, 2), cols[iPrecio].x, y, { align: 'right' });
+      doc.text(fm(fin.precioUnit), cols[iPrecio].x, y, { align: 'right' });
       if (iPago >= 0) {
         // La columna es angosta: en el PDF va solo la fecha de vencimiento
         doc.setFontSize(8);
@@ -261,14 +269,14 @@ export async function construirPDF(
       }
       if (iIva >= 0) doc.text(tasaTxt(ivaLinea(linea, cotiz)), cols[iIva].x, y, { align: 'right' });
       doc.setFont('helvetica', 'bold');
-      if (!sinCantidad(linea)) doc.text(formatUSD(fin.total, 2), cols[iTotal].x, y, { align: 'right' });
-      if (iTotalIva >= 0 && !sinCantidad(linea)) doc.text(formatUSD(fin.totalIva, 2), cols[iTotalIva].x, y, { align: 'right' });
+      if (!sinCantidad(linea)) doc.text(fm(fin.total), cols[iTotal].x, y, { align: 'right' });
+      if (iTotalIva >= 0 && !sinCantidad(linea)) doc.text(fm(fin.totalIva), cols[iTotalIva].x, y, { align: 'right' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); color(PDF.suave);
       const unidad = linea.es_fertilizante ? 'tn' : (linea.unid || '').toLowerCase();
       doc.text([linea.cod, linea.familia].filter(Boolean).join('  ·  '), cols[0].x, y + 4 + extra);
       if (unidad) {
         if (!sinCantidad(linea)) doc.text(unidad, cols[iCant].x, y + 4, { align: 'right' });
-        doc.text(`USD/${unidad}`, cols[iPrecio].x, y + 4, { align: 'right' });
+        doc.text(`${ars ? '$' : 'USD'}/${unidad}`, cols[iPrecio].x, y + 4, { align: 'right' });
       }
       y += altoFila;
     });
@@ -284,11 +292,11 @@ export async function construirPDF(
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); color(PDF.texto);
       if (cotiz.con_iva) {
         doc.text('Subtotal', labelX, y);
-        doc.text(formatUSD(t.subtotal + t.recargo, 2), totalX, y, { align: 'right' });
+        doc.text(fm(t.subtotal + t.recargo), totalX, y, { align: 'right' });
         y += 5;
         t.desglose.forEach((d) => {
           doc.text(`IVA ${tasaTxt(d.tasa)} %`, labelX, y);
-          doc.text(formatUSD(d.iva, 2), totalX, y, { align: 'right' });
+          doc.text(fm(d.iva), totalX, y, { align: 'right' });
           y += 5;
         });
       }
@@ -298,9 +306,9 @@ export async function construirPDF(
       relleno(PDF.trigo);
       doc.rect(xCaja, y - 5.5, 1.4, 9, 'F');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
-      doc.text(cotiz.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)', labelX, y, { charSpace: 0.3 });
+      doc.text(cotiz.con_iva ? `TOTAL ${mon}` : `TOTAL ${mon} (SIN IVA)`, labelX, y, { charSpace: 0.3 });
       doc.setFontSize(13);
-      doc.text(formatUSD(t.total, 2), totalX, y + 0.3, { align: 'right' });
+      doc.text(fm(t.total), totalX, y + 0.3, { align: 'right' });
       y += 9;
     }
   } else {
@@ -313,7 +321,7 @@ export async function construirPDF(
     const inicioOp = xCant + 3;
     const anchoCol = (derecha - inicioOp) / n;
     const xCol = (j: number) => inicioOp + (j + 1) * anchoCol - 2.5; // borde derecho de la columna j
-    const texto = (j: number, i: number) => `${formatUSD(matriz[i].celdas[j].precioUnit, 2)} /${unidadLinea(matriz[i].linea) || 'un'}`;
+    const texto = (j: number, i: number) => `${fm(matriz[i].celdas[j].precioUnit)} /${unidadLinea(matriz[i].linea) || 'un'}`;
     // Achica la letra (sin recortar números) hasta que entre el texto más ancho de cada columna
     let tamPrecio = 9;
     doc.setFont('helvetica', 'normal');
@@ -368,8 +376,8 @@ export async function construirPDF(
         y += 5;
       };
       if (cotiz.con_iva) {
-        fila('Subtotal', (j) => formatUSD(tots[j].totales.subtotal + tots[j].totales.recargo, 2));
-        tasas.forEach((tasa) => fila(`IVA ${tasaTxt(tasa)} %`, (j) => formatUSD(tots[j].totales.desglose.find((d) => d.tasa === tasa)?.iva ?? 0, 2)));
+        fila('Subtotal', (j) => fm(tots[j].totales.subtotal + tots[j].totales.recargo));
+        tasas.forEach((tasa) => fila(`IVA ${tasaTxt(tasa)} %`, (j) => fm(tots[j].totales.desglose.find((d) => d.tasa === tasa)?.iva ?? 0)));
       }
       y += 2.5;
       relleno(PDF.cultivo800);
@@ -377,9 +385,9 @@ export async function construirPDF(
       relleno(PDF.trigo);
       doc.rect(margin, y - 5.5, 1.4, 9, 'F');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
-      doc.text(cotiz.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)', margin + 4, y, { charSpace: 0.3 });
+      doc.text(cotiz.con_iva ? `TOTAL ${mon}` : `TOTAL ${mon} (SIN IVA)`, margin + 4, y, { charSpace: 0.3 });
       doc.setFontSize(Math.min(11, tamPrecio + 2));
-      opciones.forEach((_, j) => doc.text(formatUSD(tots[j].totales.total, 2), xCol(j), y + 0.3, { align: 'right' }));
+      opciones.forEach((_, j) => doc.text(fm(tots[j].totales.total), xCol(j), y + 0.3, { align: 'right' }));
       y += 9;
   
     }
@@ -433,8 +441,10 @@ export async function generarPDF(
   (await construirPDF(cotiz, lineas, cliente, config, LOGO_CERES_TOLVAS)).save(`Cotizacion_${archivoCotizacion(cotiz)}.pdf`);
 }
 
-export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[]): Promise<void> {
+export async function generarExcel(cotizIn: Cotizacion, lineasIn: CotizacionLinea[]): Promise<void> {
   const XLSX = await import('xlsx');
+  const { moneda, cotiz, lineas } = vistaEnMoneda(cotizIn, lineasIn);
+  const mon = moneda === 'ARS' ? 'ARS' : 'USD';
   const t = totalesDeCotizacion(cotiz, lineas);
   const soloPrecios = todasSinCantidad(lineas);
   const data = lineas.map((l) => ({
@@ -448,10 +458,10 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     'Plazo (días)': plazoLinea(l, cotiz),
     'Vencimiento': plazoLinea(l, cotiz) > 0 ? formatearFecha(sumarDias(cotiz.fecha, plazoLinea(l, cotiz))) : '',
     ...(cotiz.con_iva ? { 'IVA %': ivaLinea(l, cotiz) } : {}),
-    'Precio USD': l.precio_usd,
-    'Flete USD': l.flete_usd,
-    ...(soloPrecios ? {} : { 'Total USD': sinCantidad(l) ? '' : l.total_usd }),
-    ...(cotiz.con_iva ? (soloPrecios ? {} : { 'Total c/IVA USD': sinCantidad(l) ? '' : financiacionLinea(l, cotiz).totalIva }) : {}),
+    [`Precio ${mon}`]: l.precio_usd,
+    [`Flete ${mon}`]: l.flete_usd,
+    ...(soloPrecios ? {} : { [`Total ${mon}`]: sinCantidad(l) ? '' : l.total_usd }),
+    ...(cotiz.con_iva ? (soloPrecios ? {} : { [`Total c/IVA ${mon}`]: sinCantidad(l) ? '' : financiacionLinea(l, cotiz).totalIva }) : {}),
   }));
 
   // Con opciones de pago (el cliente todavía no eligió) una sola hoja: la matriz comparativa, como en el PDF
@@ -463,7 +473,7 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     const matriz = filasMatriz(cotiz, lineas);
     const tots = totalesOpciones(cotiz, lineas);
     const aoa: (string | number)[][] = [
-      ['Artículo', 'Cantidad', 'Unidad', ...opcionesXl.flatMap((o) => [`${o.nombre} · Plazo (días)`, `${o.nombre} · Vencimiento`, `${o.nombre} · Precio USD/unid`, `${o.nombre} · Total USD`])],
+      ['Artículo', 'Cantidad', 'Unidad', ...opcionesXl.flatMap((o) => [`${o.nombre} · Plazo (días)`, `${o.nombre} · Vencimiento`, `${o.nombre} · Precio ${mon}/unid`, `${o.nombre} · Total ${mon}`])],
       ...matriz.map(({ linea, celdas }) => [
         linea.producto, sinCantidad(linea) ? '' : linea.cantidad, linea.unid,
         ...celdas.flatMap((c) => [c.plazo, c.vence ? formatearFecha(c.vence) : '', c.precioUnit, sinCantidad(linea) ? '' : c.total]),
@@ -492,15 +502,15 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
     ...(cotiz.aforo_corto_tn ? { 'Aforo tramo corto (tn)': cotiz.aforo_corto_tn } : {}),
     ...(cotiz.flete_modalidad === 'largo_corto' ? { 'KM corto': Number(cotiz.km_corto) || 0 } : {}),
     // Con opciones los importes dependen de la opción: están en la hoja Cotización
-    ...(!conOpcionesXl && !soloPrecios && t.recargo > 0 ? { 'Financiación USD': t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
+    ...(!conOpcionesXl && !soloPrecios && t.recargo > 0 ? { [`Financiación ${mon}`]: t.recargo, 'Tasa mensual %': cotiz.tasa_mensual } : {}),
     ...(conOpcionesXl || soloPrecios ? {} : cotiz.con_iva
       ? {
-          'Subtotal USD': t.subtotal,
-          ...Object.fromEntries(t.desglose.map((d) => [`IVA ${tasaTxt(d.tasa)}% USD`, d.iva])),
-          'IVA total USD': t.iva,
-          'Total USD': t.total,
+          [`Subtotal ${mon}`]: t.subtotal,
+          ...Object.fromEntries(t.desglose.map((d) => [`IVA ${tasaTxt(d.tasa)}% ${mon}`, d.iva])),
+          [`IVA total ${mon}`]: t.iva,
+          [`Total ${mon}`]: t.total,
         }
-      : { 'Total USD (sin IVA)': t.total }),
+      : { [`Total ${mon} (sin IVA)`]: t.total }),
     ...(datosCanje(cotiz, lineas) ? { 'Canje cultivo': cotiz.canje_cultivo, 'Canje precio USD/tn': cotiz.canje_precio_usd, 'Canje neto USD/tn': datosCanje(cotiz, lineas)!.neto, 'Canje monto USD': datosCanje(cotiz, lineas)!.monto, 'Canje tn': datosCanje(cotiz, lineas)!.tn, ...(cotiz.canje_params?.destino ? { 'Canje destino': cotiz.canje_params.destino } : {}) } : {}),
     'Estado': cotiz.estado,
   }];
@@ -511,10 +521,14 @@ export async function generarExcel(cotiz: Cotizacion, lineas: CotizacionLinea[])
 }
 
 export function generarWhatsApp(
-  cotiz: Cotizacion,
-  lineas: CotizacionLinea[],
+  cotizIn: Cotizacion,
+  lineasIn: CotizacionLinea[],
   config: Configuracion
 ): string {
+  const { moneda, cotiz, lineas } = vistaEnMoneda(cotizIn, lineasIn);
+  const fm = formatMoneda(moneda);
+  const imp = (n: number) => (moneda === 'ARS' ? `$ ${fm(n)}` : `${fm(n)} USD`);
+  const pu = (n: number, u: string) => (moneda === 'ARS' ? `$ ${fm(n)}/${u}` : `${fm(n)} USD/${u}`);
   let msg = `*${config.empresa_nombre}*\n`;
   msg += `Cotización ${nombreCotizacion(cotiz)}\n`;
   msg += `Fecha: ${formatDate(cotiz.fecha)}\n`;
@@ -538,12 +552,12 @@ export function generarWhatsApp(
     const pago = conFin ? ` · ${condicionTxt(fin.plazo, cotiz.fecha)}` : '';
     if (sinCantidad(l)) {
       const u = unidadLinea(l) || 'un';
-      msg += `• ${l.producto}${pago}\n  ${formatUSD(fin.precioUnit)} USD/${u}\n`;
+      msg += `• ${l.producto}${pago}\n  ${pu(fin.precioUnit, u)}\n`;
     } else if (l.es_fertilizante) {
-      msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${formatUSD(fin.precioUnit)} USD/tn = ${formatUSD(fin.total)} USD${cotiz.con_iva ? ` (${formatUSD(fin.totalIva)} c/IVA)` : ''}\n`;
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} tn × ${imp(fin.precioUnit)}/tn = ${imp(fin.total)}${cotiz.con_iva ? ` (${fm(fin.totalIva)} c/IVA)` : ''}\n`;
     } else {
       const u = (l.unid || '').toLowerCase() || 'un';
-      msg += `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${formatUSD(fin.precioUnit)} USD/${u} = ${formatUSD(fin.total)} USD${cotiz.con_iva ? ` (${formatUSD(fin.totalIva)} c/IVA)` : ''}\n`;
+      msg += `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${pu(fin.precioUnit, u)} = ${imp(fin.total)}${cotiz.con_iva ? ` (${fm(fin.totalIva)} c/IVA)` : ''}\n`;
     }
   });
 
@@ -552,13 +566,13 @@ export function generarWhatsApp(
   if (conOpcionesWa || soloPreciosWa) {
     // (nada acá)
   } else if (cotiz.con_iva) {
-    msg += `\nSubtotal: ${formatUSD(t.subtotal + t.recargo)} USD\n`;
+    msg += `\nSubtotal: ${imp(t.subtotal + t.recargo)}\n`;
     t.desglose.forEach((d) => {
-      msg += `IVA ${tasaTxt(d.tasa)}%: ${formatUSD(d.iva)} USD\n`;
+      msg += `IVA ${tasaTxt(d.tasa)}%: ${imp(d.iva)}\n`;
     });
-    msg += `*Total: ${formatUSD(t.total)} USD*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
+    msg += `*Total: ${imp(t.total)}*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
   } else {
-    msg += `\n*Total: ${formatUSD(t.total)} USD* (precios sin IVA)\n`;
+    msg += `\n*Total: ${imp(t.total)}* (precios sin IVA)\n`;
   }
   if (conOpcionesWa) {
     msg += `*Opciones de pago*\n`;
@@ -571,10 +585,10 @@ export function generarWhatsApp(
         const pago = hayPlazo ? ` · ${condicionTxt(x.plazo, cotiz.fecha)}` : '';
         const u = unidadLinea(l) || 'un';
         msg += sinCantidad(l)
-          ? `• ${l.producto}${pago}\n  ${formatUSD(x.precioUnit)} USD/${u}\n`
-          : `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${formatUSD(x.precioUnit)} USD/${u} = ${formatUSD(x.total)} USD\n`;
+          ? `• ${l.producto}${pago}\n  ${pu(x.precioUnit, u)}\n`
+          : `• ${l.producto}${pago}\n  ${l.cantidad} ${u} × ${pu(x.precioUnit, u)} = ${imp(x.total)}\n`;
       });
-      if (!soloPreciosWa) msg += `*Total: ${formatUSD(r.totales.total)} USD*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
+      if (!soloPreciosWa) msg += `*Total: ${imp(r.totales.total)}*${cotiz.con_iva ? '' : ' (precios sin IVA)'}\n`;
     });
   }
 

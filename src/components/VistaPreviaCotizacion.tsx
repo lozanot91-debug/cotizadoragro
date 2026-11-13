@@ -7,21 +7,24 @@ import { nombreCotizacion } from '@/lib/nombreCotizacion';
 import { formatearFecha, sumarDias } from '@/lib/fechas';
 import { formatDate, formatUSD } from '@/lib/format';
 import { filasMatriz, totalesOpciones, tasasIvaOpciones, unidadLinea } from '@/lib/opcionesSalida';
+import { vistaEnMoneda, formatMoneda } from '@/lib/moneda';
 import type { Cotizacion, CotizacionLinea } from '@/types';
-
-const fmt = (n: number, d = 2) => formatUSD(n, d);
 
 /**
  * Vista rápida de una cotización (sin salir de la pantalla): insumos, cantidad, precio y totales.
  * Los precios son finales (con flete y financiación), sin IVA; el total es con IVA, que es lo que se paga con grano.
  */
-export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar, onAbrir }: {
+export default function VistaPreviaCotizacion({ cotizacion: cIn, lineas: lineasIn, onCerrar, onAbrir }: {
   cotizacion: Cotizacion;
   lineas: CotizacionLinea[];
   onCerrar: () => void;
   /** Abrir la cotización completa */
   onAbrir?: () => void;
 }) {
+  const { moneda, cotiz: c, lineas } = vistaEnMoneda(cIn, lineasIn);
+  const ars = moneda === 'ARS';
+  const fmM = formatMoneda(moneda);
+  const fmt = (n: number, d = 2) => (d === 2 ? fmM(n) : formatUSD(n, d)); // importes en la moneda de la cotización
   useEffect(() => {
     const f = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar(); };
     window.addEventListener('keydown', f);
@@ -43,7 +46,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-wider text-gray-400 flex items-center gap-1"><FileText className="w-3.5 h-3.5" /> Cotización</p>
             <h3 className="font-semibold text-gray-900 text-lg truncate">{nombreCotizacion(c)}</h3>
-            <p className="text-xs text-gray-500">{formatDate(c.fecha)} · {c.estado} · TC {fmt(c.tc)}{c.canje_precio_usd > 0 ? ` · canje ${c.canje_cultivo || 'grano'} a USD ${fmt(c.canje_precio_usd)}/tn` : ''}</p>
+            <p className="text-xs text-gray-500">{formatDate(c.fecha)} · {c.estado} {ars ? '' : ` · TC ${fmt(c.tc)}`}{!ars && c.canje_precio_usd > 0 ? ` · canje ${c.canje_cultivo || 'grano'} a USD ${fmt(c.canje_precio_usd)}/tn` : ''}</p>
             {totsOp.length === 0 && filas.length > 0 && <p className="text-xs text-gray-500">Forma de pago: {textoFormaPago(c, lineas)}</p>}
           </div>
           <button onClick={onCerrar} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" aria-label="Cerrar"><X className="w-5 h-5" /></button>
@@ -87,7 +90,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                       </tr>
                     ))}
                     <tr className="font-semibold text-gray-800 border-t border-gray-200">
-                      <td className="py-2 pr-2" colSpan={2}>{c.con_iva ? 'TOTAL USD' : 'TOTAL USD (SIN IVA)'}</td>
+                      <td className="py-2 pr-2" colSpan={2}>{`TOTAL ${ars ? '$' : 'USD'}${c.con_iva ? '' : ' (SIN IVA)'}`}</td>
                       {totsOp.map(({ opcion, totales }) => <td key={opcion.id} className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{fmt(totales.total)}</td>)}
                     </tr>
                   </tfoot>}
@@ -119,7 +122,7 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
                 ))}
               </tbody>
             </table>
-          <p className="text-[11px] text-gray-400 mt-2">Precios en USD sin IVA, con flete y financiación incluidos.{c.con_iva ? ' El total c/IVA suma el IVA de cada artículo.' : ''}</p>
+          <p className="text-[11px] text-gray-400 mt-2">Precios en {ars ? 'pesos' : 'USD'} sin IVA, con flete y financiación incluidos.{c.con_iva ? ' El total c/IVA suma el IVA de cada artículo.' : ''}</p>
             </>
           )}
         </div>
@@ -133,9 +136,9 @@ export default function VistaPreviaCotizacion({ cotizacion: c, lineas, onCerrar,
           ))}
           <div className="flex justify-between items-baseline pt-1">
             <span className="font-semibold text-gray-800">Total con IVA <span className="font-normal text-xs text-gray-400">(se usa para el canje)</span></span>
-            <span className="cifra text-2xl text-emerald-800">USD {fmt(t.total)}</span>
+            <span className="cifra text-2xl text-emerald-800">{ars ? '$' : 'USD'} {fmt(t.total)}</span>
           </div>
-          {!c.con_iva && <p className="text-[11px] text-gray-400">La cotización se mandó sin IVA (total USD {fmt(t.subtotal + t.recargo)}); para el canje se suma el IVA de cada producto.</p>}
+          {!c.con_iva && <p className="text-[11px] text-gray-400">La cotización se mandó sin IVA (total {ars ? '$' : 'USD'} {fmt(t.subtotal + t.recargo)}); para el canje se suma el IVA de cada producto.</p>}
           </>}
           <div className="flex justify-end gap-2 pt-2">
             {onAbrir && <button onClick={onAbrir} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"><ExternalLink className="w-4 h-4" /> Abrir cotización</button>}

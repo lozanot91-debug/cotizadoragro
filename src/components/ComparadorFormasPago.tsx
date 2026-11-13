@@ -3,6 +3,7 @@ import { ChevronDown, Copy, Trophy } from 'lucide-react';
 import { useData } from '@/hooks/useData';
 import { useToast } from '@/components/Toast';
 import { formatUSD } from '@/lib/format';
+import type { Moneda } from '@/lib/moneda';
 import { textoMesesTasa } from '@/lib/calculations';
 import { formatearFecha, hoyAR, diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import { CULTIVOS_CANJE, PARAMS_CANJE_BASE, type ParamsCanje } from '@/lib/canje';
@@ -20,14 +21,16 @@ export interface PropsComparador {
   canjeInicial?: { cultivo: string; precioUSD: number } | null;
   /** Para el texto de WhatsApp (ej. número de cotización) */
   titulo?: string;
+  /** Moneda de los importes (en pesos se muestra $ en lugar de USD). */
+  moneda?: Moneda;
 }
 
 const num = (s: string) => { const n = Number(String(s).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 const fmt = (n: number, d = 2) => formatUSD(n, d);
 const inputCls = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm tabular-nums outline-none focus:ring-2 focus:ring-emerald-500';
 
-const monedaTxt = (o: OpcionPago, n: number) => (o.moneda === 'ARS' ? `$ ${formatUSD(n, 0)}` : `USD ${fmt(n)}`);
-const desgloseND = (o: OpcionPago) => `Costo con tasa: ${monedaTxt(o, o.costoConTasa ?? 0)} · ND: ${monedaTxt(o, o.ndMonto ?? 0)}`;
+const monedaTxt = (o: OpcionPago, n: number, pref = 'USD') => (o.moneda === 'ARS' ? `$ ${formatUSD(n, 0)}` : `${pref} ${fmt(n)}`);
+const desgloseND = (o: OpcionPago, pref = 'USD') => `Costo con tasa: ${monedaTxt(o, o.costoConTasa ?? 0, pref)} · ND: ${monedaTxt(o, o.ndMonto ?? 0, pref)}`;
 
 function Campo({ label, valor, onChange, sufijo, ancho = 'w-24' }: { label: string; valor: string; onChange: (v: string) => void; sufijo?: string; ancho?: string }) {
   // Borrador local: conserva "2," o "2." mientras se tipea; solo se resincroniza si el valor externo cambia de verdad
@@ -48,7 +51,8 @@ function Campo({ label, valor, onChange, sufijo, ancho = 'w-24' }: { label: stri
  * Compara contado, plazo, canje y tarjetas para una misma operación: cuánto paga, cuándo, y cuánto vale hoy
  * cada opción en USD (descontando a una tasa de referencia y pasando los pesos al dólar estimado).
  */
-export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, canjeInicial, titulo }: PropsComparador) {
+export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, canjeInicial, titulo, moneda = 'USD' }: PropsComparador) {
+  const pref = moneda === 'ARS' ? '$' : 'USD';
   const data = useData();
   const toast = useToast();
   const suelto = netoUSD === undefined;
@@ -115,7 +119,7 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
       <div className="flex flex-wrap items-end gap-3">
         {suelto ? (
           <>
-            <Campo label="Monto neto (sin IVA)" valor={neto} onChange={setNeto} sufijo="USD" ancho="w-40" />
+            <Campo label="Monto neto (sin IVA)" valor={neto} onChange={setNeto} sufijo={pref} ancho="w-40" />
             <label className="block w-24">
               <span className="block text-[11px] text-gray-500 mb-0.5">IVA</span>
               <select value={ivaPct} onChange={(e) => setIvaPct(e.target.value)} className={`${inputCls} bg-white`}>
@@ -126,7 +130,7 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
         ) : (
           <div className="text-sm">
             <span className="block text-[11px] text-gray-500">Total contado con IVA</span>
-            <span className="cifra text-lg text-gray-900 tabular-nums">USD {fmt(netoNum + ivaNum)}</span>
+            <span className="cifra text-lg text-gray-900 tabular-nums">{pref} {fmt(netoNum + ivaNum)}</span>
           </div>
         )}
         <div className="flex items-end gap-2 pl-3 border-l border-gray-200">
@@ -162,11 +166,11 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
                 <li key={o.clave} className={`rounded-lg border px-3 py-2 ${esMejor ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200'}`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className={`font-medium flex items-center gap-1 ${esMejor ? 'text-emerald-800' : 'text-gray-900'}`}>{esMejor && <Trophy className="w-3.5 h-3.5 text-emerald-600" />}{o.nombre}</span>
-                    <span className="tabular-nums font-semibold text-gray-900">USD {fmt(o.valorHoyUSD)}</span>
+                    <span className="tabular-nums font-semibold text-gray-900">{pref} {fmt(o.valorHoyUSD)}</span>
                   </div>
                   <div className="flex items-baseline justify-between gap-2 text-xs text-gray-600 mt-0.5">
                     <span>
-                      {o.moneda === 'ARS' ? `$ ${formatUSD(o.monto, 0)}` : `USD ${fmt(o.monto)}`}
+                      {o.moneda === 'ARS' ? `$ ${formatUSD(o.monto, 0)}` : `${pref} ${fmt(o.monto)}`}
                       {o.toneladas !== undefined && ` · ${fmt(o.toneladas)} tn`} · {o.dias > 0 ? formatearFecha(o.fecha) : 'hoy'}
                     </span>
                     <span className={o.difVsContadoPct > 0.05 ? 'text-red-700' : o.difVsContadoPct < -0.05 ? 'text-emerald-700' : 'text-gray-400'}>
@@ -174,7 +178,7 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-400 mt-0.5">{o.detalle}</p>
-                  {o.ndMonto !== undefined && o.costoConTasa !== undefined && <p className="text-[11px] text-gray-400">{desgloseND(o)}</p>}
+                  {o.ndMonto !== undefined && o.costoConTasa !== undefined && <p className="text-[11px] text-gray-400">{desgloseND(o, pref)}</p>}
                 </li>
               );
             })}
@@ -200,15 +204,15 @@ export default function ComparadorFormasPago({ netoUSD, ivaUSD, plazoInicial, ca
                         {esMejor && <Trophy className="w-3.5 h-3.5 text-emerald-600" />}{o.nombre}
                       </span>
                       <span className="block text-[11px] text-gray-500">{o.detalle}</span>
-                      {o.ndMonto !== undefined && o.costoConTasa !== undefined && <span className="block text-[11px] text-gray-400">{desgloseND(o)}</span>}
+                      {o.ndMonto !== undefined && o.costoConTasa !== undefined && <span className="block text-[11px] text-gray-400">{desgloseND(o, pref)}</span>}
                     </td>
                     <td className="py-2 px-1 text-right tabular-nums whitespace-nowrap">
-                      {o.moneda === 'ARS' ? `$ ${formatUSD(o.monto, 0)}` : `USD ${fmt(o.monto)}`}
+                      {o.moneda === 'ARS' ? `$ ${formatUSD(o.monto, 0)}` : `${pref} ${fmt(o.monto)}`}
                       {o.toneladas !== undefined && <span className="block text-[11px] text-gray-500">{fmt(o.toneladas)} tn</span>}
                       {o.moneda === 'ARS' && <span className="block text-[11px] text-gray-500">≈ USD {fmt(o.usdAlVencimiento)} a dólar {fmt(o.tcVencimiento ?? 0, 0)}</span>}
                     </td>
                     <td className="py-2 px-1 whitespace-nowrap text-gray-700">{o.dias > 0 ? <>{formatearFecha(o.fecha)}<span className="block text-[11px] text-gray-400">{o.dias} días</span></> : 'Hoy'}</td>
-                    <td className="py-2 px-1 text-right tabular-nums font-medium text-gray-900">USD {fmt(o.valorHoyUSD)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums font-medium text-gray-900">{pref} {fmt(o.valorHoyUSD)}</td>
                     <td className={`py-2 px-1 text-right tabular-nums text-xs ${o.difVsContadoPct > 0.05 ? 'text-red-700' : o.difVsContadoPct < -0.05 ? 'text-emerald-700' : 'text-gray-400'}`}>
                       {o.clave === 'contado' ? '—' : `${o.difVsContadoPct > 0 ? '+' : ''}${fmt(o.difVsContadoPct, 1)}%`}
                     </td>

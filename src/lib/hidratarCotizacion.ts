@@ -1,5 +1,6 @@
 import { calcularLinea } from '@/lib/calculations';
 import type { CalcLineaResult, TramoFlete } from '@/lib/calculations';
+import type { Moneda } from '@/lib/moneda';
 import type { CotizacionLinea, ProductoConCosto, TarifaFlete } from '@/types';
 
 export interface CtxHidratacion {
@@ -8,6 +9,8 @@ export interface CtxHidratacion {
   km: number;
   tarifaFlete: TarifaFlete[];
   tramos?: TramoFlete[];
+  /** 'ARS': importes en pesos (`*_ars`). El caller pasa `tc` ya pasado por tcMotor (1). */
+  moneda?: Moneda;
 }
 
 /**
@@ -22,17 +25,19 @@ export function hidratarLineaGuardada(
   productoDeLista: ProductoConCosto | null,
   ctx: CtxHidratacion
 ): { producto: ProductoConCosto; costoOverrideUSD: number; calc: CalcLineaResult } {
-  const foto = l.costo_lista_usd ?? l.costo_usd;
+  const ars = ctx.moneda === 'ARS';
+  const foto = ars ? l.costo_lista_ars ?? l.costo_ars ?? 0 : l.costo_lista_usd ?? l.costo_usd;
+  const costoGuardado = ars ? l.costo_ars ?? 0 : l.costo_usd;
   const producto: ProductoConCosto = {
     ...(productoDeLista ?? { margen_default: null, margen_producto: null }),
     id: l.producto_id || productoDeLista?.id || '', cod: l.cod, proveedor: l.proveedor, familia: l.familia,
     producto: l.producto, unid: l.unid, es_fertilizante: l.es_fertilizante,
-    costo: l.es_fertilizante ? foto / 1000 : foto, moneda: 'USD',
+    costo: l.es_fertilizante ? foto / 1000 : foto, moneda: ars ? 'ARS' : 'USD',
   } as ProductoConCosto;
   const calc = calcularLinea({
     producto, cantidad: l.cantidad, margen: l.margen, conFlete: l.con_flete,
     tc: ctx.tc, km: ctx.km, tarifaFlete: ctx.tarifaFlete, tramos: ctx.tramos, tcFlete: ctx.tcFlete,
-    costoOverrideUSD: l.costo_usd,
+    costoOverrideUSD: costoGuardado,
   });
-  return { producto, costoOverrideUSD: l.costo_usd, calc };
+  return { producto, costoOverrideUSD: costoGuardado, calc };
 }

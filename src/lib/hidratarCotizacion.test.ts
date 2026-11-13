@@ -94,3 +94,42 @@ describe('hidratarLineaGuardada', () => {
     expect(Math.abs(r.totalUSD - l.total_usd)).toBeLessThan(0.005);
   });
 });
+
+describe('hidratarLineaGuardada en pesos', () => {
+  // Cotización en pesos: el motor corre con tc 1 y las columnas *_ars son las reales
+  const ab = prod({ familia: 'AB PRODUCTO', cod: 'BAL', producto: 'BALANCEADO', unid: 'KG', costo: 850, moneda: 'ARS' });
+  const ctxARS = { ...ctx, tc: 1, moneda: 'ARS' as const };
+  function guardarARS(over: number | null) {
+    const c = calcularLinea({ producto: ab, cantidad: 10, margen: 20, conFlete: false, tc: 1, km: 150, tarifaFlete: tarifas, tcFlete: 1380, costoOverrideUSD: over });
+    return {
+      ...guardar(ab, 20, over, false, 1),
+      costo_usd: c.costoUSD / 1400, costo_lista_usd: c.costoListaUSD / 1400, precio_usd: c.precioUSD / 1400, total_usd: c.totalUSD / 1400,
+      costo_ars: c.costoUSD, costo_lista_ars: c.costoListaUSD, precio_ars: c.precioUSD, total_ars: c.totalUSD,
+    } as CotizacionLinea;
+  }
+
+  it('reproduce el precio y el total en pesos desde *_ars, sin usar la lista de hoy', () => {
+    const l = guardarARS(null);
+    const h = hidratarLineaGuardada(l, { ...ab, costo: 999 }, ctxARS);
+    expect(h.producto.moneda).toBe('ARS');
+    expect(h.calc.costoUSD).toBeCloseTo(l.costo_ars!, 2);
+    expect(h.calc.precioUSD).toBeCloseTo(l.precio_ars!, 2);
+    expect(h.calc.totalUSD).toBeCloseTo(l.total_ars!, 2);
+    expect(h.calc.costoEditado).toBe(false);
+  });
+
+  it('costo editado: queda el override en pesos y la foto de lista en pesos', () => {
+    const l = guardarARS(900);
+    const h = hidratarLineaGuardada(l, null, ctxARS);
+    expect(h.costoOverrideUSD).toBe(900);
+    expect(h.calc.costoEditado).toBe(true);
+    expect(h.calc.costoListaUSD).toBeCloseTo(850, 2);
+    expect(h.calc.totalUSD).toBeCloseTo(l.total_ars!, 2);
+  });
+
+  it('cotización vieja sin costo_lista_ars: la foto es costo_ars', () => {
+    const l = { ...guardarARS(null), costo_lista_ars: null } as CotizacionLinea;
+    const h = hidratarLineaGuardada(l, null, ctxARS);
+    expect(h.calc.costoListaUSD).toBeCloseTo(l.costo_ars!, 2);
+  });
+});

@@ -257,3 +257,29 @@ describe('WhatsApp sin cantidades (solo precios)', () => {
     expect(msg).toContain('Total:');
   });
 });
+
+describe('cotización en pesos (ARS)', () => {
+  const ars = {
+    ...cotiz, moneda: 'ARS', tc: 1450, subtotal_ars: 100000, recargo_ars: 0, iva_ars: 21000, total_ars: 121000,
+    subtotal_usd: 68.97, recargo_usd: 0, iva_usd: 14.48, total_usd: 83.45,
+  } as Cotizacion;
+  const ls = [
+    linea({ cantidad: 10, unid: 'KG', costo_ars: 3000, precio_ars: 4000, total_ars: 40000, precio_usd: 2.76, total_usd: 27.59 }),
+    linea({ cantidad: 20, unid: 'KG', costo_ars: 2500, precio_ars: 3000, total_ars: 60000, precio_usd: 2.07, total_usd: 41.38 }),
+  ];
+  it('totalesDeCotizacion devuelve pesos', () => {
+    const t = totalesDeCotizacion(ars, ls);
+    expect(t.subtotal).toBe(100000);
+    expect(t.iva).toBeCloseTo(21000, 6);
+    expect(t.total).toBeCloseTo(121000, 6);
+  });
+  it('WhatsApp en pesos: sin USD ni equivalentes en dólares', () => {
+    const msg = generarWhatsApp(ars, ls, config);
+    expect(msg).toContain('$ 4.000,00/kg');
+    expect(msg).toContain('$ 100.000,00');
+    expect(msg).toContain('$ 121.000,00');
+    expect(msg).not.toMatch(/USD|U\$S|TC/);
+    expect(msg).not.toContain('83,45');
+    expect(msg).not.toContain('68,97');
+  });
+});

@@ -225,6 +225,12 @@ export interface Cotizacion {
   iva_usd: number;
   total_usd: number;
   total_ars: number;
+  // USD por defecto; ARS = cotización en pesos (balanceado)
+  moneda?: 'USD' | 'ARS';
+  // Importes reales en pesos; solo en cotizaciones en pesos
+  subtotal_ars?: number | null;
+  recargo_ars?: number | null;
+  iva_ars?: number | null;
   notas: string | null;
   /** Ganada: cantidad y precio reales por id de línea; motivo de lo que no se ganó (cantidad real menor a la cotizada). */
   /** Convenio de flete con el que se calculó (null = el predeterminado). En largo + corto, el del largo. */
@@ -342,6 +348,11 @@ export interface CotizacionLinea {
   precio_usd: number;
   flete_usd: number;
   total_usd: number;
+  // Importes reales en pesos; solo en cotizaciones en pesos
+  costo_ars?: number | null;
+  costo_lista_ars?: number | null;
+  precio_ars?: number | null;
+  total_ars?: number | null;
   con_flete: boolean;
   /** Plazo de pago de esta línea en días (0 = contado). null en cotizaciones viejas: se usa el de la cabecera. */
   plazo_dias: number | null;

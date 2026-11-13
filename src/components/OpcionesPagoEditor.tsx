@@ -3,7 +3,8 @@ import { MAX_OPCIONES, ID_PRINCIPAL, type calcularOpcion } from '@/lib/opcionesP
 import { nombreOpcionPorDefecto, nuevoIdOpcion, type OpcionEditable } from '@/lib/opcionesEditor';
 import { diasDesdeVencimiento, vencimientoDesdeDias } from '@/lib/fechas';
 import { textoMesesTasa, esContado } from '@/lib/calculations';
-import { formatUSD, formatInputNumber, parseNumberInput } from '@/lib/format';
+import { formatInputNumber, parseNumberInput } from '@/lib/format';
+import { formatMoneda, type Moneda } from '@/lib/moneda';
 
 export interface LineaOpcion { key: string; producto: string; cantidad: number; unidad: string }
 
@@ -22,14 +23,18 @@ interface Props {
   elegidaId: string | null;
   onVolver?: () => void;
   onElegir?: (op: OpcionPago) => void;
+  /** Moneda de los importes (default USD). */
+  moneda?: Moneda;
 }
 
 const inputCls = 'px-2 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50';
 const btnCls = 'px-2.5 py-1 rounded-lg text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60';
 
 export default function OpcionesPagoEditor({
-  lineas, fecha, conIva, principal, opciones, onChange, tasaPorDefecto, calcular, readOnly, elegidaId, onVolver, onElegir,
+  lineas, fecha, conIva, principal, opciones, onChange, tasaPorDefecto, calcular, readOnly, elegidaId, onVolver, onElegir, moneda = 'USD',
 }: Props) {
+  const formatUSD = formatMoneda(moneda);
+  const sm = moneda === 'ARS' ? '$' : 'USD';
   const tasaOf = (o: OpcionEditable) => parseNumberInput(o.tasa);
   const aOpcionPago = (o: OpcionEditable): OpcionPago => ({
     id: o.id, nombre: o.nombre.trim() || '(sin nombre)', tasa_mensual: tasaOf(o), plazos: lineas.map((l) => o.plazoPorKey[l.key] ?? 0),
@@ -86,7 +91,7 @@ export default function OpcionesPagoEditor({
             {todas.map((o, i) => (
               <span key={o.id} className="flex items-center gap-1.5">
                 {i > 0 && <span className="text-gray-300">·</span>}
-                <span>{o.id === ID_PRINCIPAL ? 'Principal' : o.nombre} <strong>USD {formatUSD(calcular(o).totales.total)}</strong></span>
+                <span>{o.id === ID_PRINCIPAL ? 'Principal' : o.nombre} <strong>{sm} {formatUSD(calcular(o).totales.total)}</strong></span>
                 {o.id === elegidaId && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Elegida</span>}
                 {onElegir && <button type="button" onClick={() => onElegir(o)} className={btnCls}>El cliente eligió esta</button>}
               </span>
@@ -126,8 +131,8 @@ export default function OpcionesPagoEditor({
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Cant.</th>
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Vencimiento</th>
                       <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Tasa %/mes</th>
-                      <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio USD</th>
-                      <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total USD</th>
+                      <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Precio {sm}</th>
+                      <th className="text-right px-2 py-2 font-medium text-gray-600 whitespace-nowrap">Total {sm}</th>
                     </tr></thead>
                     <tbody>
                       {lineas.map((l, i) => {
@@ -161,7 +166,7 @@ export default function OpcionesPagoEditor({
                   <div className="flex justify-between"><span>{c.totales.recargo > 0 ? 'Subtotal contado' : 'Subtotal'}</span><span>{formatUSD(c.totales.subtotal)}</span></div>
                   {c.totales.recargo > 0 && <div className="flex justify-between"><span>Financiación</span><span>{formatUSD(c.totales.recargo)}</span></div>}
                   {conIva && <div className="flex justify-between"><span>IVA</span><span>{formatUSD(c.totales.iva)}</span></div>}
-                  <div className="flex justify-between font-semibold text-gray-800 pt-1 border-t border-gray-200"><span>TOTAL USD</span><span>{formatUSD(c.totales.total)}</span></div>
+                  <div className="flex justify-between font-semibold text-gray-800 pt-1 border-t border-gray-200"><span>TOTAL {sm}</span><span>{formatUSD(c.totales.total)}</span></div>
                 </div>
               </div>
             );
