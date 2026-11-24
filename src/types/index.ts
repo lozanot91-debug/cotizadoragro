@@ -47,6 +47,8 @@ export interface Producto {
   familia: string | null;
   producto: string | null;
   unid: string | null;
+  /** Insumo dado de alta a mano (fuera de la lista): sin costo cargado, se escribe en cada cotización. */
+  propio?: boolean;
 }
 
 export interface FuenteLista {
@@ -369,6 +371,8 @@ export interface ProductoConCosto extends Producto {
   margen_default: number | null;
   margen_producto: number | null;
   es_fertilizante: boolean;
+  /** Insumo propio sin costo en lista: el costo se escribe en la cotización. */
+  sin_costo?: boolean;
 }
 
 export interface Cobranza {

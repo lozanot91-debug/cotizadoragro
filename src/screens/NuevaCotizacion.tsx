@@ -566,11 +566,12 @@ export default function NuevaCotizacion({ editId, duplicateFromId, onDeleted, on
     const costoDisplay = producto.es_fertilizante
       ? (producto.moneda === 'ARS' ? producto.costo / tcP : producto.costo) * 1000
       : (producto.moneda === 'ARS' ? producto.costo / tcP : producto.costo);
+    if (producto.sin_costo) toast.aviso('Este insumo no tiene costo cargado: escribilo en la línea.');
     setLineas([...lineas, {
       key: Math.random().toString(36), producto, cantidad: 1, margen, margenOriginal: margen,
       conFlete: producto.es_fertilizante, cantidadStr: '1',
       margenStr: formatInputNumber(margen, 1), costoOverrideUSD: null,
-      costoStr: formatInputNumber(costoDisplay, 2),
+      costoStr: producto.sin_costo ? '' : formatInputNumber(costoDisplay, 2),
       iva: ivaSugerido(producto.es_fertilizante), ivaStr: formatInputNumber(ivaSugerido(producto.es_fertilizante), 2),
       plazo: plazoNum, plazoStr: String(plazoNum),
     }]);

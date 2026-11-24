@@ -6,6 +6,7 @@ import { useToast } from '@/components/Toast';
 import { useCargaSegura } from '@/hooks/useCargaSegura';
 import ErrorCarga from '@/components/ErrorCarga';
 import { PanelFicha } from '@/components/FichaProducto';
+import NuevoInsumoModal from '@/components/NuevoInsumoModal';
 import { refrescarIndiceFichas } from '@/hooks/useIndiceFichas';
 import { registrarCambio } from '@/lib/historial';
 import { presentacion, sugerirGrupos, type ProductoLista } from '@/lib/catalogo';
@@ -32,6 +33,8 @@ export default function Catalogo() {
   const [familia, setFamilia] = useState('');
   const [abierta, setAbierta] = useState<{ fichaId?: string; cod?: string; nombre?: string } | null>(null);
   const [creando, setCreando] = useState<string | null>(null);
+  const [nuevoInsumo, setNuevoInsumo] = useState(false);
+  const [guardandoInsumo, setGuardandoInsumo] = useState(false);
 
   const cargar = useCallback(async () => {
     const r = await data.fetchCatalogo();
@@ -48,6 +51,7 @@ export default function Catalogo() {
     return m;
   }, [codigos, porCod]);
   const familias = useMemo(() => [...new Set(productos.map((p) => p.familia).filter(Boolean) as string[])].sort(), [productos]);
+  const unidades = useMemo(() => [...new Set(productos.map((p) => (p.unid || '').trim()).filter(Boolean))].sort(), [productos]);
   const sugerencias = useMemo(() => sugerirGrupos(productos, new Set(codigos.map((c) => c.cod))), [productos, codigos]);
 
   const fichasVisibles = fichas.filter((f) => {
@@ -74,17 +78,39 @@ export default function Catalogo() {
     } catch (e) { toast.error(e); } finally { setCreando(null); }
   }
 
+  async function crearInsumo(d: { producto: string; proveedor: string; familia: string; unid: string }) {
+    setGuardandoInsumo(true);
+    try {
+      const r = await data.crearInsumoPropio(d);
+      await registrarCambio({ tipo: 'lista', entidad: `Producto ${r.producto.cod}`, campo: 'insumo propio', valor_nuevo: d.producto, detalle: 'Alta de insumo propio (sin costo) desde el Catálogo' });
+      toast.exito(`Insumo creado (${r.producto.cod}). El costo lo cargás en cada cotización.`);
+      refrescarIndiceFichas();
+      setNuevoInsumo(false);
+      await cargar();
+      setTab('fichas');
+      setAbierta({ fichaId: r.ficha.id });
+    } catch (e) { toast.error(e); } finally { setGuardandoInsumo(false); }
+  }
+
   if (errorCarga && !loading) return <ErrorCarga error={errorCarga} onReintentar={reintentar} />;
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-emerald-600 animate-spin" /></div>;
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Catálogo</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {fichas.length} fichas · {conMarbete} con marbete{sugerencias.length > 0 && ` · ${sugerencias.reduce((s, g) => s + g.codigos.length, 0)} códigos sin ficha`}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Catálogo</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {fichas.length} fichas · {conMarbete} con marbete{sugerencias.length > 0 && ` · ${sugerencias.reduce((s, g) => s + g.codigos.length, 0)} códigos sin ficha`}
+          </p>
+        </div>
+        {esAdmin && (
+          <button onClick={() => setNuevoInsumo(true)} className="px-3 py-2 text-sm font-medium bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> Nuevo insumo
+          </button>
+        )}
       </div>
+      {nuevoInsumo && <NuevoInsumoModal familias={familias} unidades={unidades} guardando={guardandoInsumo} onGuardar={(d) => void crearInsumo(d)} onCerrar={() => setNuevoInsumo(false)} />}
 
       <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
         <button onClick={() => setTab('fichas')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === 'fichas' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`}>Fichas</button>

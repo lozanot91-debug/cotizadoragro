@@ -687,7 +687,30 @@ function crearApi() {
       vistos.add(clave);
       resultado.push(p);
     }
+    // Insumos propios: no tienen costo en ninguna lista, siempre se pueden elegir y el costo se escribe en la cotización
+    const propios = (await ok(supabase.from('productos').select('*').eq('propio', true).order('producto'))) as Producto[] | null;
+    if (propios?.length) {
+      const famMap = new Map(cfg.familias.map((f) => [f.familia, f]));
+      const margProdMap = new Map(cfg.margenesProd.map((m) => [m.producto_id, m.margen]));
+      for (const p of propios) {
+        if (vistos.has(p.id) || vistos.has(p.cod)) continue;
+        const fam = famMap.get(p.familia || '');
+        const pc: ProductoConCosto = {
+          ...p, costo: 0, moneda: fam?.moneda || 'USD', margen_default: fam?.margen_default ?? null,
+          margen_producto: margProdMap.get(p.id) ?? null, es_fertilizante: false, sin_costo: true,
+        };
+        pc.es_fertilizante = esFertilizante(pc);
+        resultado.push(pc);
+      }
+    }
     return resultado;
+  }
+
+  /** Da de alta un insumo propio (sin costo) y su ficha en el catálogo. */
+  async function crearInsumoPropio(d: { producto: string; proveedor: string; familia: string; unid: string }): Promise<{ producto: Producto; ficha: FichaProducto }> {
+    const producto = (await ok(supabase.rpc('crear_insumo_propio', { p_producto: d.producto, p_proveedor: d.proveedor, p_familia: d.familia, p_unid: d.unid }))) as Producto;
+    const ficha = await crearFicha(d.producto, [producto.cod]);
+    return { producto, ficha };
   }
 
   async function contarProductosDeLista(listaId: string): Promise<number> {
@@ -1509,6 +1532,7 @@ function crearApi() {
     fetchIndiceFichas,
     fetchFicha,
     crearFicha,
+    crearInsumoPropio,
     crearFichasLote,
     renombrarFicha,
     agregarCodigosFicha,
